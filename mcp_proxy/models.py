@@ -1,6 +1,6 @@
 """Configuration models for MCP Proxy."""
 
-from pydantic import BaseModel, RootModel
+from pydantic import BaseModel, ConfigDict, RootModel
 
 
 class ToolConfig(BaseModel):
@@ -46,6 +46,8 @@ class UpstreamServerConfig(BaseModel):
 
 class ProxyConfig(BaseModel):
     """Root configuration for the MCP proxy."""
+
+    model_config = ConfigDict(extra="forbid")
 
     mcp_servers: dict[str, UpstreamServerConfig] = {}
     tool_views: dict[str, ToolViewConfig] = {}
