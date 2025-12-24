@@ -26,6 +26,7 @@ class ToolViewConfig(BaseModel):
     tools: dict[str, dict[str, ToolConfig]] = {}
     hooks: HooksConfig | None = None
     include_all: bool = False
+    custom_tools: list[dict] = []
 
 
 class ServerToolsConfig(RootModel[dict[str, ToolConfig]]):
@@ -42,6 +43,7 @@ class UpstreamServerConfig(BaseModel):
     url: str | None = None
     env: dict[str, str] = {}
     headers: dict[str, str] = {}
+    tools: dict[str, ToolConfig] | None = None
 
 
 class ProxyConfig(BaseModel):

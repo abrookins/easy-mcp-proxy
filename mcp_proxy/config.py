@@ -30,6 +30,9 @@ def load_config(path: str | Path) -> ProxyConfig:
     with open(path) as f:
         data = yaml.safe_load(f)
 
+    if data is None:
+        data = {}
+
     data = _substitute_env_vars(data)
     return ProxyConfig(**data)
 

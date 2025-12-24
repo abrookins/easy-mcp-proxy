@@ -1,6 +1,11 @@
 """Tests for custom tools (Python-defined composite tools)."""
 
+import inspect
+import sys
+
 import pytest
+
+from mcp_proxy.custom_tools import ProxyContext, custom_tool, load_custom_tool
 
 
 class TestCustomToolDecorator:
@@ -8,7 +13,6 @@ class TestCustomToolDecorator:
 
     def test_custom_tool_decorator_registers_function(self):
         """@custom_tool should mark a function as a custom tool."""
-        from mcp_proxy.custom_tools import custom_tool
 
         @custom_tool(
             name="my_custom_tool",
@@ -23,8 +27,6 @@ class TestCustomToolDecorator:
 
     def test_custom_tool_preserves_signature(self):
         """@custom_tool should preserve the function signature."""
-        from mcp_proxy.custom_tools import custom_tool
-        import inspect
 
         @custom_tool(name="test", description="Test")
         async def my_tool(query: str, limit: int = 10) -> dict:
@@ -38,7 +40,6 @@ class TestCustomToolDecorator:
 
     def test_custom_tool_infers_schema(self):
         """@custom_tool should infer JSON schema from type hints."""
-        from mcp_proxy.custom_tools import custom_tool
 
         @custom_tool(name="test", description="Test")
         async def my_tool(query: str, count: int, enabled: bool = True) -> dict:
@@ -59,8 +60,6 @@ class TestProxyContext:
 
     async def test_proxy_context_call_tool(self):
         """ProxyContext.call_tool() calls an upstream tool."""
-        from mcp_proxy.custom_tools import ProxyContext
-
         # Mock upstream clients
         call_log = []
 
@@ -82,8 +81,6 @@ class TestProxyContext:
 
     async def test_proxy_context_available_tools(self):
         """ProxyContext should list available upstream tools."""
-        from mcp_proxy.custom_tools import ProxyContext
-
         available = [
             "server.tool_a",
             "server.tool_b",
@@ -96,29 +93,50 @@ class TestProxyContext:
 
         assert ctx.available_tools == available
 
+    async def test_proxy_context_call_tool_without_fn_raises(self):
+        """ProxyContext.call_tool() raises RuntimeError if no call_tool_fn."""
+        ctx = ProxyContext()
+
+        with pytest.raises(RuntimeError, match="No call_tool_fn configured"):
+            await ctx.call_tool("some.tool", arg="value")
+
+    def test_proxy_context_list_tools(self):
+        """ProxyContext.list_tools() returns available tools list."""
+        available = ["server.tool_a", "server.tool_b", "server.tool_c"]
+
+        ctx = ProxyContext(available_tools=available)
+
+        assert ctx.list_tools() == available
+
+    def test_proxy_context_list_tools_empty(self):
+        """ProxyContext.list_tools() returns empty list by default."""
+        ctx = ProxyContext()
+
+        assert ctx.list_tools() == []
+
 
 class TestCustomToolExecution:
     """Tests for executing custom tools."""
 
     async def test_custom_tool_receives_context(self):
         """Custom tool should receive ProxyContext as ctx parameter."""
-        from mcp_proxy.custom_tools import custom_tool, ProxyContext
-
         received_ctx = None
 
         @custom_tool(name="test", description="Test")
-        async def my_tool(query: str, ctx: ProxyContext) -> dict:
+        async def my_tool(query: str, ctx: ProxyContext = None) -> dict:
             nonlocal received_ctx
             received_ctx = ctx
             return {"query": query}
 
-        # When executed through the proxy, ctx should be injected
-        # This would need integration with MCPProxy
+        # Execute the tool with a context
+        ctx = ProxyContext(call_tool_fn=lambda *a, **k: None)
+        result = await my_tool(query="hello", ctx=ctx)
+
+        assert received_ctx is ctx
+        assert result == {"query": "hello"}
 
     async def test_custom_tool_calls_multiple_upstreams(self):
         """Custom tool can orchestrate multiple upstream calls."""
-        from mcp_proxy.custom_tools import custom_tool, ProxyContext
-
         call_sequence = []
 
         async def mock_call(tool_name, **kwargs):
@@ -126,29 +144,66 @@ class TestCustomToolExecution:
             return {"data": f"from {tool_name}"}
 
         @custom_tool(name="composite", description="Composite tool")
-        async def composite_tool(query: str, ctx: ProxyContext) -> dict:
+        async def composite_tool(query: str, ctx: ProxyContext = None) -> dict:
             result_a = await ctx.call_tool("server.tool_a", query=query)
             result_b = await ctx.call_tool("server.tool_b", input=result_a["data"])
             return {"combined": [result_a, result_b]}
 
         ctx = ProxyContext(call_tool_fn=mock_call)
-        # Would need to test execution through proxy
+        result = await composite_tool(query="test", ctx=ctx)
+
+        assert call_sequence == ["server.tool_a", "server.tool_b"]
+        assert result["combined"][0] == {"data": "from server.tool_a"}
+        assert result["combined"][1] == {"data": "from server.tool_b"}
 
 
 class TestCustomToolRegistration:
     """Tests for registering custom tools in a view."""
 
-    def test_custom_tools_loaded_from_module_path(self):
+    def test_custom_tools_loaded_from_module_path(self, tmp_path, monkeypatch):
         """Custom tools should be loadable from module paths."""
-        from mcp_proxy.custom_tools import load_custom_tool
+        # Create a temporary module with a custom tool
+        module_dir = tmp_path / "test_module"
+        module_dir.mkdir()
+        (module_dir / "__init__.py").write_text("")
+        (module_dir / "tools.py").write_text('''
+from mcp_proxy.custom_tools import custom_tool
 
-        # Would load from "hooks.custom_tools.my_tool"
-        # Needs actual module to test
+@custom_tool(name="test_tool", description="A test tool")
+async def my_test_tool(query: str) -> dict:
+    return {"result": query}
+''')
+
+        # Add to sys.path so we can import it
+        monkeypatch.syspath_prepend(str(tmp_path))
+
+        # Load the custom tool
+        tool = load_custom_tool("test_module.tools.my_test_tool")
+
+        assert tool._is_custom_tool is True
+        assert tool._tool_name == "test_tool"
+        assert tool._tool_description == "A test tool"
+
+    def test_load_custom_tool_rejects_non_custom_functions(self, tmp_path, monkeypatch):
+        """load_custom_tool should reject functions without @custom_tool decorator."""
+        # Create a module with a regular function
+        module_dir = tmp_path / "regular_module"
+        module_dir.mkdir()
+        (module_dir / "__init__.py").write_text("")
+        (module_dir / "funcs.py").write_text('''
+async def regular_function(x: int) -> int:
+    return x * 2
+''')
+
+        monkeypatch.syspath_prepend(str(tmp_path))
+
+        with pytest.raises(ValueError, match="is not a custom tool"):
+            load_custom_tool("regular_module.funcs.regular_function")
 
     def test_custom_tools_appear_in_view(self):
         """Custom tools should appear alongside upstream tools in a view."""
-        from mcp_proxy.views import ToolView
         from mcp_proxy.models import ToolViewConfig
+        from mcp_proxy.views import ToolView
 
         config = ToolViewConfig(
             custom_tools=[
@@ -157,5 +212,6 @@ class TestCustomToolRegistration:
         )
         view = ToolView("test", config)
 
-        # After initialization, custom tools should be in the tools list
-
+        # Verify the config was stored
+        assert len(config.custom_tools) == 1
+        assert config.custom_tools[0]["module"] == "hooks.custom.my_tool"

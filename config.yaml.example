@@ -1,4 +1,5 @@
 mcp_servers:
+
   # Memory server for long-term agent memory
   redis-memory-server:
     command: uv
@@ -96,11 +97,3 @@ mcp_servers:
       - --from
       - git+https://github.com/abrookins/zendesk-mcp-server
       - zendesk
-
-# Tool providers configuration (fully qualified class paths)
-# tool_providers:
-#   - redis_sre_agent.tools.metrics.prometheus.provider.PrometheusToolProvider
-#   - redis_sre_agent.tools.diagnostics.redis_command.provider.RedisCommandToolProvider
-#   - redis_sre_agent.tools.logs.loki.provider.LokiToolProvider
-#   - redis_sre_agent.tools.host_telemetry.provider.HostTelemetryToolProvider
-

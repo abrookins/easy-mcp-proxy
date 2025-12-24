@@ -2,14 +2,14 @@
 
 import pytest
 
+from mcp_proxy.search import ToolSearcher
+
 
 class TestToolSearcher:
     """Tests for the ToolSearcher class."""
 
     def test_create_search_tool(self):
         """ToolSearcher.create_search_tool() returns a callable tool."""
-        from mcp_proxy.search import ToolSearcher
-
         # Mock tools list
         tools = [
             {"name": "search_memory", "description": "Search long-term memory"},
@@ -24,8 +24,6 @@ class TestToolSearcher:
 
     async def test_search_tool_returns_matching_tools(self):
         """Search tool should return tools matching the query."""
-        from mcp_proxy.search import ToolSearcher
-
         tools = [
             {"name": "search_memory", "description": "Search long-term memory"},
             {"name": "create_memory", "description": "Create a new memory"},
@@ -44,8 +42,6 @@ class TestToolSearcher:
 
     async def test_search_tool_empty_query_returns_all(self):
         """Empty query should return all tools in the view."""
-        from mcp_proxy.search import ToolSearcher
-
         tools = [
             {"name": "tool_a", "description": "First tool"},
             {"name": "tool_b", "description": "Second tool"},
@@ -60,8 +56,6 @@ class TestToolSearcher:
 
     async def test_search_tool_no_matches(self):
         """Search with no matches returns empty list."""
-        from mcp_proxy.search import ToolSearcher
-
         tools = [
             {"name": "search_memory", "description": "Search memories"},
         ]
@@ -75,8 +69,6 @@ class TestToolSearcher:
 
     async def test_search_tool_respects_limit(self):
         """Search should respect the limit parameter."""
-        from mcp_proxy.search import ToolSearcher
-
         tools = [
             {"name": "tool_1", "description": "First tool"},
             {"name": "tool_2", "description": "Second tool"},
@@ -94,8 +86,6 @@ class TestToolSearcher:
 
     def test_search_tool_includes_schema(self):
         """Search results should include tool schemas."""
-        from mcp_proxy.search import ToolSearcher
-
         tools = [
             {
                 "name": "search_memory",

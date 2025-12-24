@@ -2,14 +2,22 @@
 
 import pytest
 
+from mcp_proxy.config import load_config
+from mcp_proxy.models import (
+    HooksConfig,
+    ProxyConfig,
+    ServerToolsConfig,
+    ToolConfig,
+    ToolViewConfig,
+    UpstreamServerConfig,
+)
+
 
 class TestToolConfig:
     """Tests for ToolConfig model."""
 
     def test_tool_config_defaults(self):
         """ToolConfig should have sensible defaults."""
-        from mcp_proxy.models import ToolConfig
-
         config = ToolConfig()
         assert config.name is None
         assert config.description is None
@@ -17,22 +25,16 @@ class TestToolConfig:
 
     def test_tool_config_with_name(self):
         """ToolConfig should accept a name for renaming."""
-        from mcp_proxy.models import ToolConfig
-
         config = ToolConfig(name="renamed_tool")
         assert config.name == "renamed_tool"
 
     def test_tool_config_with_description(self):
         """ToolConfig should accept a description override."""
-        from mcp_proxy.models import ToolConfig
-
         config = ToolConfig(description="Custom description. {original}")
         assert "{original}" in config.description
 
     def test_tool_config_disabled(self):
         """ToolConfig can disable a tool."""
-        from mcp_proxy.models import ToolConfig
-
         config = ToolConfig(enabled=False)
         assert config.enabled is False
 
@@ -42,16 +44,12 @@ class TestHooksConfig:
 
     def test_hooks_config_defaults(self):
         """HooksConfig should default to no hooks."""
-        from mcp_proxy.models import HooksConfig
-
         config = HooksConfig()
         assert config.pre_call is None
         assert config.post_call is None
 
     def test_hooks_config_with_paths(self):
         """HooksConfig should accept dotted paths to hook functions."""
-        from mcp_proxy.models import HooksConfig
-
         config = HooksConfig(
             pre_call="hooks.auth.pre_call",
             post_call="hooks.logging.post_call"
@@ -65,8 +63,6 @@ class TestToolViewConfig:
 
     def test_tool_view_config_defaults(self):
         """ToolViewConfig should have sensible defaults."""
-        from mcp_proxy.models import ToolViewConfig
-
         config = ToolViewConfig()
         assert config.description is None
         assert config.exposure_mode == "direct"
@@ -75,15 +71,11 @@ class TestToolViewConfig:
 
     def test_tool_view_config_search_mode(self):
         """ToolViewConfig can be set to search exposure mode."""
-        from mcp_proxy.models import ToolViewConfig
-
         config = ToolViewConfig(exposure_mode="search")
         assert config.exposure_mode == "search"
 
     def test_tool_view_config_with_tools(self):
         """ToolViewConfig should nest server/tool configs."""
-        from mcp_proxy.models import ToolViewConfig, ToolConfig
-
         config = ToolViewConfig(
             tools={
                 "server1": {
@@ -97,8 +89,6 @@ class TestToolViewConfig:
 
     def test_tool_view_config_include_all(self):
         """ToolViewConfig can include all tools from all servers."""
-        from mcp_proxy.models import ToolViewConfig
-
         config = ToolViewConfig(include_all=True)
         assert config.include_all is True
 
@@ -108,8 +98,6 @@ class TestServerToolsConfig:
 
     def test_server_tools_config_structure(self):
         """ServerToolsConfig maps tool names to ToolConfig."""
-        from mcp_proxy.models import ServerToolsConfig, ToolConfig
-
         # ServerToolsConfig is essentially dict[str, ToolConfig]
         config = ServerToolsConfig(root={
             "tool_a": ToolConfig(name="renamed"),
@@ -124,8 +112,6 @@ class TestUpstreamServerConfig:
 
     def test_command_based_server(self):
         """UpstreamServerConfig can define a command-based server."""
-        from mcp_proxy.models import UpstreamServerConfig
-
         config = UpstreamServerConfig(command="uv", args=["tool", "run", "server"])
         assert config.command == "uv"
         assert config.args == ["tool", "run", "server"]
@@ -133,16 +119,12 @@ class TestUpstreamServerConfig:
 
     def test_url_based_server(self):
         """UpstreamServerConfig can define a URL-based server."""
-        from mcp_proxy.models import UpstreamServerConfig
-
         config = UpstreamServerConfig(url="http://localhost:8080/mcp")
         assert config.url == "http://localhost:8080/mcp"
         assert config.command is None
 
     def test_command_server_with_env(self):
         """UpstreamServerConfig can include environment variables."""
-        from mcp_proxy.models import UpstreamServerConfig
-
         config = UpstreamServerConfig(
             command="server",
             env={"REDIS_URL": "redis://localhost:6379", "DEBUG": "true"}
@@ -152,8 +134,6 @@ class TestUpstreamServerConfig:
 
     def test_url_server_with_headers(self):
         """UpstreamServerConfig can include HTTP headers."""
-        from mcp_proxy.models import UpstreamServerConfig
-
         config = UpstreamServerConfig(
             url="https://api.example.com/mcp",
             headers={"Authorization": "Bearer token123"}
@@ -166,8 +146,6 @@ class TestProxyConfig:
 
     def test_proxy_config_structure(self):
         """ProxyConfig should contain servers and views."""
-        from mcp_proxy.models import ProxyConfig
-
         config = ProxyConfig(
             mcp_servers={"server1": {"command": "echo"}},
             tool_views={"view1": {"description": "Test"}}
@@ -177,8 +155,6 @@ class TestProxyConfig:
 
     def test_load_config_from_yaml(self, sample_config_yaml):
         """ProxyConfig should load from a YAML file."""
-        from mcp_proxy.config import load_config
-
         config = load_config(sample_config_yaml)
         assert "test-server" in config.mcp_servers
         assert "test-view" in config.tool_views

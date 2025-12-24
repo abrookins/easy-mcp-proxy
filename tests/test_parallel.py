@@ -1,7 +1,8 @@
 """Tests for parallel/fan-out tool execution."""
 
-import pytest
 import asyncio
+
+import pytest
 
 
 class TestParallelToolConfig:
@@ -173,4 +174,54 @@ class TestParallelToolErrorHandling:
 
         assert result["good"]["ok"] is True
         assert "error" in result["bad"]
+
+    async def test_parallel_no_call_fn_raises_error(self):
+        """Execute without call_tool_fn should raise RuntimeError."""
+        from mcp_proxy.parallel import ParallelTool
+
+        config = {
+            "inputs": {},
+            "parallel": {
+                "a": {"tool": "server.tool", "args": {}},
+            }
+        }
+
+        parallel_tool = ParallelTool.from_config("test", config)
+        # Don't set _call_tool_fn
+
+        with pytest.raises(RuntimeError, match="No call_tool_fn configured"):
+            await parallel_tool.execute({})
+
+    async def test_parallel_non_template_args_pass_through(self):
+        """Non-templated args should pass through unchanged."""
+        from mcp_proxy.parallel import ParallelTool
+
+        captured_args = {}
+
+        async def mock_call(tool_name, **kwargs):
+            captured_args[tool_name] = kwargs
+            return {}
+
+        config = {
+            "inputs": {"query": {"type": "string"}},
+            "parallel": {
+                "a": {
+                    "tool": "server.tool",
+                    "args": {
+                        "text": "static value",  # Not a template
+                        "count": 42,  # Not a string
+                        "query": "{inputs.query}"  # Template
+                    }
+                }
+            }
+        }
+
+        parallel_tool = ParallelTool.from_config("test", config)
+        parallel_tool._call_tool_fn = mock_call
+
+        await parallel_tool.execute({"query": "test"})
+
+        assert captured_args["server.tool"]["text"] == "static value"
+        assert captured_args["server.tool"]["count"] == 42
+        assert captured_args["server.tool"]["query"] == "test"
 

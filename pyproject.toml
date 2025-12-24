@@ -30,6 +30,22 @@ build-backend = "hatchling.build"
 asyncio_mode = "auto"
 testpaths = ["tests"]
 asyncio_default_fixture_loop_scope = "function"
+addopts = "--cov=mcp_proxy --cov-report=term-missing --cov-fail-under=100"
+
+[tool.coverage.run]
+source = ["mcp_proxy"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+# Exclude partial branches that are hard to test
+partial_branches = [
+    "pragma: no branch",
+]
 
 [tool.ruff]
 line-length = 88
