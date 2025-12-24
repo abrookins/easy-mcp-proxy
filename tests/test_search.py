@@ -179,3 +179,39 @@ class TestSearchModeCallThrough:
         mock_client.call_tool.assert_called_once_with("search_code", {"query": "test"})
         assert result == {"results": ["file1.py", "file2.py"]}
 
+    @pytest.mark.asyncio
+    async def test_call_tool_raises_for_unknown_tool(self):
+        """call_tool meta-tool should raise ValueError for unknown tools."""
+        from mcp_proxy.models import ProxyConfig, ToolViewConfig, UpstreamServerConfig
+        from mcp_proxy.proxy import MCPProxy
+
+        config = ProxyConfig(
+            mcp_servers={
+                "github": UpstreamServerConfig(
+                    url="http://example.com",
+                    tools={"search_code": {"description": "Search code"}}
+                )
+            },
+            tool_views={
+                "view": ToolViewConfig(
+                    exposure_mode="search",
+                    tools={"github": {"search_code": {}}}
+                )
+            }
+        )
+        proxy = MCPProxy(config)
+        mcp = proxy.get_view_mcp("view")
+
+        # Find the call_tool function
+        call_tool_fn = None
+        for tool in mcp._tool_manager._tools.values():
+            if tool.name == "view_call_tool":
+                call_tool_fn = tool.fn
+                break
+
+        assert call_tool_fn is not None
+
+        # Call with unknown tool name should raise
+        with pytest.raises(ValueError, match="Unknown tool 'nonexistent'"):
+            await call_tool_fn(tool_name="nonexistent", arguments={})
+

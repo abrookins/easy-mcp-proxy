@@ -681,8 +681,9 @@ class TestDefaultMCPUpstreamCalls:
         proxy.upstream_clients = {"server": mock_upstream}
 
         # Call through the proxy's default server
+        # Tools use "arguments" dict parameter per FastMCP convention
         async with Client(proxy.server) as client:
-            result = await client.call_tool("my_tool", {"arg": "value"})
+            result = await client.call_tool("my_tool", {"arguments": {"arg": "value"}})
 
-        # Verify upstream was called
+        # Verify upstream was called with the arguments dict
         mock_upstream.call_tool.assert_called_once_with("my_tool", {"arg": "value"})
