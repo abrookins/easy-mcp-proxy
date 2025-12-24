@@ -1,7 +1,5 @@
 """Main MCP Proxy class."""
 
-import os
-import re
 from typing import Any, Callable
 
 from fastmcp import Client, FastMCP
@@ -18,18 +16,8 @@ from mcp_proxy.hooks import (
     execute_pre_call,
 )
 from mcp_proxy.models import ProxyConfig, UpstreamServerConfig
+from mcp_proxy.utils import expand_env_vars
 from mcp_proxy.views import ToolView
-
-
-def expand_env_vars(value: str) -> str:
-    """Expand ${VAR} environment variable references in a string."""
-    pattern = r'\$\{([^}]+)\}'
-
-    def replacer(match: re.Match) -> str:
-        var_name = match.group(1)
-        return os.environ.get(var_name, match.group(0))
-
-    return re.sub(pattern, replacer, value)
 
 
 class ToolInfo:
@@ -205,7 +193,8 @@ class MCPProxy:
             import uvicorn
 
             app = self.http_app()
-            uvicorn.run(app, host="0.0.0.0", port=port or 8000)
+            # Use wsproto instead of websockets to avoid deprecation warnings
+            uvicorn.run(app, host="0.0.0.0", port=port or 8000, ws="wsproto")
 
     def get_view_tools(self, view_name: str | None) -> list["ToolInfo"]:
         """Get the list of tools for a specific view.
@@ -241,15 +230,39 @@ class MCPProxy:
         # Handle include_all: include all tools from all servers
         if view_config.include_all:
             for server_name, server_config in self.config.mcp_servers.items():
-                if server_config.tools:
-                    for tool_name, tool_config in server_config.tools.items():
+                # Prefer actual tools fetched from upstream, fall back to config
+                upstream_tools = self._upstream_tools.get(server_name, [])
+                if upstream_tools:
+                    # Use actual tools from upstream server
+                    for upstream_tool in upstream_tools:
+                        tool_name = upstream_tool.name
+                        tool_description = getattr(upstream_tool, "description", "") or ""
+
                         # Check if view has override for this tool
                         view_override = None
                         if server_name in view_config.tools:
                             view_override = view_config.tools[server_name].get(tool_name)
 
                         if view_override:
-                            # Use view's override
+                            exposed_name = view_override.name or tool_name
+                            description = view_override.description or tool_description
+                        else:
+                            exposed_name = tool_name
+                            description = tool_description
+
+                        tools.append(ToolInfo(
+                            name=exposed_name,
+                            description=description,
+                            server=server_name
+                        ))
+                elif server_config.tools:
+                    # Fall back to config-defined tools if upstream not fetched
+                    for tool_name, tool_config in server_config.tools.items():
+                        view_override = None
+                        if server_name in view_config.tools:
+                            view_override = view_config.tools[server_name].get(tool_name)
+
+                        if view_override:
                             exposed_name = view_override.name or tool_name
                             description = view_override.description or tool_config.description or ""
                         else:
@@ -320,9 +333,10 @@ class MCPProxy:
         return mcp
 
     def _register_search_tool(self, mcp: FastMCP, view_name: str) -> None:
-        """Register the search meta-tool for a view."""
+        """Register the search and call meta-tools for a view."""
         from mcp_proxy.search import ToolSearcher
 
+        view = self.views[view_name]
         view_tools = self.get_view_tools(view_name)
         tools_data = [
             {"name": t.name, "description": t.description}
@@ -344,13 +358,44 @@ class MCPProxy:
             search_tools_wrapper
         )
 
+        # Register the call_tool meta-tool to execute found tools
+        call_name = f"{view_name}_call_tool"
+        tool_names_list = [t.name for t in view_tools]
+
+        def make_call_tool_wrapper(v: ToolView, valid_tools: list[str]) -> Callable[..., Any]:
+            async def call_tool_wrapper(tool_name: str, arguments: dict | None = None) -> Any:
+                """Call a tool by name with the given arguments."""
+                if tool_name not in valid_tools:
+                    raise ValueError(
+                        f"Unknown tool '{tool_name}'. "
+                        f"Use {view_name}_search_tools to find available tools."
+                    )
+                return await v.call_tool(tool_name, arguments or {})
+
+            return call_tool_wrapper
+
+        call_wrapper = make_call_tool_wrapper(view, tool_names_list)
+        call_wrapper.__name__ = call_name
+        call_wrapper.__doc__ = (
+            f"Call a tool in the {view_name} view by name. "
+            f"Use {view_name}_search_tools first to find available tools."
+        )
+
+        mcp.tool(
+            name=call_name,
+            description=(
+                f"Call a tool in the {view_name} view by name. "
+                f"Use {view_name}_search_tools first to find available tools."
+            )
+        )(call_wrapper)
+
     def _register_tools_on_mcp(
         self, mcp: FastMCP, tools: list[ToolInfo], view: ToolView | None = None
     ) -> None:
         """Register tools on a FastMCP instance.
 
         If a view is provided, registers callable tools that route through the view.
-        Otherwise, registers stub tools.
+        Otherwise, registers stub tools (for backward compatibility).
         """
         for tool_info in tools:
             # Capture tool_info in closure
@@ -363,22 +408,17 @@ class MCPProxy:
                 custom_fn = view.custom_tools[_tool_name]
                 mcp.tool(name=_tool_name, description=_tool_desc)(custom_fn)
             elif view and _tool_name in view.composite_tools:
-                # Register composite tool wrapper
-                # FastMCP doesn't support **kwargs, so we register with view.call_tool
+                # Register composite tool wrapper that routes through view.call_tool
+                # Use explicit arguments parameter since FastMCP doesn't support **kwargs
                 parallel_tool = view.composite_tools[_tool_name]
-
-                # Get input schema from the parallel tool
                 input_schema = parallel_tool.input_schema
 
-                # Create wrapper with explicit args based on schema
                 def make_composite_wrapper(
                     v: ToolView, name: str, schema: dict
                 ) -> Callable[..., Any]:
-                    # Since FastMCP doesn't support **kwargs, create a wrapper
-                    # that takes no args and relies on the MCP layer to pass JSON
-                    async def composite_wrapper() -> Any:
-                        # Called with no explicit args - MCP handles JSON payload
-                        return {"message": f"Composite tool {name} - call via view.call_tool"}
+                    async def composite_wrapper(arguments: dict | None = None) -> Any:
+                        """Call composite tool with arguments dict."""
+                        return await v.call_tool(name, arguments or {})
 
                     return composite_wrapper
 
@@ -386,19 +426,41 @@ class MCPProxy:
                 wrapper.__name__ = _tool_name
                 wrapper.__doc__ = _tool_desc
                 mcp.tool(name=_tool_name, description=_tool_desc)(wrapper)
+            elif view:
+                # Regular upstream tool - route through view.call_tool
+                # Use explicit arguments parameter since FastMCP doesn't support **kwargs
+                def make_upstream_wrapper(
+                    v: ToolView, name: str
+                ) -> Callable[..., Any]:
+                    async def upstream_wrapper(arguments: dict | None = None) -> Any:
+                        """Call upstream tool with arguments dict."""
+                        return await v.call_tool(name, arguments or {})
+
+                    return upstream_wrapper
+
+                wrapper = make_upstream_wrapper(view, _tool_name)
+                wrapper.__name__ = _tool_name
+                wrapper.__doc__ = _tool_desc
+                mcp.tool(name=_tool_name, description=_tool_desc)(wrapper)
             else:
-                # Create a stub function - use default args to capture values
-                def make_stub(name: str, server: str) -> Callable[[], str]:
-                    async def tool_stub() -> str:
-                        """Stub tool - actual execution routes through proxy."""
-                        return f"Tool '{name}' from server '{server}' - use upstream connection"
+                # No view provided - route directly through proxy's upstream clients
+                def make_direct_wrapper(
+                    proxy: "MCPProxy", name: str, server: str
+                ) -> Callable[..., Any]:
+                    async def direct_wrapper(arguments: dict | None = None) -> Any:
+                        """Call upstream tool directly via proxy."""
+                        if server not in proxy.upstream_clients:
+                            raise ValueError(f"Server '{server}' not connected")
+                        client = proxy.upstream_clients[server]
+                        async with client:
+                            return await client.call_tool(name, arguments or {})
 
-                    return tool_stub
+                    return direct_wrapper
 
-                stub = make_stub(_tool_name, _tool_server)
-                stub.__name__ = _tool_name
-                stub.__doc__ = _tool_desc
-                mcp.tool(name=_tool_name, description=_tool_desc)(stub)
+                wrapper = make_direct_wrapper(self, _tool_name, _tool_server)
+                wrapper.__name__ = _tool_name
+                wrapper.__doc__ = _tool_desc
+                mcp.tool(name=_tool_name, description=_tool_desc)(wrapper)
 
     def http_app(
         self,
@@ -430,10 +492,8 @@ class MCPProxy:
 
         view_mcps: dict[str, FastMCP] = {}
         for view_name in self.views:
-            view_mcp = FastMCP(f"MCP Proxy - {view_name}")
-            # Register view-specific tools
-            view_tools = self.get_view_tools(view_name)
-            self._register_tools_on_mcp(view_mcp, view_tools)
+            # Use get_view_mcp to properly handle search mode and pass view for routing
+            view_mcp = self.get_view_mcp(view_name)
             view_mcps[view_name] = view_mcp
 
         # Get MCP HTTP apps
@@ -446,6 +506,8 @@ class MCPProxy:
         # Create combined lifespan that handles all MCP apps
         @asynccontextmanager
         async def combined_lifespan(app: Starlette):  # pragma: no cover
+            # Initialize upstream connections
+            await self.initialize()
             # Use the default MCP app's lifespan for session management
             async with default_mcp_app.lifespan(default_mcp_app):
                 yield

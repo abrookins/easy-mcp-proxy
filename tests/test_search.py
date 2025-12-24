@@ -106,3 +106,76 @@ class TestToolSearcher:
         assert search_tool.parameters is not None
         assert "query" in search_tool.parameters.get("properties", {})
 
+
+class TestSearchModeCallThrough:
+    """Tests for calling tools after searching in search mode."""
+
+    async def test_search_mode_has_call_tool_meta(self):
+        """Search mode should register a call_tool meta-tool alongside search."""
+        from mcp_proxy.models import ProxyConfig
+        from mcp_proxy.proxy import MCPProxy
+
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={
+                "view": {
+                    "exposure_mode": "search",
+                    "tools": {"server": {"tool_a": {}, "tool_b": {}}}
+                }
+            }
+        )
+        proxy = MCPProxy(config)
+
+        view_mcp = proxy.get_view_mcp("view")
+
+        # Should have search tool
+        tool_names = [t.name for t in view_mcp._tool_manager._tools.values()]
+        assert "view_search_tools" in tool_names
+
+        # FAILING ASSERTION: Should also have call_tool meta-tool
+        assert "view_call_tool" in tool_names, \
+            "Search mode should register view_call_tool to allow calling found tools"
+
+    async def test_search_mode_call_tool_executes_upstream(self):
+        """The call_tool meta-tool should execute the specified tool."""
+        from unittest.mock import AsyncMock
+        from mcp_proxy.models import ProxyConfig
+        from mcp_proxy.proxy import MCPProxy
+
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={
+                "view": {
+                    "exposure_mode": "search",
+                    "tools": {"server": {"search_code": {"description": "Search code"}}}
+                }
+            }
+        )
+        proxy = MCPProxy(config)
+
+        # Mock the upstream client
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"results": ["file1.py", "file2.py"]}
+        proxy.upstream_clients = {"server": mock_client}
+        # Also inject into the view
+        proxy.views["view"]._upstream_clients = {"server": mock_client}
+
+        view_mcp = proxy.get_view_mcp("view")
+
+        # Find the call_tool meta-tool
+        call_tool_fn = None
+        for tool in view_mcp._tool_manager._tools.values():
+            if tool.name == "view_call_tool":
+                call_tool_fn = tool.fn
+                break
+
+        # call_tool should exist
+        assert call_tool_fn is not None, "view_call_tool should be registered"
+
+        # Call the meta-tool to execute search_code
+        result = await call_tool_fn(tool_name="search_code", arguments={"query": "test"})
+
+        # Should have called upstream
+        mock_client.call_tool.assert_called_once_with("search_code", {"query": "test"})
+        assert result == {"results": ["file1.py", "file2.py"]}
+

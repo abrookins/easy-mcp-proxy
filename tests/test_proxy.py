@@ -349,6 +349,102 @@ class TestMCPProxyRun:
         assert hasattr(proxy, "run")
 
 
+class TestMCPProxyToolExecution:
+    """Tests for tool execution - tools should route to upstream, not return stubs."""
+
+    async def test_registered_tool_executes_upstream(self):
+        """Tools registered on MCP should execute upstream tools, not return stubs."""
+        from unittest.mock import AsyncMock
+
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={
+                "view": {
+                    "exposure_mode": "direct",
+                    "tools": {"server": {"my_tool": {"description": "A tool"}}}
+                }
+            }
+        )
+        proxy = MCPProxy(config)
+
+        # Mock the upstream client
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"result": "from_upstream"}
+        proxy.upstream_clients = {"server": mock_client}
+        # Also inject into the view
+        proxy.views["view"]._upstream_clients = {"server": mock_client}
+
+        # Get the view MCP
+        view_mcp = proxy.get_view_mcp("view")
+
+        # Find the registered tool
+        registered_tool = None
+        for tool in view_mcp._tool_manager._tools.values():
+            if tool.name == "my_tool":
+                registered_tool = tool
+                break
+
+        assert registered_tool is not None, "Tool should be registered"
+
+        # Call the tool function with arguments dict (FastMCP doesn't support **kwargs)
+        result = await registered_tool.fn(arguments={"arg": "value"})
+
+        # Should call upstream and return result
+        mock_client.call_tool.assert_called_once()
+        assert result == {"result": "from_upstream"}
+
+    async def test_registered_composite_tool_executes(self):
+        """Composite tools registered on MCP should execute, not return stubs."""
+        from unittest.mock import AsyncMock
+
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={
+                "view": {
+                    "exposure_mode": "direct",
+                    "tools": {},
+                    "composite_tools": {
+                        "multi_tool": {
+                            "description": "Composite tool",
+                            "inputs": {"query": {"type": "string"}},
+                            "parallel": {
+                                "result": {"tool": "server.tool_a", "args": {"q": "{inputs.query}"}}
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        proxy = MCPProxy(config)
+
+        # Mock the upstream client
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"data": "from_upstream"}
+        proxy.upstream_clients = {"server": mock_client}
+        # Also inject into the view
+        proxy.views["view"]._upstream_clients = {"server": mock_client}
+
+        # Get the view MCP
+        view_mcp = proxy.get_view_mcp("view")
+
+        # Find the registered composite tool
+        registered_tool = None
+        for tool in view_mcp._tool_manager._tools.values():
+            if tool.name == "multi_tool":
+                registered_tool = tool
+                break
+
+        assert registered_tool is not None, "Composite tool should be registered"
+
+        # Call the tool function with arguments dict
+        result = await registered_tool.fn(arguments={"query": "test"})
+
+        # The result should NOT be a stub message
+        assert "message" not in result or "call via view.call_tool" not in str(result.get("message", ""))
+        # Should have called upstream
+        mock_client.call_tool.assert_called()
+
+
 class TestMCPProxyErrorHandling:
     """Tests for MCPProxy error handling."""
 
@@ -429,3 +525,164 @@ class TestMCPProxyErrorHandling:
 
         mock_client.list_tools.assert_called()
 
+
+
+
+class TestIncludeAllFetchesFromUpstream:
+    """Tests for include_all fetching actual tools from upstream servers."""
+
+    async def test_include_all_uses_upstream_tools(self):
+        """include_all: true should include tools from upstream, not just config."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        # Config has include_all: true but no tools defined in config
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={
+                "view": {
+                    "include_all": True,
+                    "tools": {}  # No tools defined in config
+                }
+            }
+        )
+        proxy = MCPProxy(config)
+
+        # Mock the upstream client that returns actual tools
+        mock_tool = MagicMock()
+        mock_tool.name = "upstream_tool"
+        mock_tool.description = "A tool from upstream"
+
+        mock_client = AsyncMock()
+        mock_client.list_tools.return_value = [mock_tool]
+        proxy.upstream_clients = {"server": mock_client}
+
+        # Fetch tools from upstream (simulates what happens during initialization)
+        await proxy.fetch_upstream_tools("server")
+
+        # Now get view tools - should include the upstream tool
+        tools = proxy.get_view_tools("view")
+
+        # FAILING ASSERTION: Currently returns empty because config has no tools
+        tool_names = [t.name for t in tools]
+        assert "upstream_tool" in tool_names, f"Expected 'upstream_tool' in {tool_names}"
+
+    async def test_include_all_with_no_config_tools_still_works(self):
+        """include_all should work even when server has no tools in config."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        # Server has no 'tools' key at all in config
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},  # No tools key
+            tool_views={
+                "view": {
+                    "include_all": True,
+                    "tools": {}
+                }
+            }
+        )
+        proxy = MCPProxy(config)
+
+        # Mock upstream returns tools
+        mock_tool1 = MagicMock()
+        mock_tool1.name = "tool_a"
+        mock_tool1.description = "Tool A"
+        mock_tool2 = MagicMock()
+        mock_tool2.name = "tool_b"
+        mock_tool2.description = "Tool B"
+
+        mock_client = AsyncMock()
+        mock_client.list_tools.return_value = [mock_tool1, mock_tool2]
+        proxy.upstream_clients = {"server": mock_client}
+
+        await proxy.fetch_upstream_tools("server")
+
+        tools = proxy.get_view_tools("view")
+        tool_names = [t.name for t in tools]
+
+        # Should include both upstream tools
+        assert "tool_a" in tool_names
+        assert "tool_b" in tool_names
+
+    @pytest.mark.asyncio
+    async def test_include_all_with_view_override_for_upstream_tool(self):
+        """include_all should apply view overrides to upstream tools."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from mcp_proxy.models import ToolConfig, ToolViewConfig
+
+        config = ProxyConfig(
+            mcp_servers={
+                "server": UpstreamServerConfig(url="http://example.com")
+            },
+            tool_views={
+                "view": ToolViewConfig(
+                    include_all=True,
+                    # Override tool_a with custom name and description
+                    tools={
+                        "server": {
+                            "tool_a": ToolConfig(
+                                name="renamed_tool_a",
+                                description="Custom description"
+                            )
+                        }
+                    }
+                )
+            }
+        )
+        proxy = MCPProxy(config)
+
+        # Mock upstream tools
+        mock_tool = MagicMock()
+        mock_tool.name = "tool_a"
+        mock_tool.description = "Original description"
+
+        mock_client = AsyncMock()
+        mock_client.list_tools.return_value = [mock_tool]
+        proxy.upstream_clients = {"server": mock_client}
+
+        await proxy.fetch_upstream_tools("server")
+
+        tools = proxy.get_view_tools("view")
+        tool_names = [t.name for t in tools]
+        tool_descs = {t.name: t.description for t in tools}
+
+        # Should use overridden name and description
+        assert "renamed_tool_a" in tool_names
+        assert "tool_a" not in tool_names
+        assert tool_descs["renamed_tool_a"] == "Custom description"
+
+
+class TestDefaultMCPUpstreamCalls:
+    """Tests for default MCP (no view) upstream tool calls."""
+
+    @pytest.mark.asyncio
+    async def test_default_mcp_calls_upstream_when_connected(self):
+        """Default MCP tools should call upstream when clients are connected."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from fastmcp import Client
+
+        config = ProxyConfig(
+            mcp_servers={
+                "server": UpstreamServerConfig(
+                    url="http://example.com",
+                    tools={"my_tool": {"description": "A tool"}}
+                )
+            },
+            tool_views={}
+        )
+        proxy = MCPProxy(config)
+
+        # Create mock upstream client
+        mock_upstream = MagicMock()
+        mock_upstream.__aenter__ = AsyncMock(return_value=mock_upstream)
+        mock_upstream.__aexit__ = AsyncMock(return_value=None)
+        mock_upstream.call_tool = AsyncMock(return_value={"result": "success"})
+        proxy.upstream_clients = {"server": mock_upstream}
+
+        # Call through the proxy's default server
+        async with Client(proxy.server) as client:
+            result = await client.call_tool("my_tool", {"arg": "value"})
+
+        # Verify upstream was called
+        mock_upstream.call_tool.assert_called_once_with("my_tool", {"arg": "value"})

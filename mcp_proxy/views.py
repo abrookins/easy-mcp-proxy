@@ -151,23 +151,36 @@ class ToolView:
 
         return result
 
+    async def _call_upstream_tool(self, upstream_tool: str, **kwargs: Any) -> Any:
+        """Call an upstream tool by server.tool_name format.
+
+        Args:
+            upstream_tool: Tool reference in "server.tool_name" format
+            **kwargs: Arguments to pass to the tool
+
+        Returns:
+            Result from the upstream tool call
+
+        Raises:
+            ValueError: If the tool format is invalid or server not found
+        """
+        if "." not in upstream_tool:
+            raise ValueError(f"Unknown upstream tool: {upstream_tool}")
+
+        server, tool = upstream_tool.split(".", 1)
+        if server not in self._upstream_clients:
+            raise ValueError(f"Unknown upstream tool: {upstream_tool}")
+
+        client = self._upstream_clients[server]
+        async with client:
+            return await client.call_tool(tool, kwargs)
+
     async def _call_custom_tool(self, tool_name: str, args: dict[str, Any]) -> Any:
         """Call a custom tool with ProxyContext."""
         tool_fn = self.custom_tools[tool_name]
 
-        # Create proxy context for upstream access
-        async def call_upstream(upstream_tool: str, **kwargs: Any) -> Any:
-            # Parse server.tool format
-            if "." in upstream_tool:
-                server, tool = upstream_tool.split(".", 1)
-                if server in self._upstream_clients:
-                    client = self._upstream_clients[server]
-                    async with client:
-                        return await client.call_tool(tool, kwargs)
-            raise ValueError(f"Unknown upstream tool: {upstream_tool}")
-
         ctx = ProxyContext(
-            call_tool_fn=call_upstream,
+            call_tool_fn=self._call_upstream_tool,
             available_tools=list(self._tool_to_server.keys()),
         )
 
@@ -179,17 +192,6 @@ class ToolView:
     ) -> dict[str, Any]:
         """Call a composite (parallel) tool."""
         parallel_tool = self.composite_tools[tool_name]
-
-        # Set up the call function for the parallel tool
-        async def call_upstream(upstream_tool: str, **kwargs: Any) -> Any:
-            if "." in upstream_tool:
-                server, tool = upstream_tool.split(".", 1)
-                if server in self._upstream_clients:
-                    client = self._upstream_clients[server]
-                    async with client:
-                        return await client.call_tool(tool, kwargs)
-            raise ValueError(f"Unknown upstream tool: {upstream_tool}")
-
-        parallel_tool._call_tool_fn = call_upstream
+        parallel_tool._call_tool_fn = self._call_upstream_tool
         return await parallel_tool.execute(args)
 

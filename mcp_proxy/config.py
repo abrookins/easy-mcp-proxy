@@ -1,24 +1,11 @@
 """Configuration loading for MCP Proxy."""
 
-import os
-import re
 from pathlib import Path
 
 import yaml
 
 from mcp_proxy.models import ProxyConfig
-
-
-def _substitute_env_vars(obj):
-    """Recursively substitute ${VAR} with environment variables."""
-    if isinstance(obj, str):
-        pattern = r"\$\{([^}]+)\}"
-        return re.sub(pattern, lambda m: os.environ.get(m.group(1), m.group(0)), obj)
-    elif isinstance(obj, dict):
-        return {k: _substitute_env_vars(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [_substitute_env_vars(item) for item in obj]
-    return obj
+from mcp_proxy.utils import substitute_env_vars
 
 
 def load_config(path: str | Path) -> ProxyConfig:
@@ -33,7 +20,7 @@ def load_config(path: str | Path) -> ProxyConfig:
     if data is None:
         data = {}
 
-    data = _substitute_env_vars(data)
+    data = substitute_env_vars(data)
     return ProxyConfig(**data)
 
 

@@ -1,10 +1,9 @@
-"""Tests for unimplemented features from DESIGN.md.
+"""Integration tests for MCP Proxy features.
 
-These tests are EXPECTED TO FAIL until the features are implemented.
-They serve as a specification of what needs to be built.
+These tests verify end-to-end functionality across multiple components.
 
 Features covered:
-1. Actual upstream MCP connections (not just stubs)
+1. Actual upstream MCP connections
 2. CLI schema fetching from upstream servers
 3. CLI tool call execution
 4. Composite tools (parallel) wired into config/views
@@ -12,6 +11,7 @@ Features covered:
 6. Tool renaming applied in proxy
 7. include_all: true for views
 8. Search mode integration in proxy
+9. Validate CLI command with upstream connections
 """
 
 import pytest

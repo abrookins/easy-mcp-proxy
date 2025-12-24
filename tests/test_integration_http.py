@@ -370,8 +370,10 @@ class TestStdioServerIntegration:
         assert tools[0].description == "Search code in repos"
 
     @pytest.mark.asyncio
-    async def test_tool_stub_can_be_called(self):
-        """Registered tool stubs should be callable."""
+    async def test_tool_requires_upstream_connection(self):
+        """Tools require upstream connections to execute."""
+        from fastmcp.exceptions import ToolError
+
         config = ProxyConfig(
             mcp_servers={
                 "test": UpstreamServerConfig(
@@ -385,11 +387,10 @@ class TestStdioServerIntegration:
         )
         proxy = MCPProxy(config)
 
-        # Call the tool through the MCP client
+        # Call the tool without initializing upstream - should error
         async with Client(proxy.server) as client:
-            result = await client.call_tool("my_tool", {})
-            # Tool stub returns a message
-            assert result is not None
+            with pytest.raises(ToolError, match="not connected"):
+                await client.call_tool("my_tool", {})
 
 
 class TestHTTPServerIntegration:
