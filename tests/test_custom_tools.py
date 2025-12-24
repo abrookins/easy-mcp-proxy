@@ -200,10 +200,23 @@ async def regular_function(x: int) -> int:
         with pytest.raises(ValueError, match="is not a custom tool"):
             load_custom_tool("regular_module.funcs.regular_function")
 
-    def test_custom_tools_appear_in_view(self):
+    def test_custom_tools_appear_in_view(self, tmp_path, monkeypatch):
         """Custom tools should appear alongside upstream tools in a view."""
         from mcp_proxy.models import ToolViewConfig
         from mcp_proxy.views import ToolView
+
+        # Create a test custom tool module
+        module_dir = tmp_path / "hooks"
+        module_dir.mkdir()
+        (module_dir / "__init__.py").write_text("")
+        (module_dir / "custom.py").write_text('''
+from mcp_proxy.custom_tools import custom_tool
+
+@custom_tool(name="my_tool", description="My custom tool")
+async def my_tool(x: str) -> dict:
+    return {"result": x}
+''')
+        monkeypatch.syspath_prepend(str(tmp_path))
 
         config = ToolViewConfig(
             custom_tools=[
@@ -215,3 +228,6 @@ async def regular_function(x: int) -> int:
         # Verify the config was stored
         assert len(config.custom_tools) == 1
         assert config.custom_tools[0]["module"] == "hooks.custom.my_tool"
+
+        # Verify the tool was loaded into the view
+        assert "my_tool" in view.custom_tools

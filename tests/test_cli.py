@@ -240,7 +240,8 @@ class TestCLISchema:
             ["schema", "test-server.test_tool", "--json", "--config", str(sample_config_yaml)]
         )
 
-        assert result.exit_code == 0
+        # Now attempts actual connection - may fail with connection error
+        # but should still output valid JSON
         data = json.loads(result.output)
         assert "tool" in data
 
@@ -255,9 +256,10 @@ class TestCLISchema:
             ["schema", "--server", "test-server", "--json", "--config", str(sample_config_yaml)]
         )
 
-        assert result.exit_code == 0
+        # Now attempts actual connection - may fail
+        # but should still output valid JSON
         data = json.loads(result.output)
-        assert "server" in data
+        assert "server" in data or "tools" in data
 
     def test_schema_server_not_found(self, sample_config_yaml):
         """'schema --server unknown' should error."""
@@ -298,7 +300,8 @@ class TestCLISchema:
 
         assert result.exit_code == 0
         data = json.loads(result.output)
-        assert "servers" in data
+        # Now returns {"tools": {...}} instead of {"servers": [...]}
+        assert "tools" in data
 
 
 class TestCLIValidate:
@@ -2572,3 +2575,628 @@ class TestCLIViewSetToolDescription:
         )
 
         assert result.exit_code == 0
+
+
+class TestCLIWithMockedUpstream:
+    """Tests for CLI commands with mocked upstream connections."""
+
+    def test_schema_with_successful_connection(self, tmp_path, monkeypatch):
+        """schema command should show schemas when connection succeeds."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  test:
+    command: echo
+""")
+
+        # Mock the MCPProxy._create_client to return a mock client
+        mock_tool = MagicMock()
+        mock_tool.name = "search"
+        mock_tool.description = "Search for items"
+        mock_tool.inputSchema = {"type": "object", "properties": {"q": {"type": "string"}}}
+
+        mock_client = MagicMock()
+        mock_client.list_tools = AsyncMock(return_value=[mock_tool])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["schema", "test.search", "-c", str(config_file)])
+
+        assert "search" in result.output.lower()
+        # Should show description or parameters
+        assert "Search" in result.output or "Parameters" in result.output
+
+    def test_schema_server_with_successful_connection(self, tmp_path, monkeypatch):
+        """schema --server should list tools from server."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  myserver:
+    command: echo
+""")
+
+        mock_tool1 = MagicMock()
+        mock_tool1.name = "tool_a"
+        mock_tool1.description = "Tool A description"
+        mock_tool1.inputSchema = {}
+
+        mock_tool2 = MagicMock()
+        mock_tool2.name = "tool_b"
+        mock_tool2.description = "Tool B description"
+        mock_tool2.inputSchema = {}
+
+        mock_client = MagicMock()
+        mock_client.list_tools = AsyncMock(return_value=[mock_tool1, mock_tool2])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["schema", "--server", "myserver", "-c", str(config_file)])
+
+        assert "myserver" in result.output.lower() or "Server" in result.output
+        assert "tool_a" in result.output
+        assert "tool_b" in result.output
+        assert "Tools (2)" in result.output
+
+    def test_schema_all_with_successful_connection(self, tmp_path, monkeypatch):
+        """schema (all) should list all servers and tools."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  server1:
+    command: echo
+  server2:
+    command: echo
+""")
+
+        mock_tool = MagicMock()
+        mock_tool.name = "tool1"
+        mock_tool.description = "A tool"
+        mock_tool.inputSchema = {}
+
+        mock_client = MagicMock()
+        mock_client.list_tools = AsyncMock(return_value=[mock_tool])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["schema", "-c", str(config_file)])
+
+        assert "server1" in result.output
+        assert "server2" in result.output
+        assert "1 tools" in result.output
+
+    def test_call_with_successful_execution(self, tmp_path, monkeypatch):
+        """call command should show result when tool executes successfully."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  myserver:
+    command: echo
+""")
+
+        # Mock call result
+        mock_content = MagicMock()
+        mock_content.text = '{"result": "success", "count": 42}'
+
+        mock_result = MagicMock()
+        mock_result.content = [mock_content]
+
+        mock_client = MagicMock()
+        mock_client.call_tool = AsyncMock(return_value=mock_result)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["call", "myserver.do_something", "-a", "query=test", "-c", str(config_file)]
+        )
+
+        assert "Calling myserver.do_something" in result.output
+        assert "Result:" in result.output
+        assert "success" in result.output
+
+    def test_validate_with_successful_connections(self, tmp_path, monkeypatch):
+        """validate --check-connections should report success."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  server1:
+    command: echo
+  server2:
+    command: echo
+""")
+
+        mock_tool = MagicMock()
+        mock_tool.name = "tool1"
+
+        mock_client = MagicMock()
+        mock_client.list_tools = AsyncMock(return_value=[mock_tool, mock_tool, mock_tool])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-C", "-c", str(config_file)])
+
+        assert "Configuration is valid" in result.output
+        assert "Checking upstream connections" in result.output
+        assert "connected" in result.output
+        assert "3 tools" in result.output
+
+    def test_schema_tool_not_found(self, tmp_path, monkeypatch):
+        """schema should report when tool is not found on server."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  test:
+    command: echo
+""")
+
+        # Mock client returns tools, but not the one we're looking for
+        mock_tool = MagicMock()
+        mock_tool.name = "other_tool"
+        mock_tool.description = "Not the tool we want"
+        mock_tool.inputSchema = {}
+
+        mock_client = MagicMock()
+        mock_client.list_tools = AsyncMock(return_value=[mock_tool])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["schema", "test.nonexistent_tool", "-c", str(config_file)])
+
+        assert "not found" in result.output
+
+    def test_schema_tool_not_found_json(self, tmp_path, monkeypatch):
+        """schema --json should return error when tool not found."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+        import json
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  test:
+    command: echo
+""")
+
+        mock_tool = MagicMock()
+        mock_tool.name = "other_tool"
+        mock_tool.description = "Other"
+        mock_tool.inputSchema = {}
+
+        mock_client = MagicMock()
+        mock_client.list_tools = AsyncMock(return_value=[mock_tool])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["schema", "test.missing", "--json", "-c", str(config_file)])
+
+        data = json.loads(result.output)
+        assert "error" in data
+        assert data["error"] == "not found"
+
+    def test_schema_tool_found_json(self, tmp_path, monkeypatch):
+        """schema --json should return schema when tool is found."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+        import json
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  test:
+    command: echo
+""")
+
+        mock_tool = MagicMock()
+        mock_tool.name = "search"
+        mock_tool.description = "Search tool"
+        mock_tool.inputSchema = {"type": "object", "properties": {"q": {"type": "string"}}}
+
+        mock_client = MagicMock()
+        mock_client.list_tools = AsyncMock(return_value=[mock_tool])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["schema", "test.search", "--json", "-c", str(config_file)])
+
+        data = json.loads(result.output)
+        assert "tool" in data
+        assert "schema" in data
+        assert data["schema"]["name"] == "search"
+
+    def test_schema_server_json_output_success(self, tmp_path, monkeypatch):
+        """schema --server --json should return tools as JSON."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+        import json
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  myserver:
+    command: echo
+""")
+
+        mock_tool = MagicMock()
+        mock_tool.name = "tool1"
+        mock_tool.description = "A tool"
+        mock_tool.inputSchema = {"type": "object"}
+
+        mock_client = MagicMock()
+        mock_client.list_tools = AsyncMock(return_value=[mock_tool])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["schema", "--server", "myserver", "--json", "-c", str(config_file)])
+
+        data = json.loads(result.output)
+        assert "server" in data
+        assert "tools" in data
+        assert len(data["tools"]) == 1
+
+    def test_schema_all_exception_text(self, tmp_path, monkeypatch):
+        """schema (all) should handle exceptions in text mode."""
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  broken:
+    command: echo
+""")
+
+        async def mock_create_client_fails(self, server_name):
+            raise RuntimeError("Connection refused")
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["schema", "-c", str(config_file)])
+
+        assert "Error" in result.output or "error" in result.output
+
+    def test_schema_all_exception_json(self, tmp_path, monkeypatch):
+        """schema --json (all) should return JSON on exception."""
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+        import json
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  broken:
+    command: echo
+""")
+
+        async def mock_create_client_fails(self, server_name):
+            raise RuntimeError("Connection refused")
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["schema", "--json", "-c", str(config_file)])
+
+        # Should still output JSON (with error info)
+        data = json.loads(result.output)
+        assert "tools" in data
+
+    def test_schema_server_exception_json(self, tmp_path, monkeypatch):
+        """schema --server --json should return JSON on exception."""
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+        import json
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  broken:
+    command: echo
+""")
+
+        async def mock_create_client_fails(self, server_name):
+            raise RuntimeError("Connection refused")
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["schema", "--server", "broken", "--json", "-c", str(config_file)])
+
+        # Should output JSON with error
+        data = json.loads(result.output)
+        assert "server" in data
+        assert "error" in data
+
+    def test_schema_tool_exception_text(self, tmp_path, monkeypatch):
+        """schema <tool> should handle exceptions in text mode."""
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  broken:
+    command: echo
+""")
+
+        async def mock_create_client_fails(self, server_name):
+            raise RuntimeError("Connection refused")
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["schema", "broken.tool", "-c", str(config_file)])
+
+        assert result.exit_code == 1
+        assert "Error" in result.output
+
+    def test_call_exception_handling(self, tmp_path, monkeypatch):
+        """call should handle exceptions gracefully."""
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  myserver:
+    command: echo
+""")
+
+        async def mock_create_client_fails(self, server_name):
+            raise RuntimeError("Server not available")
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["call", "myserver.tool", "-c", str(config_file)])
+
+        assert result.exit_code == 1
+        assert "Error" in result.output
+
+    def test_call_invalid_tool_format(self, tmp_path):
+        """call with invalid tool format should error."""
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  myserver:
+    command: echo
+""")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["call", "no_dot_format", "-c", str(config_file)])
+
+        assert result.exit_code == 1
+        assert "format 'server.tool'" in result.output
+
+    def test_call_unknown_server(self, tmp_path):
+        """call with unknown server should error."""
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  myserver:
+    command: echo
+""")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["call", "nonexistent.tool", "-c", str(config_file)])
+
+        assert result.exit_code == 1
+        assert "not found" in result.output
+
+    def test_call_with_invalid_arg_format(self, tmp_path, monkeypatch):
+        """call with argument missing = should skip it."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  myserver:
+    command: echo
+""")
+
+        mock_content = MagicMock()
+        mock_content.text = '{"result": "ok"}'
+
+        mock_result = MagicMock()
+        mock_result.content = [mock_content]
+
+        mock_client = MagicMock()
+        mock_client.call_tool = AsyncMock(return_value=mock_result)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+
+        runner = CliRunner()
+        # Pass an arg without = sign - should be skipped
+        result = runner.invoke(main, ["call", "myserver.tool", "-a", "no_equals", "-a", "valid=value", "-c", str(config_file)])
+
+        # Should still work, just skip the invalid arg
+        assert "Calling myserver.tool" in result.output
+        # The args should only contain the valid one
+        assert "valid" in result.output
+
+    def test_call_with_content_no_text(self, tmp_path, monkeypatch):
+        """call result with content but no text attribute."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  myserver:
+    command: echo
+""")
+
+        # Content without text attribute
+        mock_content = MagicMock(spec=[])  # No text attribute
+        del mock_content.text  # Ensure no text attribute
+
+        mock_result = MagicMock()
+        mock_result.content = [mock_content]
+
+        mock_client = MagicMock()
+        mock_client.call_tool = AsyncMock(return_value=mock_result)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["call", "myserver.tool", "-c", str(config_file)])
+
+        # Should show result anyway
+        assert "Result:" in result.output
+
+    def test_call_result_no_content(self, tmp_path, monkeypatch):
+        """call result without content attribute."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  myserver:
+    command: echo
+""")
+
+        # Result without content attribute
+        mock_result = MagicMock(spec=[])  # No content attribute
+        del mock_result.content
+
+        mock_client = MagicMock()
+        mock_client.call_tool = AsyncMock(return_value=mock_result)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["call", "myserver.tool", "-c", str(config_file)])
+
+        # Should show result as JSON
+        assert "Result:" in result.output
+
+    def test_validate_connection_failure_report(self, tmp_path, monkeypatch):
+        """validate -C should report connection failures."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  broken_server:
+    command: nonexistent
+""")
+
+        async def mock_create_client_fails(self, server_name):
+            raise ConnectionError("Cannot connect to server")
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-C", "-c", str(config_file)])
+
+        assert "Checking upstream connections" in result.output
+        assert "failed" in result.output or "Cannot connect" in result.output
+        assert result.exit_code == 1

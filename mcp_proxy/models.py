@@ -18,6 +18,14 @@ class HooksConfig(BaseModel):
     post_call: str | None = None
 
 
+class CompositeToolConfig(BaseModel):
+    """Configuration for a composite (parallel) tool."""
+
+    description: str = ""
+    inputs: dict[str, dict] = {}
+    parallel: dict[str, dict] = {}
+
+
 class ToolViewConfig(BaseModel):
     """Configuration for a tool view."""
 
@@ -27,6 +35,7 @@ class ToolViewConfig(BaseModel):
     hooks: HooksConfig | None = None
     include_all: bool = False
     custom_tools: list[dict] = []
+    composite_tools: dict[str, CompositeToolConfig] = {}
 
 
 class ServerToolsConfig(RootModel[dict[str, ToolConfig]]):

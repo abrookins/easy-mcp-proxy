@@ -1,5 +1,6 @@
 """CLI commands for mcp-proxy."""
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,16 @@ from mcp_proxy.config import load_config
 
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "mcp-proxy"
 DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.yaml"
+
+
+def run_async(coro):
+    """Run an async coroutine from sync CLI code."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
 
 
 def get_config_path(config: str | None) -> Path:
@@ -107,7 +118,28 @@ def schema(tool_name: str | None, config: str | None, as_json: bool, server: str
     """Show schema for a specific tool or all tools."""
     import json as json_module
 
+    from mcp_proxy.proxy import MCPProxy
+
     cfg = load_config(str(get_config_path(config)))
+    proxy = MCPProxy(cfg)
+
+    async def fetch_schemas():
+        """Fetch schemas from upstream servers."""
+        all_tools = {}
+
+        for server_name in cfg.mcp_servers:
+            try:
+                client = await proxy._create_client(server_name)
+                async with client:
+                    tools = await client.list_tools()
+                    all_tools[server_name] = [
+                        {"name": t.name, "description": getattr(t, "description", ""), "inputSchema": getattr(t, "inputSchema", {})}
+                        for t in tools
+                    ]
+            except Exception as e:
+                all_tools[server_name] = {"error": str(e)}
+
+        return all_tools
 
     if tool_name:
         # Parse tool_name as server.tool
@@ -117,41 +149,79 @@ def schema(tool_name: str | None, config: str | None, as_json: bool, server: str
 
         server_name, tool = tool_name.split(".", 1)
 
-        # Check if server exists
         if server_name not in cfg.mcp_servers:
             click.echo(f"Error: server '{server_name}' not found", err=True)
             raise SystemExit(1)
 
-        # Would need upstream connection to get actual schema
+        all_tools = run_async(fetch_schemas())
+        server_tools = all_tools.get(server_name, [])
+
+        if isinstance(server_tools, dict) and "error" in server_tools:
+            if as_json:
+                click.echo(json_module.dumps({"tool": tool_name, "error": server_tools["error"]}))
+            else:
+                click.echo(f"Error connecting to {server_name}: {server_tools['error']}", err=True)
+            raise SystemExit(1)
+
+        tool_schema = next((t for t in server_tools if t["name"] == tool), None)
+
         if as_json:
-            click.echo(json_module.dumps({"tool": tool_name, "schema": {}}))
+            if tool_schema:
+                click.echo(json_module.dumps({"tool": tool_name, "schema": tool_schema}))
+            else:
+                click.echo(json_module.dumps({"tool": tool_name, "error": "not found"}))
         else:
-            click.echo(f"Tool: {tool_name}")
-            click.echo("Schema: (requires upstream connection)")
+            if tool_schema:
+                click.echo(f"Tool: {tool_name}")
+                click.echo(f"Description: {tool_schema.get('description', 'N/A')}")
+                click.echo(f"Parameters: {json_module.dumps(tool_schema.get('inputSchema', {}), indent=2)}")
+            else:
+                click.echo(f"Tool '{tool}' not found on server '{server_name}'")
+
     elif server:
-        # List all tools from a specific server
         if server not in cfg.mcp_servers:
             click.echo(f"Error: server '{server}' not found", err=True)
             raise SystemExit(1)
+
+        all_tools = run_async(fetch_schemas())
+        server_tools = all_tools.get(server, [])
+
+        if isinstance(server_tools, dict) and "error" in server_tools:
+            if as_json:
+                click.echo(json_module.dumps({"server": server, "error": server_tools["error"]}))
+            else:
+                click.echo(f"Error connecting to {server}: {server_tools['error']}", err=True)
+            raise SystemExit(1)
+
         if as_json:
-            click.echo(json_module.dumps({"server": server, "tools": []}))
+            click.echo(json_module.dumps({"server": server, "tools": server_tools}))
         else:
             click.echo(f"Server: {server}")
-            click.echo("Tools: (requires upstream connection)")
+            click.echo(f"Tools ({len(server_tools)}):")
+            for t in server_tools:
+                click.echo(f"  - {t['name']}: {t.get('description', 'No description')}")
     else:
         # List all schemas
+        all_tools = run_async(fetch_schemas())
         if as_json:
-            click.echo(json_module.dumps({"servers": list(cfg.mcp_servers.keys())}))
+            click.echo(json_module.dumps({"tools": all_tools}))
         else:
-            for name in cfg.mcp_servers:
-                click.echo(f"{name}: (requires upstream connection)")
+            for server_name, tools in all_tools.items():
+                if isinstance(tools, dict) and "error" in tools:
+                    click.echo(f"{server_name}: error - {tools['error']}")
+                else:
+                    click.echo(f"{server_name}: {len(tools)} tools")
+                    for t in tools:
+                        click.echo(f"  - {t['name']}")
 
 
 @main.command()
 @config_option()
-def validate(config: str | None):
+@click.option("--check-connections", "-C", is_flag=True, help="Check upstream server connections")
+def validate(config: str | None, check_connections: bool):
     """Validate configuration file."""
     from mcp_proxy.config import validate_config
+    from mcp_proxy.proxy import MCPProxy
 
     try:
         cfg = load_config(str(get_config_path(config)))
@@ -161,6 +231,36 @@ def validate(config: str | None):
                 click.echo(f"Error: {error}", err=True)
             raise SystemExit(1)
         click.echo("Configuration is valid.")
+
+        if check_connections:
+            click.echo("\nChecking upstream connections...")
+            proxy = MCPProxy(cfg)
+
+            async def check_all():
+                results = {}
+                for server_name in cfg.mcp_servers:
+                    try:
+                        client = await proxy._create_client(server_name)
+                        async with client:
+                            tools = await client.list_tools()
+                            results[server_name] = {"status": "connected", "tools": len(tools)}
+                    except Exception as e:
+                        results[server_name] = {"status": "failed", "error": str(e)}
+                return results
+
+            results = run_async(check_all())
+            all_ok = True
+            for server_name, result in results.items():
+                if result["status"] == "connected":
+                    click.echo(f"  {server_name}: connected ({result['tools']} tools)")
+                else:
+                    click.echo(f"  {server_name}: connection failed - {result['error']}", err=True)
+                    all_ok = False
+
+            if not all_ok:
+                raise SystemExit(1)
+    except SystemExit:
+        raise
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
@@ -183,9 +283,11 @@ def serve(config: str | None, transport: str, port: int):  # pragma: no cover
 @click.argument("tool_name")
 @config_option()
 @click.option("--arg", "-a", multiple=True, help="Tool arguments as key=value")
-def call(tool_name: str, config: str | None, arg: tuple[str, ...]):  # pragma: no cover
+def call(tool_name: str, config: str | None, arg: tuple[str, ...]):
     """Call a specific tool."""
     import json as json_module
+
+    from mcp_proxy.proxy import MCPProxy
 
     cfg = load_config(str(get_config_path(config)))
 
@@ -200,16 +302,42 @@ def call(tool_name: str, config: str | None, arg: tuple[str, ...]):  # pragma: n
         click.echo(f"Error: server '{server_name}' not found", err=True)
         raise SystemExit(1)
 
-    # Parse arguments
+    # Parse arguments - try to parse numeric values
     args = {}
     for a in arg:
         if "=" in a:
             k, v = a.split("=", 1)
-            args[k] = v
+            # Try to parse as number
+            try:
+                args[k] = int(v)
+            except ValueError:
+                try:
+                    args[k] = float(v)
+                except ValueError:
+                    args[k] = v
 
-    # Would need upstream connection to actually call
-    click.echo(f"Calling {tool_name} with args: {json_module.dumps(args)}")
-    click.echo("Result: (requires upstream connection)")
+    async def call_tool():
+        """Call the tool on the upstream server."""
+        proxy = MCPProxy(cfg)
+        client = await proxy._create_client(server_name)
+        async with client:
+            return await client.call_tool(tool, args)
+
+    try:
+        result = run_async(call_tool())
+        click.echo(f"Calling {tool_name} with args: {json_module.dumps(args)}")
+        # Handle result content
+        if hasattr(result, "content"):
+            for content in result.content:
+                if hasattr(content, "text"):
+                    click.echo(f"Result: {content.text}")
+                else:
+                    click.echo(f"Result: {content}")
+        else:
+            click.echo(f"Result: {json_module.dumps(result, default=str)}")
+    except Exception as e:
+        click.echo(f"Error calling {tool_name}: {e}", err=True)
+        raise SystemExit(1)
 
 
 @main.command("config")

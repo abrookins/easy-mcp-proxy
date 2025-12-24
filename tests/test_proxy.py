@@ -45,9 +45,11 @@ class TestMCPProxyInitialization:
         config = ProxyConfig(**sample_config_dict)
         proxy = MCPProxy(config)
 
-        # Without real upstream servers, this would fail
-        with pytest.raises(Exception):
-            await proxy.initialize()
+        # Initialize creates clients for all servers (doesn't connect yet)
+        await proxy.initialize()
+
+        # Should have clients registered for all servers in config
+        assert "test-server" in proxy.upstream_clients
 
 
 class TestMCPProxyClientCreation:
@@ -63,10 +65,11 @@ class TestMCPProxyClientCreation:
         )
         proxy = MCPProxy(config)
 
-        # Would need mocking to test actual client creation
-        # This verifies the interface exists
-        with pytest.raises(Exception):
-            await proxy._create_client("test")
+        # Client creation should succeed (actual connection happens on use)
+        client = await proxy._create_client("test")
+        assert client is not None
+        assert hasattr(client, "list_tools")
+        assert hasattr(client, "call_tool")
 
     async def test_create_client_for_url_server(self):
         """_create_client should handle URL-based servers."""
@@ -78,8 +81,11 @@ class TestMCPProxyClientCreation:
         )
         proxy = MCPProxy(config)
 
-        with pytest.raises(Exception):
-            await proxy._create_client("test")
+        # Client creation should succeed
+        client = await proxy._create_client("test")
+        assert client is not None
+        assert hasattr(client, "list_tools")
+        assert hasattr(client, "call_tool")
 
 
 class TestMCPProxyGetViewTools:
@@ -341,4 +347,85 @@ class TestMCPProxyRun:
 
         # run() should accept transport and port parameters
         assert hasattr(proxy, "run")
+
+
+class TestMCPProxyErrorHandling:
+    """Tests for MCPProxy error handling."""
+
+    async def test_create_client_unknown_server_raises(self):
+        """_create_client should raise for unknown server."""
+        config = ProxyConfig(mcp_servers={"known": UpstreamServerConfig(command="echo")}, tool_views={})
+        proxy = MCPProxy(config)
+
+        with pytest.raises(ValueError, match="not found in config"):
+            await proxy._create_client("unknown")
+
+    def test_create_client_no_url_or_command_raises(self):
+        """_create_client should raise if server has neither url nor command."""
+        from mcp_proxy.proxy import MCPProxy
+
+        # Create a config where we manually break the server config
+        config = ProxyConfig(mcp_servers={"broken": UpstreamServerConfig(command="echo")}, tool_views={})
+        proxy = MCPProxy(config)
+
+        # Manually create a broken config for testing
+        broken_config = UpstreamServerConfig(command=None, url=None)
+        with pytest.raises(ValueError, match="must have either 'url' or 'command'"):
+            proxy._create_client_from_config(broken_config)
+
+    async def test_initialize_only_runs_once(self, sample_config_dict):
+        """MCPProxy.initialize() should only run once."""
+        config = ProxyConfig(**sample_config_dict)
+        proxy = MCPProxy(config)
+
+        # First initialization
+        await proxy.initialize()
+        first_clients = dict(proxy.upstream_clients)
+
+        # Second initialization should be a no-op
+        await proxy.initialize()
+
+        assert proxy.upstream_clients == first_clients
+
+    async def test_call_upstream_tool_no_client_raises(self):
+        """call_upstream_tool should raise if no client for server."""
+        config = ProxyConfig(mcp_servers={"server": UpstreamServerConfig(command="echo")}, tool_views={})
+        proxy = MCPProxy(config)
+        # Don't call initialize - no clients registered
+
+        with pytest.raises(ValueError, match="No client for server"):
+            await proxy.call_upstream_tool("missing", "tool", {})
+
+    def test_get_view_mcp_unknown_view_raises(self):
+        """get_view_mcp should raise for unknown view."""
+        config = ProxyConfig(mcp_servers={}, tool_views={})
+        proxy = MCPProxy(config)
+
+        with pytest.raises(ValueError, match="not found"):
+            proxy.get_view_mcp("nonexistent")
+
+    async def test_fetch_upstream_tools_no_client_raises(self):
+        """fetch_upstream_tools should raise if no client for server."""
+        config = ProxyConfig(mcp_servers={"server": UpstreamServerConfig(command="echo")}, tool_views={})
+        proxy = MCPProxy(config)
+        # Don't call initialize - no clients registered
+
+        with pytest.raises(ValueError, match="No client for server"):
+            await proxy.fetch_upstream_tools("missing")
+
+    async def test_refresh_upstream_tools_with_clients(self):
+        """refresh_upstream_tools should call fetch for all registered clients."""
+        from unittest.mock import AsyncMock
+
+        config = ProxyConfig(mcp_servers={"server": UpstreamServerConfig(command="echo")}, tool_views={})
+        proxy = MCPProxy(config)
+
+        # Mock the client
+        mock_client = AsyncMock()
+        mock_client.list_tools.return_value = []
+        proxy.upstream_clients = {"server": mock_client}
+
+        await proxy.refresh_upstream_tools()
+
+        mock_client.list_tools.assert_called()
 

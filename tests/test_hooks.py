@@ -59,22 +59,19 @@ class TestHookResult:
 class TestLoadHook:
     """Tests for dynamic hook loading."""
 
-    def test_load_hook_from_dotted_path(self, tmp_path):
+    def test_load_hook_from_dotted_path(self, tmp_path, monkeypatch):
         """load_hook should import a function from a dotted path."""
-        # Create a temporary hook module
-        hooks_dir = tmp_path / "hooks"
+        # Create a temporary hook module with a unique name to avoid conflicts
+        hooks_dir = tmp_path / "my_test_hooks"
         hooks_dir.mkdir()
         (hooks_dir / "__init__.py").write_text("")
-        (hooks_dir / "test_hooks.py").write_text(
+        (hooks_dir / "pre_hooks.py").write_text(
             "async def my_pre_call(args, context): return args"
         )
 
-        sys.path.insert(0, str(tmp_path))
-        try:
-            hook = load_hook("hooks.test_hooks.my_pre_call")
-            assert callable(hook)
-        finally:
-            sys.path.remove(str(tmp_path))
+        monkeypatch.syspath_prepend(str(tmp_path))
+        hook = load_hook("my_test_hooks.pre_hooks.my_pre_call")
+        assert callable(hook)
 
     def test_load_hook_invalid_path(self):
         """load_hook should raise on invalid path."""
