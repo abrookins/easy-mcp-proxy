@@ -129,10 +129,7 @@ class MCPProxy:
         for server_name, server_tools in view_config.tools.items():
             for tool_name, tool_config in server_tools.items():
                 # Get description from view config, or fall back to empty
-                if isinstance(tool_config, dict):
-                    description = tool_config.get("description", "")
-                else:
-                    description = tool_config.description or ""
+                description = tool_config.description or ""
                 tools.append(ToolInfo(
                     name=tool_name,
                     description=description,

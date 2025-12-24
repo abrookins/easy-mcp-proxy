@@ -82,6 +82,48 @@ class TestMCPProxyClientCreation:
             await proxy._create_client("test")
 
 
+class TestMCPProxyGetViewTools:
+    """Tests for get_view_tools method."""
+
+    def test_get_view_tools_with_dict_config(self):
+        """get_view_tools should handle raw dict tool configs from YAML."""
+        import yaml
+        from mcp_proxy.config import load_config
+
+        # Simulate raw YAML parsing - tool configs are dicts, not ToolConfig objects
+        raw_yaml = """
+mcp_servers:
+  github:
+    url: https://example.com
+tool_views:
+  research:
+    description: Research view
+    tools:
+      github:
+        search_code:
+          description: Search code in repos
+        list_issues:
+          description: List issues
+"""
+        # Parse directly to simulate what load_config does internally
+        raw_data = yaml.safe_load(raw_yaml)
+
+        # Load through the normal config loader
+        config = ProxyConfig(**raw_data)
+        proxy = MCPProxy(config)
+
+        tools = proxy.get_view_tools("research")
+
+        assert len(tools) == 2
+        tool_names = [t.name for t in tools]
+        assert "search_code" in tool_names
+        assert "list_issues" in tool_names
+
+        # Check descriptions came through
+        search_tool = next(t for t in tools if t.name == "search_code")
+        assert search_tool.description == "Search code in repos"
+
+
 class TestMCPProxyToolRegistration:
     """Tests for tool registration in direct/search modes."""
 
