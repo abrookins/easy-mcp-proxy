@@ -3,12 +3,24 @@
 from pydantic import BaseModel, ConfigDict, RootModel
 
 
+class AliasConfig(BaseModel):
+    """Configuration for a tool alias."""
+
+    name: str
+    description: str | None = None
+
+
 class ToolConfig(BaseModel):
-    """Configuration for a single tool."""
+    """Configuration for a single tool.
+
+    Supports either a single rename (via `name`) or multiple aliases (via `aliases`).
+    If `aliases` is provided, it takes precedence over `name`.
+    """
 
     name: str | None = None
     description: str | None = None
     enabled: bool = True
+    aliases: list[AliasConfig] | None = None
 
 
 class HooksConfig(BaseModel):

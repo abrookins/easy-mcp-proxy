@@ -139,7 +139,8 @@ class ToolView:
 
         # Use the original tool name when calling upstream (handles renames)
         original_name = self._get_original_tool_name(tool_name)
-        result = await client.call_tool(original_name, args)
+        async with client:
+            result = await client.call_tool(original_name, args)
 
         # Apply post-call hook
         if self._post_call_hook:

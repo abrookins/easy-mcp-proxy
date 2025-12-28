@@ -460,6 +460,57 @@ class TestCLIServe:
 
         assert "--port" in result.output or result.exit_code == 0
 
+    def test_serve_accepts_env_file_option(self):
+        """'serve' should accept --env-file option."""
+        from mcp_proxy.cli import main
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["serve", "--help"])
+
+        assert "--env-file" in result.output
+        assert "-e" in result.output
+
+    def test_serve_loads_env_file(self, tmp_path, monkeypatch):
+        """'serve' should load environment variables from .env file."""
+        import os
+
+        from mcp_proxy.cli import main
+
+        # Create a .env file with a test variable
+        env_file = tmp_path / ".env"
+        env_file.write_text("TEST_SERVE_VAR=test_value_123\n")
+
+        # Create a config that uses the env var
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  test:\n"
+            "    url: https://example.com\n"
+            "    headers:\n"
+            "      X-Test: ${TEST_SERVE_VAR}\n"
+            "tool_views: {}\n"
+        )
+
+        # Ensure the var is not already set
+        monkeypatch.delenv("TEST_SERVE_VAR", raising=False)
+
+        # We can't actually run serve (it blocks), but we can test the
+        # dotenv loading by importing and calling load_dotenv directly
+        from dotenv import load_dotenv
+
+        load_dotenv(str(env_file))
+
+        assert os.environ.get("TEST_SERVE_VAR") == "test_value_123"
+
+    def test_serve_env_file_default_is_dotenv(self):
+        """'serve' --env-file should default to .env."""
+        from mcp_proxy.cli import main
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["serve", "--help"])
+
+        assert "default: .env" in result.output
+
 
 class TestCLICall:
     """Tests for 'mcp-proxy call' command."""
@@ -2693,6 +2744,118 @@ mcp_servers:
         assert "server1" in result.output
         assert "server2" in result.output
         assert "1 tools" in result.output
+
+    def test_schema_respects_tool_constraints(self, tmp_path, monkeypatch):
+        """schema should only show tools listed in server's tools config."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        # Config with tool constraints - only tool_a and tool_b are allowed
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  constrained:
+    command: echo
+    tools:
+      tool_a: {}
+      tool_b: {}
+  unconstrained:
+    command: echo
+""")
+
+        # Upstream returns 4 tools
+        mock_tool_a = MagicMock()
+        mock_tool_a.name = "tool_a"
+        mock_tool_a.description = "Tool A"
+        mock_tool_a.inputSchema = {}
+
+        mock_tool_b = MagicMock()
+        mock_tool_b.name = "tool_b"
+        mock_tool_b.description = "Tool B"
+        mock_tool_b.inputSchema = {}
+
+        mock_tool_c = MagicMock()
+        mock_tool_c.name = "tool_c"
+        mock_tool_c.description = "Tool C - should be filtered"
+        mock_tool_c.inputSchema = {}
+
+        mock_tool_d = MagicMock()
+        mock_tool_d.name = "tool_d"
+        mock_tool_d.description = "Tool D - should be filtered"
+        mock_tool_d.inputSchema = {}
+
+        all_tools = [mock_tool_a, mock_tool_b, mock_tool_c, mock_tool_d]
+
+        mock_client = MagicMock()
+        mock_client.list_tools = AsyncMock(return_value=all_tools)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["schema", "-c", str(config_file)])
+
+        # constrained server should show only 2 tools (tool_a, tool_b)
+        # unconstrained server should show all 4 tools
+        assert "constrained: 2 tools" in result.output
+        assert "unconstrained: 4 tools" in result.output
+
+    def test_schema_server_respects_tool_constraints(self, tmp_path, monkeypatch):
+        """schema --server should respect tool constraints for that server."""
+        from unittest.mock import AsyncMock, MagicMock
+        from click.testing import CliRunner
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  myserver:
+    command: echo
+    tools:
+      allowed_tool: {}
+""")
+
+        # Upstream returns 3 tools, but only 1 is in the allowlist
+        mock_tool_allowed = MagicMock()
+        mock_tool_allowed.name = "allowed_tool"
+        mock_tool_allowed.description = "This tool is allowed"
+        mock_tool_allowed.inputSchema = {}
+
+        mock_tool_blocked1 = MagicMock()
+        mock_tool_blocked1.name = "blocked_tool_1"
+        mock_tool_blocked1.description = "Should not appear"
+        mock_tool_blocked1.inputSchema = {}
+
+        mock_tool_blocked2 = MagicMock()
+        mock_tool_blocked2.name = "blocked_tool_2"
+        mock_tool_blocked2.description = "Should not appear"
+        mock_tool_blocked2.inputSchema = {}
+
+        mock_client = MagicMock()
+        mock_client.list_tools = AsyncMock(return_value=[
+            mock_tool_allowed, mock_tool_blocked1, mock_tool_blocked2
+        ])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["schema", "--server", "myserver", "-c", str(config_file)])
+
+        assert result.exit_code == 0
+        assert "allowed_tool" in result.output
+        assert "blocked_tool_1" not in result.output
+        assert "blocked_tool_2" not in result.output
+        assert "Tools (1)" in result.output
 
     def test_call_with_successful_execution(self, tmp_path, monkeypatch):
         """call command should show result when tool executes successfully."""

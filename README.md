@@ -64,12 +64,16 @@ Add to `claude_desktop_config.json`:
 {
   "mcpServers": {
     "proxy": {
-      "command": "mcp-proxy",
-      "args": ["serve", "--config", "/path/to/config.yaml"]
+    
+      command: uv
+      "args": ["run", "--directory", "/path/to/repository/checkout", "serve", "--config", "/path/to/config.yaml"]
     }
   }
 }
 ```
+
+**NOTE**: If you don't pass `-c`, you will use the default config file
+at ~/.config/mcp-proxy/config.yaml.
 
 ## Configuration
 
@@ -87,10 +91,10 @@ mcp_servers:
       API_KEY: ${MY_API_KEY}  # Environment variable expansion
 
   # HTTP-based server (remote)
-  remote-server:
-    url: "https://api.example.com/mcp/"
+  zapier:
+    url: "https://actions.zapier.com/mcp/YOUR_MCP_ID/sse"
     headers:
-      Authorization: "Bearer ${ACCESS_TOKEN}"
+      Authorization: "Bearer ${ZAPIER_MCP_API_KEY}"
 ```
 
 ### Tool Filtering
@@ -100,7 +104,10 @@ Filter tools at the server level:
 ```yaml
 mcp_servers:
   github:
-    url: "https://api.githubcopilot.com/mcp/"
+    command: npx
+    args: [-y, "@github/mcp-server"]
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_TOKEN}
     tools:
       search_code: {}
       search_issues: {}
@@ -336,8 +343,8 @@ curl http://localhost:8000/health
 │  ┌─────────▼────────────────▼──────────────────▼─────────────┐  │
 │  │                 Upstream MCP Clients                       │  │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │  │
-│  │  │   memory     │  │   github     │  │  filesystem  │     │  │
-│  │  │   (stdio)    │  │   (http)     │  │   (stdio)    │     │  │
+│  │  │   memory     │  │   github     │  │    zapier    │     │  │
+│  │  │   (stdio)    │  │   (stdio)    │  │   (http)     │     │  │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘     │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘

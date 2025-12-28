@@ -56,24 +56,27 @@ mcp_servers:
 
           {original}
 
-  # GitHub MCP server (remote) - uses GitHub's hosted MCP endpoint
+  # GitHub MCP server - uses official GitHub MCP server via stdio
   # Requires a GitHub Personal Access Token with appropriate permissions
   github:
-    url: "https://api.githubcopilot.com/mcp/"
-    headers:
-      Authorization: "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}"
-    # Constrain to search/read tools only (40 tools -> 10)
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-github"
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+    # Constrain to search/read tools only
     tools:
       search_code: {}
       search_issues: {}
-      search_pull_requests: {}
       get_file_contents: {}
       list_issues: {}
       list_pull_requests: {}
-      issue_read: {}
-      pull_request_read: {}
+      get_issue: {}
+      get_pull_request: {}
       list_commits: {}
-      get_commit: {}
+      get_pull_request_files: {}
+      get_pull_request_status: {}
 
   # AWS Documentation MCP server - search and read AWS documentation
   aws-documentation:
@@ -97,3 +100,54 @@ mcp_servers:
       - --from
       - git+https://github.com/abrookins/zendesk-mcp-server
       - zendesk
+
+
+  # Skills server for storing and retrieving procedural knowledge
+  skills-server:
+    command: uv
+    args:
+      - tool
+      - run
+      - --from
+      - agent-memory-server
+      - agent-memory
+      - mcp
+    env:
+      REDIS_URL: redis://localhost:6399
+      DEFAULT_MCP_NAMESPACE: skills
+    tools:
+      create_long_term_memories:
+        name: save_skill
+        description: |
+          Save a new skill as a series of steps to accomplish a task.
+
+      search_long_term_memory:
+        name: search_skills
+        description: |
+          Search for previously saved skills. ALWAYS use this before
+          attempting a complex task to check if you already know how
+          to do it. Search by task name, keywords, or describe what
+          you're trying to accomplish.
+
+          You can also use this to LIST skills by searching without any
+          arguments.
+
+      get_long_term_memory:
+        name: get_skill
+        description: |
+          Retrieve a specific skill by ID. Use this to get the full
+          step-by-step procedure after finding it via search.
+
+      edit_long_term_memory:
+        name: update_skill
+        description: |
+          Update an existing skill. Use this to refine steps based on
+          new learnings, add troubleshooting tips, update for changed
+          tooling or processes, or add alternative approaches.
+
+      delete_long_term_memories:
+        name: delete_skills
+        description: |
+          Delete a skill that is outdated or no longer applicable.
+
+

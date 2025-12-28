@@ -127,14 +127,17 @@ def schema(tool_name: str | None, config: str | None, as_json: bool, server: str
         """Fetch schemas from upstream servers."""
         all_tools = {}
 
-        for server_name in cfg.mcp_servers:
+        for server_name, server_config in cfg.mcp_servers.items():
             try:
                 client = await proxy._create_client(server_name)
                 async with client:
                     tools = await client.list_tools()
+                    # Filter tools based on config's tool constraints
+                    allowed_tools = server_config.tools.keys() if server_config.tools else None
                     all_tools[server_name] = [
                         {"name": t.name, "description": getattr(t, "description", ""), "inputSchema": getattr(t, "inputSchema", {})}
                         for t in tools
+                        if allowed_tools is None or t.name in allowed_tools
                     ]
             except Exception as e:
                 all_tools[server_name] = {"error": str(e)}
@@ -270,9 +273,15 @@ def validate(config: str | None, check_connections: bool):
 @config_option()
 @click.option("--transport", "-t", default="stdio", type=click.Choice(["stdio", "http"]), help="Transport type")
 @click.option("--port", "-p", default=8000, type=int, help="Port for HTTP transport")
-def serve(config: str | None, transport: str, port: int):  # pragma: no cover
+@click.option("--env-file", "-e", default=".env", type=click.Path(), help="Path to .env file (default: .env)")
+def serve(config: str | None, transport: str, port: int, env_file: str):  # pragma: no cover
     """Start the MCP proxy server."""
+    from dotenv import load_dotenv
+
     from mcp_proxy.proxy import MCPProxy
+
+    # Load environment variables from .env file
+    load_dotenv(env_file)
 
     cfg = load_config(str(get_config_path(config)))
     proxy = MCPProxy(cfg)
