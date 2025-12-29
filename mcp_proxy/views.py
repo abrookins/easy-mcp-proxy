@@ -27,6 +27,7 @@ class ToolView:
         self._tool_to_server: dict[str, str] = {}
         self._tool_to_original_name: dict[str, str] = {}  # renamed -> original
         self._upstream_clients: dict[str, Any] = {}
+        self._get_client: Callable[[str], Any | None] | None = None  # Get active client
         self.composite_tools: dict[str, ParallelTool] = {}
         self.custom_tools: dict[str, Callable] = {}
 
@@ -58,9 +59,21 @@ class ToolView:
                 tool_name = getattr(tool_fn, "_tool_name", tool_fn.__name__)
                 self.custom_tools[tool_name] = tool_fn
 
-    async def initialize(self, upstream_clients: dict[str, Any]) -> None:
-        """Initialize the view with upstream clients."""
+    async def initialize(
+        self,
+        upstream_clients: dict[str, Any],
+        get_client: Callable[[str], Any | None] | None = None,
+    ) -> None:
+        """Initialize the view with upstream clients.
+
+        Args:
+            upstream_clients: Dict mapping server names to existing clients (for compatibility)
+            get_client: Optional function to get an active (connected) client for a server name.
+                       If provided and returns a client, that client will be used directly.
+                       Otherwise falls back to stored clients.
+        """
         self._upstream_clients = upstream_clients
+        self._get_client = get_client
         self._load_hooks()
 
         # Verify we have clients for all referenced servers
@@ -135,12 +148,19 @@ class ToolView:
         if not server_name or server_name not in self._upstream_clients:
             raise ValueError(f"Unknown tool: {tool_name}")
 
-        client = self._upstream_clients[server_name]
-
         # Use the original tool name when calling upstream (handles renames)
         original_name = self._get_original_tool_name(tool_name)
-        async with client:
-            result = await client.call_tool(original_name, args)
+
+        # Try to get an active (connected) client first
+        active_client = self._get_client(server_name) if self._get_client else None
+        if active_client:
+            # Use the active client directly (no context manager needed)
+            result = await active_client.call_tool(original_name, args)
+        else:
+            # Fall back to stored client with context manager
+            client = self._upstream_clients[server_name]
+            async with client:
+                result = await client.call_tool(original_name, args)
 
         # Apply post-call hook
         if self._post_call_hook:
@@ -172,9 +192,16 @@ class ToolView:
         if server not in self._upstream_clients:
             raise ValueError(f"Unknown upstream tool: {upstream_tool}")
 
-        client = self._upstream_clients[server]
-        async with client:
-            return await client.call_tool(tool, kwargs)
+        # Try to get an active (connected) client first
+        active_client = self._get_client(server) if self._get_client else None
+        if active_client:
+            # Use the active client directly (no context manager needed)
+            return await active_client.call_tool(tool, kwargs)
+        else:
+            # Fall back to stored client with context manager
+            client = self._upstream_clients[server]
+            async with client:
+                return await client.call_tool(tool, kwargs)
 
     async def _call_custom_tool(self, tool_name: str, args: dict[str, Any]) -> Any:
         """Call a custom tool with ProxyContext."""

@@ -1,5 +1,7 @@
 """Configuration models for MCP Proxy."""
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, RootModel
 
 
@@ -10,17 +12,36 @@ class AliasConfig(BaseModel):
     description: str | None = None
 
 
+class ParameterConfig(BaseModel):
+    """Configuration for a tool parameter.
+
+    Allows hiding parameters (with default values), renaming them,
+    or overriding their descriptions.
+    """
+
+    hidden: bool = False
+    default: Any | None = None
+    rename: str | None = None
+    description: str | None = None
+
+
 class ToolConfig(BaseModel):
     """Configuration for a single tool.
 
     Supports either a single rename (via `name`) or multiple aliases (via `aliases`).
     If `aliases` is provided, it takes precedence over `name`.
+
+    The `parameters` field allows customizing individual parameters:
+    - Hide parameters and inject fixed default values
+    - Rename parameters to more domain-appropriate names
+    - Override parameter descriptions
     """
 
     name: str | None = None
     description: str | None = None
     enabled: bool = True
     aliases: list[AliasConfig] | None = None
+    parameters: dict[str, ParameterConfig] | None = None
 
 
 class HooksConfig(BaseModel):

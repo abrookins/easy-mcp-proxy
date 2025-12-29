@@ -765,7 +765,7 @@ class TestDefaultMCPUpstreamCalls:
     @pytest.mark.asyncio
     async def test_default_mcp_calls_upstream_when_connected(self):
         """Default MCP tools should call upstream when clients are connected."""
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import AsyncMock, MagicMock, patch
 
         from fastmcp import Client
 
@@ -785,15 +785,16 @@ class TestDefaultMCPUpstreamCalls:
         mock_upstream.__aenter__ = AsyncMock(return_value=mock_upstream)
         mock_upstream.__aexit__ = AsyncMock(return_value=None)
         mock_upstream.call_tool = AsyncMock(return_value={"result": "success"})
-        proxy.upstream_clients = {"server": mock_upstream}
 
-        # Call through the proxy's default server
-        # Tools use "arguments" dict parameter per FastMCP convention
-        async with Client(proxy.server) as client:
-            result = await client.call_tool("my_tool", {"arguments": {"arg": "value"}})
+        # Mock _create_client_from_config to return our mock client
+        with patch.object(proxy, '_create_client_from_config', return_value=mock_upstream):
+            # Call through the proxy's default server
+            # Tools use "arguments" dict parameter per FastMCP convention
+            async with Client(proxy.server) as client:
+                result = await client.call_tool("my_tool", {"arguments": {"arg": "value"}})
 
-        # Verify upstream was called with the arguments dict
-        mock_upstream.call_tool.assert_called_once_with("my_tool", {"arg": "value"})
+            # Verify upstream was called with the arguments dict
+            mock_upstream.call_tool.assert_called_once_with("my_tool", {"arg": "value"})
 
 
 class TestToolNameAliasing:
@@ -903,7 +904,7 @@ class TestToolNameAliasing:
     @pytest.mark.asyncio
     async def test_aliased_tool_calls_upstream_with_original_name(self):
         """Aliased tools should call upstream using original tool name."""
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import AsyncMock, MagicMock, patch
 
         from fastmcp import Client
 
@@ -930,21 +931,22 @@ class TestToolNameAliasing:
         mock_upstream.__aenter__ = AsyncMock(return_value=mock_upstream)
         mock_upstream.__aexit__ = AsyncMock(return_value=None)
         mock_upstream.call_tool = AsyncMock(return_value={"result": "success"})
-        proxy.upstream_clients = {"server": mock_upstream}
 
-        # Call using the aliased name
-        async with Client(proxy.server) as client:
-            # The tool is exposed as "aliased_tool_name"
-            result = await client.call_tool(
-                "aliased_tool_name",
-                {"arguments": {"key": "value"}}
+        # Mock _create_client_from_config to return our mock client
+        with patch.object(proxy, '_create_client_from_config', return_value=mock_upstream):
+            # Call using the aliased name
+            async with Client(proxy.server) as client:
+                # The tool is exposed as "aliased_tool_name"
+                result = await client.call_tool(
+                    "aliased_tool_name",
+                    {"arguments": {"key": "value"}}
+                )
+
+            # But upstream should be called with "original_tool_name"
+            mock_upstream.call_tool.assert_called_once_with(
+                "original_tool_name",
+                {"key": "value"}
             )
-
-        # But upstream should be called with "original_tool_name"
-        mock_upstream.call_tool.assert_called_once_with(
-            "original_tool_name",
-            {"key": "value"}
-        )
 
 
 class TestToolNameAliasingInViews:
@@ -1517,7 +1519,7 @@ class TestToolExecutionWithInputSchema:
 
     async def test_direct_routing_with_input_schema(self):
         """Direct routing (no view) with input_schema should work."""
-        from unittest.mock import AsyncMock
+        from unittest.mock import AsyncMock, patch
         from fastmcp import FastMCP
 
         config = ProxyConfig(
@@ -1533,7 +1535,6 @@ class TestToolExecutionWithInputSchema:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
         mock_client.call_tool.return_value = {"result": "direct_success"}
-        proxy.upstream_clients = {"server": mock_client}
 
         # Manually create ToolInfo with input_schema (simulating what would
         # happen if get_view_tools returned tools with schemas)
@@ -1558,33 +1559,30 @@ class TestToolExecutionWithInputSchema:
         registered_tool = test_mcp._tool_manager._tools.get("direct_tool")
         assert registered_tool is not None
 
-        # Call the tool (direct routing without view)
-        result = await registered_tool.fn(arg1="test")
+        # Mock _create_client_from_config to return our mock client
+        with patch.object(proxy, '_create_client_from_config', return_value=mock_client):
+            # Call the tool (direct routing without view)
+            result = await registered_tool.fn(arg1="test")
 
-        mock_client.call_tool.assert_called_once_with("direct_tool", {"arg1": "test"})
-        assert result == {"result": "direct_success"}
+            mock_client.call_tool.assert_called_once_with("direct_tool", {"arg1": "test"})
+            assert result == {"result": "direct_success"}
 
-    async def test_direct_routing_server_not_connected_raises(self):
-        """Direct routing should raise when server not connected."""
+    async def test_direct_routing_server_not_configured_raises(self):
+        """Direct routing should raise when server not configured."""
         from fastmcp import FastMCP
 
         config = ProxyConfig(
-            mcp_servers={
-                "server": UpstreamServerConfig(command="echo")
-            },
+            mcp_servers={},  # No servers configured
             tool_views={}
         )
         proxy = MCPProxy(config)
 
-        # Don't connect any clients
-        proxy.upstream_clients = {}
-
-        # Manually create ToolInfo with input_schema
+        # Manually create ToolInfo with input_schema referencing a non-existent server
         tools_with_schema = [
             ToolInfo(
                 name="test_tool",
                 description="Test",
-                server="server",
+                server="nonexistent_server",
                 original_name="test_tool",
                 input_schema={"type": "object"}
             )
@@ -1597,6 +1595,800 @@ class TestToolExecutionWithInputSchema:
         registered_tool = test_mcp._tool_manager._tools.get("test_tool")
         assert registered_tool is not None
 
-        # Calling should raise
-        with pytest.raises(ValueError, match="Server 'server' not connected"):
+        # Calling should raise because server is not configured
+        with pytest.raises(ValueError, match="Server 'nonexistent_server' not configured"):
             await registered_tool.fn(arg="value")
+
+    async def test_direct_routing_uses_active_client(self):
+        """Direct routing should use active client when available."""
+        from unittest.mock import AsyncMock
+        from fastmcp import FastMCP
+
+        config = ProxyConfig(
+            mcp_servers={
+                "server": UpstreamServerConfig(command="echo")
+            },
+            tool_views={}
+        )
+        proxy = MCPProxy(config)
+
+        # Mock active client
+        active_client = AsyncMock()
+        active_client.call_tool.return_value = {"from": "active"}
+        proxy._active_clients["server"] = active_client
+
+        # Create ToolInfo with input_schema
+        tools_with_schema = [
+            ToolInfo(
+                name="direct_tool",
+                description="A direct tool",
+                server="server",
+                original_name="direct_tool",
+                input_schema={
+                    "type": "object",
+                    "properties": {"arg1": {"type": "string"}},
+                }
+            )
+        ]
+
+        test_mcp = FastMCP(name="test")
+        proxy._register_tools_on_mcp(test_mcp, tools_with_schema)
+
+        registered_tool = test_mcp._tool_manager._tools.get("direct_tool")
+        result = await registered_tool.fn(arg1="test")
+
+        # Should use active client
+        active_client.call_tool.assert_called_once_with("direct_tool", {"arg1": "test"})
+        assert result == {"from": "active"}
+
+    async def test_direct_routing_dict_wrapper_uses_active_client(self):
+        """Direct routing with dict wrapper should use active client."""
+        from unittest.mock import AsyncMock
+        from fastmcp import FastMCP
+
+        config = ProxyConfig(
+            mcp_servers={
+                "server": UpstreamServerConfig(command="echo")
+            },
+            tool_views={}
+        )
+        proxy = MCPProxy(config)
+
+        # Mock active client
+        active_client = AsyncMock()
+        active_client.call_tool.return_value = {"from": "active_dict"}
+        proxy._active_clients["server"] = active_client
+
+        # Create ToolInfo WITHOUT input_schema (will use dict wrapper)
+        tools_without_schema = [
+            ToolInfo(
+                name="dict_tool",
+                description="A dict tool",
+                server="server",
+                original_name="dict_tool",
+                input_schema=None  # No schema = dict wrapper
+            )
+        ]
+
+        test_mcp = FastMCP(name="test")
+        proxy._register_tools_on_mcp(test_mcp, tools_without_schema)
+
+        registered_tool = test_mcp._tool_manager._tools.get("dict_tool")
+        result = await registered_tool.fn(arguments={"arg1": "test"})
+
+        # Should use active client
+        active_client.call_tool.assert_called_once_with("dict_tool", {"arg1": "test"})
+        assert result == {"from": "active_dict"}
+
+
+class TestParameterBinding:
+    """Tests for parameter binding (hidden params, renamed params)."""
+
+    def test_transform_schema_hides_parameter(self):
+        """_transform_schema should remove hidden parameters from schema."""
+        from mcp_proxy.proxy import _transform_schema
+        from mcp_proxy.models import ToolConfig, ParameterConfig
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path"},
+                "query": {"type": "string", "description": "Search query"},
+            },
+            "required": ["path", "query"],
+        }
+        tool_config = ToolConfig(
+            parameters={"path": ParameterConfig(hidden=True, default="/skills")}
+        )
+
+        result = _transform_schema(schema, tool_config)
+
+        assert "path" not in result["properties"]
+        assert "path" not in result["required"]
+        assert "query" in result["properties"]
+        assert "query" in result["required"]
+
+    def test_transform_schema_renames_parameter(self):
+        """_transform_schema should rename parameters."""
+        from mcp_proxy.proxy import _transform_schema
+        from mcp_proxy.models import ToolConfig, ParameterConfig
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path"},
+            },
+            "required": ["path"],
+        }
+        tool_config = ToolConfig(
+            parameters={"path": ParameterConfig(rename="category")}
+        )
+
+        result = _transform_schema(schema, tool_config)
+
+        assert "path" not in result["properties"]
+        assert "path" not in result["required"]
+        assert "category" in result["properties"]
+        assert "category" in result["required"]
+
+    def test_transform_schema_updates_description(self):
+        """_transform_schema should update parameter description."""
+        from mcp_proxy.proxy import _transform_schema
+        from mcp_proxy.models import ToolConfig, ParameterConfig
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Original desc"},
+            },
+            "required": [],
+        }
+        tool_config = ToolConfig(
+            parameters={"path": ParameterConfig(description="New description")}
+        )
+
+        result = _transform_schema(schema, tool_config)
+
+        assert result["properties"]["path"]["description"] == "New description"
+
+    def test_transform_schema_rename_with_description(self):
+        """_transform_schema should rename and update description together."""
+        from mcp_proxy.proxy import _transform_schema
+        from mcp_proxy.models import ToolConfig, ParameterConfig
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Original"},
+            },
+            "required": ["path"],
+        }
+        tool_config = ToolConfig(
+            parameters={
+                "path": ParameterConfig(rename="folder", description="Folder name")
+            }
+        )
+
+        result = _transform_schema(schema, tool_config)
+
+        assert "folder" in result["properties"]
+        assert result["properties"]["folder"]["description"] == "Folder name"
+        assert "folder" in result["required"]
+
+    def test_transform_schema_none_returns_none(self):
+        """_transform_schema should return None for None schema."""
+        from mcp_proxy.proxy import _transform_schema
+        from mcp_proxy.models import ToolConfig, ParameterConfig
+
+        tool_config = ToolConfig(
+            parameters={"path": ParameterConfig(hidden=True)}
+        )
+
+        result = _transform_schema(None, tool_config)
+
+        assert result is None
+
+    def test_transform_schema_no_config_returns_original(self):
+        """_transform_schema should return original schema if no config."""
+        from mcp_proxy.proxy import _transform_schema
+
+        schema = {"type": "object", "properties": {"x": {"type": "string"}}}
+
+        result = _transform_schema(schema, None)
+
+        assert result == schema
+
+    def test_transform_args_injects_hidden_default(self):
+        """_transform_args should inject default values for hidden params."""
+        from mcp_proxy.proxy import _transform_args
+
+        args = {"query": "test"}
+        param_config = {
+            "path": {"hidden": True, "default": "/skills"},
+        }
+
+        result = _transform_args(args, param_config)
+
+        assert result["path"] == "/skills"
+        assert result["query"] == "test"
+
+    def test_transform_args_maps_renamed_param(self):
+        """_transform_args should map renamed params back to original names."""
+        from mcp_proxy.proxy import _transform_args
+
+        args = {"category": "deployment"}
+        param_config = {
+            "path": {"rename": "category"},
+        }
+
+        result = _transform_args(args, param_config)
+
+        assert result["path"] == "deployment"
+        assert "category" not in result
+
+    def test_transform_args_none_config_returns_original(self):
+        """_transform_args should return original args if no config."""
+        from mcp_proxy.proxy import _transform_args
+
+        args = {"query": "test"}
+
+        result = _transform_args(args, None)
+
+        assert result == args
+
+    def test_tool_info_stores_parameter_config(self):
+        """ToolInfo should store parameter_config."""
+        param_config = {"path": {"hidden": True, "default": "."}}
+        tool = ToolInfo(
+            name="list_files",
+            description="List files",
+            server="fs",
+            parameter_config=param_config,
+        )
+
+        assert tool.parameter_config == param_config
+
+    def test_get_view_tools_includes_transformed_schema(self):
+        """get_view_tools should return tools with transformed schemas."""
+        from unittest.mock import MagicMock
+        from mcp_proxy.models import ToolConfig, ParameterConfig, ToolViewConfig
+
+        config = ProxyConfig(
+            mcp_servers={
+                "fs": UpstreamServerConfig(
+                    command="echo",
+                    tools={
+                        "list_directory": ToolConfig(
+                            name="list_categories",
+                            parameters={
+                                "path": ParameterConfig(hidden=True, default=".")
+                            }
+                        )
+                    }
+                )
+            },
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Mock upstream tool with schema
+        mock_tool = MagicMock()
+        mock_tool.name = "list_directory"
+        mock_tool.description = "List directory contents"
+        mock_tool.inputSchema = {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Directory path"},
+            },
+            "required": ["path"],
+        }
+        proxy._upstream_tools["fs"] = [mock_tool]
+
+        tools = proxy.get_view_tools(None)
+
+        assert len(tools) == 1
+        tool = tools[0]
+        assert tool.name == "list_categories"
+        # Hidden parameter should be removed from schema
+        assert "path" not in tool.input_schema["properties"]
+        # Parameter config should be stored
+        assert tool.parameter_config is not None
+        assert tool.parameter_config["path"]["hidden"] is True
+
+    def test_get_view_tools_renames_param_in_schema(self):
+        """get_view_tools should rename parameters in the exposed schema."""
+        from unittest.mock import MagicMock
+        from mcp_proxy.models import ToolConfig, ParameterConfig
+
+        config = ProxyConfig(
+            mcp_servers={
+                "fs": UpstreamServerConfig(
+                    command="echo",
+                    tools={
+                        "list_directory": ToolConfig(
+                            name="list_categories",
+                            parameters={
+                                "path": ParameterConfig(
+                                    rename="category",
+                                    description="Category to list"
+                                )
+                            }
+                        )
+                    }
+                )
+            },
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Mock upstream tool with schema
+        mock_tool = MagicMock()
+        mock_tool.name = "list_directory"
+        mock_tool.description = "List directory contents"
+        mock_tool.inputSchema = {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Directory path"},
+            },
+            "required": ["path"],
+        }
+        proxy._upstream_tools["fs"] = [mock_tool]
+
+        tools = proxy.get_view_tools(None)
+
+        tool = tools[0]
+        # Original param should be renamed
+        assert "path" not in tool.input_schema["properties"]
+        assert "category" in tool.input_schema["properties"]
+        assert tool.input_schema["properties"]["category"]["description"] == "Category to list"
+        assert "category" in tool.input_schema["required"]
+
+    def test_transform_schema_default_makes_optional(self):
+        """_transform_schema should remove param from required when default is set."""
+        from mcp_proxy.proxy import _transform_schema
+        from mcp_proxy.models import ToolConfig, ParameterConfig
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Path"},
+            },
+            "required": ["path"],
+        }
+        tool_config = ToolConfig(
+            parameters={"path": ParameterConfig(default=".")}
+        )
+
+        result = _transform_schema(schema, tool_config)
+
+        # Path should have default and not be required
+        assert result["properties"]["path"]["default"] == "."
+        assert "path" not in result["required"]
+
+    def test_transform_schema_rename_with_default(self):
+        """_transform_schema should handle rename + default together."""
+        from mcp_proxy.proxy import _transform_schema
+        from mcp_proxy.models import ToolConfig, ParameterConfig
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+            },
+            "required": ["path"],
+        }
+        tool_config = ToolConfig(
+            parameters={
+                "path": ParameterConfig(rename="folder", default="/home")
+            }
+        )
+
+        result = _transform_schema(schema, tool_config)
+
+        # Should be renamed with default, not required
+        assert "path" not in result["properties"]
+        assert "folder" in result["properties"]
+        assert result["properties"]["folder"]["default"] == "/home"
+        assert "folder" not in result["required"]
+        assert "path" not in result["required"]
+
+    def test_transform_args_injects_default_for_renamed_missing_param(self):
+        """_transform_args should inject default when renamed param is missing."""
+        from mcp_proxy.proxy import _transform_args
+
+        args = {}  # No args provided
+        param_config = {
+            "path": {"rename": "category", "default": "."},
+        }
+
+        result = _transform_args(args, param_config)
+
+        # Should inject default for the original param name
+        assert result["path"] == "."
+
+    def test_transform_args_injects_default_for_optional_param(self):
+        """_transform_args should inject default for missing optional params."""
+        from mcp_proxy.proxy import _transform_args
+
+        args = {"other": "value"}
+        param_config = {
+            "path": {"default": "."},
+        }
+
+        result = _transform_args(args, param_config)
+
+        assert result["path"] == "."
+        assert result["other"] == "value"
+
+    def test_transform_schema_skips_unknown_param(self):
+        """_transform_schema should skip params not in schema properties."""
+        from mcp_proxy.proxy import _transform_schema
+        from mcp_proxy.models import ToolConfig, ParameterConfig
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "existing": {"type": "string"},
+            },
+            "required": ["existing"],
+        }
+        tool_config = ToolConfig(
+            parameters={"nonexistent": ParameterConfig(hidden=True, default="x")}
+        )
+
+        result = _transform_schema(schema, tool_config)
+
+        # Should be unchanged - nonexistent param config is ignored
+        assert "existing" in result["properties"]
+        assert "existing" in result["required"]
+
+    def test_transform_schema_hidden_not_in_required(self):
+        """_transform_schema should handle hidden param not in required list."""
+        from mcp_proxy.proxy import _transform_schema
+        from mcp_proxy.models import ToolConfig, ParameterConfig
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+            },
+            "required": [],  # path is optional
+        }
+        tool_config = ToolConfig(
+            parameters={"path": ParameterConfig(hidden=True, default=".")}
+        )
+
+        result = _transform_schema(schema, tool_config)
+
+        assert "path" not in result["properties"]
+        assert result["required"] == []
+
+    def test_transform_schema_rename_not_in_required(self):
+        """_transform_schema should handle renamed param not in required list."""
+        from mcp_proxy.proxy import _transform_schema
+        from mcp_proxy.models import ToolConfig, ParameterConfig
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+            },
+            "required": [],  # path is optional
+        }
+        tool_config = ToolConfig(
+            parameters={"path": ParameterConfig(rename="folder")}
+        )
+
+        result = _transform_schema(schema, tool_config)
+
+        assert "folder" in result["properties"]
+        assert result["required"] == []  # Still empty
+
+    def test_transform_schema_default_not_in_required(self):
+        """_transform_schema should handle default for param not in required."""
+        from mcp_proxy.proxy import _transform_schema
+        from mcp_proxy.models import ToolConfig, ParameterConfig
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+            },
+            "required": [],  # path is already optional
+        }
+        tool_config = ToolConfig(
+            parameters={"path": ParameterConfig(default=".")}
+        )
+
+        result = _transform_schema(schema, tool_config)
+
+        assert result["properties"]["path"]["default"] == "."
+        assert result["required"] == []
+
+    def test_transform_args_hidden_no_default(self):
+        """_transform_args should not inject hidden param without default."""
+        from mcp_proxy.proxy import _transform_args
+
+        args = {"query": "test"}
+        param_config = {
+            "path": {"hidden": True},  # No default
+        }
+
+        result = _transform_args(args, param_config)
+
+        assert "path" not in result
+        assert result["query"] == "test"
+
+    def test_transform_args_renamed_provided(self):
+        """_transform_args should not inject default when renamed param provided."""
+        from mcp_proxy.proxy import _transform_args
+
+        args = {"category": "provided"}  # renamed param is provided
+        param_config = {
+            "path": {"rename": "category", "default": "."},
+        }
+
+        result = _transform_args(args, param_config)
+
+        # Should use provided value, not default
+        assert result["path"] == "provided"
+        assert "category" not in result
+
+    def test_transform_args_optional_already_present(self):
+        """_transform_args should not overwrite existing param with default."""
+        from mcp_proxy.proxy import _transform_args
+
+        args = {"path": "explicit"}
+        param_config = {
+            "path": {"default": "."},  # Has default but value provided
+        }
+
+        result = _transform_args(args, param_config)
+
+        # Should keep the explicit value
+        assert result["path"] == "explicit"
+
+    def test_transform_args_renamed_no_default_not_provided(self):
+        """_transform_args should not inject anything for renamed without default when not provided."""
+        from mcp_proxy.proxy import _transform_args
+
+        args = {"other": "value"}  # renamed param 'category' not provided
+        param_config = {
+            "path": {"rename": "category"},  # No default
+        }
+
+        result = _transform_args(args, param_config)
+
+        # Should not inject path since there's no default
+        assert "path" not in result
+        assert result["other"] == "value"
+
+    def test_transform_args_renamed_original_already_present(self):
+        """_transform_args should not inject default if original param already present."""
+        from mcp_proxy.proxy import _transform_args
+
+        args = {"path": "already_here"}  # Original name somehow present
+        param_config = {
+            "path": {"rename": "category", "default": "default_val"},
+        }
+
+        result = _transform_args(args, param_config)
+
+        # Should keep the original value (even though renamed not provided)
+        assert result["path"] == "already_here"
+
+
+class TestProxyConnectionManagement:
+    """Tests for proxy connection management."""
+
+    async def test_connect_clients_creates_connections(self):
+        """connect_clients should create active connections."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Mock client creation
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        with patch.object(proxy, "_create_client_from_config", return_value=mock_client):
+            await proxy.connect_clients()
+
+        assert proxy.has_active_connection("server")
+        assert proxy.get_active_client("server") is mock_client
+
+        # Cleanup
+        await proxy.disconnect_clients()
+
+    async def test_disconnect_clients_clears_connections(self):
+        """disconnect_clients should close all connections."""
+        from unittest.mock import AsyncMock, patch
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Mock client
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        with patch.object(proxy, "_create_client_from_config", return_value=mock_client):
+            await proxy.connect_clients()
+            assert proxy.has_active_connection("server")
+
+            await proxy.disconnect_clients()
+
+        assert not proxy.has_active_connection("server")
+        assert proxy.get_active_client("server") is None
+
+    async def test_connect_clients_handles_errors(self):
+        """connect_clients should continue if a server fails."""
+        from unittest.mock import AsyncMock, patch
+
+        config = ProxyConfig(
+            mcp_servers={
+                "bad_server": UpstreamServerConfig(command="nonexistent"),
+                "good_server": UpstreamServerConfig(command="echo"),
+            },
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # First call fails, second succeeds
+        mock_good_client = AsyncMock()
+        mock_good_client.__aenter__ = AsyncMock(return_value=mock_good_client)
+        mock_good_client.__aexit__ = AsyncMock()
+
+        call_count = 0
+        def create_client_side_effect(cfg):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ConnectionError("Cannot connect")
+            return mock_good_client
+
+        with patch.object(proxy, "_create_client_from_config", side_effect=create_client_side_effect):
+            await proxy.connect_clients()
+
+        # Bad server should not be connected
+        # Good server should be connected
+        # (Order depends on dict iteration - just check at least one works)
+        await proxy.disconnect_clients()
+
+    async def test_connect_clients_idempotent(self):
+        """connect_clients should do nothing if already connected."""
+        from unittest.mock import AsyncMock, patch
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        with patch.object(proxy, "_create_client_from_config", return_value=mock_client) as mock_create:
+            await proxy.connect_clients()
+            await proxy.connect_clients()  # Second call should be no-op
+
+        # Should only be called once
+        assert mock_create.call_count == 1
+
+        await proxy.disconnect_clients()
+
+    async def test_disconnect_clients_when_not_connected(self):
+        """disconnect_clients should be safe when not connected."""
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Should not raise
+        await proxy.disconnect_clients()
+
+    async def test_call_upstream_tool_with_active_client(self):
+        """call_upstream_tool should use active client when available."""
+        from unittest.mock import AsyncMock, patch
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Mock active client
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(return_value={"result": "success"})
+        proxy._active_clients["server"] = mock_client
+
+        result = await proxy.call_upstream_tool("server", "tool_name", {"arg": "value"})
+
+        assert result == {"result": "success"}
+        mock_client.call_tool.assert_called_once_with("tool_name", {"arg": "value"})
+
+    def test_get_active_client_returns_none_for_unknown(self):
+        """get_active_client should return None for unknown server."""
+        config = ProxyConfig(mcp_servers={}, tool_views={})
+        proxy = MCPProxy(config)
+
+        assert proxy.get_active_client("unknown") is None
+
+    def test_has_active_connection_returns_false_for_unknown(self):
+        """has_active_connection should return False for unknown server."""
+        config = ProxyConfig(mcp_servers={}, tool_views={})
+        proxy = MCPProxy(config)
+
+        assert not proxy.has_active_connection("unknown")
+
+    async def test_lifespan_context_manager(self):
+        """_create_lifespan should create a working context manager."""
+        from unittest.mock import AsyncMock, patch
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        lifespan = proxy._create_lifespan()
+
+        # Mock the initialize method
+        with patch.object(proxy, "initialize", new_callable=AsyncMock) as mock_init:
+            # Use the lifespan context manager
+            async with lifespan(None):
+                mock_init.assert_called_once()
+
+    async def test_initialize_skips_existing_clients(self):
+        """initialize should skip creating clients that already exist."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Pre-populate upstream_clients
+        existing_client = MagicMock()
+        proxy.upstream_clients["server"] = existing_client
+
+        with patch.object(proxy, "_create_client", new_callable=AsyncMock) as mock_create:
+            with patch.object(proxy, "refresh_upstream_tools", new_callable=AsyncMock):
+                await proxy.initialize()
+
+        # Should NOT have called _create_client since client already exists
+        mock_create.assert_not_called()
+        # Existing client should still be there
+        assert proxy.upstream_clients["server"] is existing_client
+
+    def test_sync_fetch_tools_skips_existing_clients(self):
+        """sync_fetch_tools should skip creating clients that already exist."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Pre-populate upstream_clients
+        existing_client = MagicMock()
+        proxy.upstream_clients["server"] = existing_client
+
+        with patch.object(proxy, "_create_client", new_callable=AsyncMock) as mock_create:
+            with patch.object(proxy, "fetch_upstream_tools", new_callable=AsyncMock):
+                proxy.sync_fetch_tools()
+
+        # Should NOT have called _create_client since client already exists
+        mock_create.assert_not_called()

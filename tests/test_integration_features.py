@@ -120,6 +120,8 @@ class TestUpstreamConnections:
     @pytest.mark.asyncio
     async def test_tool_call_routes_to_upstream(self):
         """Tool calls should route to the actual upstream server."""
+        from unittest.mock import patch
+
         config = ProxyConfig(
             mcp_servers={
                 "test": UpstreamServerConfig(
@@ -133,14 +135,17 @@ class TestUpstreamConnections:
 
         # Mock upstream client
         mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
         mock_client.call_tool.return_value = {"result": "from_upstream"}
-        proxy.upstream_clients = {"test": mock_client}
 
-        # Call should go to upstream
-        result = await proxy.call_upstream_tool("test", "my_tool", {"arg": "value"})
+        # Mock _create_client_from_config to return our mock client
+        with patch.object(proxy, '_create_client_from_config', return_value=mock_client):
+            # Call should go to upstream
+            result = await proxy.call_upstream_tool("test", "my_tool", {"arg": "value"})
 
-        assert result == {"result": "from_upstream"}
-        mock_client.call_tool.assert_called_once_with("my_tool", {"arg": "value"})
+            assert result == {"result": "from_upstream"}
+            mock_client.call_tool.assert_called_once_with("my_tool", {"arg": "value"})
 
     @pytest.mark.asyncio
     async def test_env_vars_expanded_in_server_config(self):

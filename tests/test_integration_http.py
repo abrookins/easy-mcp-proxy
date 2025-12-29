@@ -370,26 +370,35 @@ class TestStdioServerIntegration:
         assert tools[0].description == "Search code in repos"
 
     @pytest.mark.asyncio
-    async def test_tool_requires_upstream_connection(self):
-        """Tools require upstream connections to execute."""
+    async def test_tool_requires_configured_server(self):
+        """Tools require server to be configured to execute."""
         from fastmcp.exceptions import ToolError
 
+        # Create config with no servers
         config = ProxyConfig(
-            mcp_servers={
-                "test": UpstreamServerConfig(
-                    command="echo",
-                    tools={
-                        "my_tool": {"description": "My tool"}
-                    }
-                )
-            },
+            mcp_servers={},
             tool_views={}
         )
         proxy = MCPProxy(config)
 
-        # Call the tool without initializing upstream - should error
-        async with Client(proxy.server) as client:
-            with pytest.raises(ToolError, match="not connected"):
+        # Manually register a tool that references a non-existent server
+        from mcp_proxy.proxy import ToolInfo
+        from fastmcp import FastMCP
+
+        tools = [
+            ToolInfo(
+                name="my_tool",
+                description="My tool",
+                server="nonexistent",
+                original_name="my_tool"
+            )
+        ]
+        test_mcp = FastMCP(name="test")
+        proxy._register_tools_on_mcp(test_mcp, tools)
+
+        # Call the tool - should error because server is not configured
+        async with Client(test_mcp) as client:
+            with pytest.raises(ToolError, match="not configured"):
                 await client.call_tool("my_tool", {})
 
 

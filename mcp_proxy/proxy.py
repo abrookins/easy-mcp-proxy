@@ -1,6 +1,6 @@
 """Main MCP Proxy class."""
 
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any, Callable
 
 from fastmcp import Client, FastMCP
@@ -51,6 +51,116 @@ def _create_tool_with_schema(
     )
 
 
+def _transform_schema(
+    schema: dict[str, Any] | None,
+    tool_config: ToolConfig | None,
+) -> dict[str, Any] | None:
+    """Transform an input schema based on parameter configuration.
+
+    Handles:
+    - Hiding parameters (removes from schema)
+    - Renaming parameters (changes property name)
+    - Overriding parameter descriptions
+    - Setting default values (makes parameter optional)
+
+    Args:
+        schema: Original JSON Schema for tool inputs
+        tool_config: Tool configuration with parameter overrides
+
+    Returns:
+        Transformed schema, or original if no changes needed
+    """
+    if schema is None or tool_config is None or not tool_config.parameters:
+        return schema
+
+    # Deep copy to avoid mutating the original
+    import copy
+    new_schema = copy.deepcopy(schema)
+
+    properties = new_schema.get("properties", {})
+    required = new_schema.get("required", [])
+
+    for param_name, param_config in tool_config.parameters.items():
+        if param_name not in properties:
+            continue
+
+        if param_config.hidden:
+            # Remove hidden parameter from schema
+            del properties[param_name]
+            if param_name in required:
+                required.remove(param_name)
+        elif param_config.rename:
+            # Rename the parameter
+            prop_value = properties.pop(param_name)
+            if param_config.description:
+                prop_value["description"] = param_config.description
+            if param_config.default is not None:
+                prop_value["default"] = param_config.default
+            properties[param_config.rename] = prop_value
+            if param_name in required:
+                required.remove(param_name)
+                # If there's a default, don't add to required
+                if param_config.default is None:
+                    required.append(param_config.rename)
+        else:
+            # Update description and/or default without renaming
+            if param_config.description:
+                properties[param_name]["description"] = param_config.description
+            if param_config.default is not None:
+                properties[param_name]["default"] = param_config.default
+                # Remove from required if we have a default
+                if param_name in required:
+                    required.remove(param_name)
+
+    new_schema["properties"] = properties
+    new_schema["required"] = required
+
+    return new_schema
+
+
+def _transform_args(
+    args: dict[str, Any],
+    parameter_config: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Transform arguments based on parameter configuration.
+
+    Handles:
+    - Injecting default values for hidden parameters
+    - Injecting default values for missing optional parameters
+    - Mapping renamed parameters back to original names
+
+    Args:
+        args: Arguments as passed by the caller (using exposed param names)
+        parameter_config: Dict mapping original param names to their config
+
+    Returns:
+        Transformed arguments ready for the upstream tool
+    """
+    if parameter_config is None:
+        return args
+
+    new_args = dict(args)
+
+    for param_name, config in parameter_config.items():
+        if config.get("hidden"):
+            # Inject default value for hidden parameter
+            if config.get("default") is not None:
+                new_args[param_name] = config["default"]
+        elif config.get("rename"):
+            # Map renamed parameter back to original name
+            renamed = config["rename"]
+            if renamed in new_args:
+                new_args[param_name] = new_args.pop(renamed)
+            elif config.get("default") is not None and param_name not in new_args:
+                # Inject default if renamed param not provided
+                new_args[param_name] = config["default"]
+        elif config.get("default") is not None and param_name not in new_args:
+            # Inject default for non-renamed optional param
+            new_args[param_name] = config["default"]
+
+    return new_args
+
+
 class ToolInfo:
     """Simple class to hold tool information."""
 
@@ -61,6 +171,7 @@ class ToolInfo:
         server: str = "",
         input_schema: dict[str, Any] | None = None,
         original_name: str | None = None,
+        parameter_config: dict[str, Any] | None = None,
     ):
         self.name = name
         self.description = description
@@ -68,6 +179,8 @@ class ToolInfo:
         self.input_schema = input_schema
         # original_name is the upstream tool name if this tool was aliased
         self.original_name = original_name if original_name else name
+        # parameter_config stores the ParameterConfig for each param (for arg transformation)
+        self.parameter_config = parameter_config
 
     def __repr__(self) -> str:
         return f"ToolInfo(name={self.name!r}, server={self.server!r})"
@@ -82,6 +195,8 @@ class MCPProxy:
         self.upstream_clients: dict[str, Client] = {}
         self._upstream_tools: dict[str, list[Any]] = {}  # Cached tools from upstreams
         self._initialized = False
+        self._active_clients: dict[str, Client] = {}  # Clients with active connections
+        self._exit_stack: AsyncExitStack | None = None  # Manages client lifecycles
 
         self.server = FastMCP("MCP Tool View Proxy")
 
@@ -172,23 +287,85 @@ class MCPProxy:
         """Initialize upstream connections.
 
         Creates MCP clients for all configured servers and fetches
-        their tool lists.
+        their tool lists. Does NOT establish persistent connections -
+        use connect_clients() for that.
         """
         if self._initialized:
             return
 
         for server_name in self.config.mcp_servers:
-            client = await self._create_client(server_name)
-            self.upstream_clients[server_name] = client
+            if server_name not in self.upstream_clients:
+                client = await self._create_client(server_name)
+                self.upstream_clients[server_name] = client
 
         # Fetch tools from all upstream servers to populate schemas
         await self.refresh_upstream_tools()
 
         # Initialize views with upstream clients
+        # Views will use get_active_client() for tool calls
         for view in self.views.values():
-            await view.initialize(self.upstream_clients)
+            await view.initialize(self.upstream_clients, get_client=self.get_active_client)
 
         self._initialized = True
+
+    async def connect_clients(self) -> None:
+        """Establish persistent connections to all upstream servers.
+
+        This enters the async context for each client, keeping the connections
+        (and stdio subprocesses) alive until disconnect_clients() is called.
+        Should be called during server lifespan startup.
+        """
+        if self._exit_stack is not None:
+            return  # Already connected
+
+        self._exit_stack = AsyncExitStack()
+        await self._exit_stack.__aenter__()
+
+        for server_name in self.config.mcp_servers:
+            try:
+                # Create a fresh client for the persistent connection
+                client = self._create_client_from_config(
+                    self.config.mcp_servers[server_name]
+                )
+                # Enter the client context - this starts the connection/subprocess
+                await self._exit_stack.enter_async_context(client)
+                self._active_clients[server_name] = client
+            except Exception:
+                # Log but continue - some servers may be unavailable
+                pass
+
+    async def disconnect_clients(self) -> None:
+        """Close all persistent client connections.
+
+        This exits the async context for all clients, terminating
+        stdio subprocesses. Should be called during server lifespan shutdown.
+        """
+        if self._exit_stack is not None:
+            await self._exit_stack.__aexit__(None, None, None)
+            self._exit_stack = None
+            self._active_clients.clear()
+
+    def get_active_client(self, server_name: str) -> Client | None:
+        """Get an active (connected) client for a server.
+
+        Args:
+            server_name: Name of the server
+
+        Returns:
+            Connected client if available, None otherwise
+        """
+        return self._active_clients.get(server_name)
+
+    def has_active_connection(self, server_name: str) -> bool:
+        """Check if there's an active connection to a server.
+
+        Args:
+            server_name: Name of the server
+
+        Returns:
+            True if an active connection exists
+        """
+        return server_name in self._active_clients
 
     async def fetch_upstream_tools(self, server_name: str) -> list[Any]:
         """Fetch tools from an upstream server.
@@ -221,10 +398,16 @@ class MCPProxy:
         Returns:
             Result from the upstream tool
         """
-        if server_name not in self.upstream_clients:
+        if server_name not in self.config.mcp_servers:
             raise ValueError(f"No client for server '{server_name}'")
 
-        client = self.upstream_clients[server_name]
+        # Use active client if available (connection pooling)
+        active_client = self._active_clients.get(server_name)
+        if active_client:
+            return await active_client.call_tool(tool_name, args)
+
+        # Fall back to creating a fresh client for each call
+        client = self._create_client_from_config(self.config.mcp_servers[server_name])
         async with client:
             return await client.call_tool(tool_name, args)
 
@@ -329,6 +512,13 @@ class MCPProxy:
                         tool_schema = getattr(upstream_tool, "inputSchema", None) if upstream_tool else None
                         upstream_desc = getattr(upstream_tool, "description", "") if upstream_tool else ""
 
+                        # Transform schema based on parameter config
+                        transformed_schema = _transform_schema(tool_schema, tool_config)
+                        param_config = (
+                            {k: v.model_dump() for k, v in tool_config.parameters.items()}
+                            if tool_config.parameters else None
+                        )
+
                         # Handle aliases: if aliases defined, create multiple tools
                         if tool_config.aliases:
                             for alias in tool_config.aliases:
@@ -336,8 +526,9 @@ class MCPProxy:
                                     name=alias.name,
                                     description=alias.description or upstream_desc,
                                     server=server_name,
-                                    input_schema=tool_schema,
+                                    input_schema=transformed_schema,
                                     original_name=tool_name,
+                                    parameter_config=param_config,
                                 ))
                         else:
                             # Single tool (possibly renamed)
@@ -347,8 +538,9 @@ class MCPProxy:
                                 name=exposed_name,
                                 description=description,
                                 server=server_name,
-                                input_schema=tool_schema,
+                                input_schema=transformed_schema,
                                 original_name=tool_name,
+                                parameter_config=param_config,
                             ))
                 else:
                     # No tools config - include ALL tools from upstream
@@ -390,6 +582,16 @@ class MCPProxy:
                         if server_name in view_config.tools:
                             view_override = view_config.tools[server_name].get(tool_name)
 
+                        # Get effective tool_config for parameter transformation
+                        effective_config = view_override or (
+                            server_config.tools.get(tool_name) if server_config.tools else None
+                        )
+                        transformed_schema = _transform_schema(tool_schema, effective_config)
+                        param_config = (
+                            {k: v.model_dump() for k, v in effective_config.parameters.items()}
+                            if effective_config and effective_config.parameters else None
+                        )
+
                         if view_override and view_override.aliases:
                             # Handle aliases from view override
                             for alias in view_override.aliases:
@@ -397,8 +599,9 @@ class MCPProxy:
                                     name=alias.name,
                                     description=alias.description or tool_description,
                                     server=server_name,
-                                    input_schema=tool_schema,
+                                    input_schema=transformed_schema,
                                     original_name=tool_name,
+                                    parameter_config=param_config,
                                 ))
                         elif view_override:
                             exposed_name = view_override.name or tool_name
@@ -407,16 +610,18 @@ class MCPProxy:
                                 name=exposed_name,
                                 description=description,
                                 server=server_name,
-                                input_schema=tool_schema,
+                                input_schema=transformed_schema,
                                 original_name=tool_name,
+                                parameter_config=param_config,
                             ))
                         else:
                             tools.append(ToolInfo(
                                 name=tool_name,
                                 description=tool_description,
                                 server=server_name,
-                                input_schema=tool_schema,
+                                input_schema=transformed_schema,
                                 original_name=tool_name,
+                                parameter_config=param_config,
                             ))
                 elif server_config.tools:
                     # Fall back to config-defined tools if upstream not fetched
@@ -427,6 +632,11 @@ class MCPProxy:
 
                         # Determine effective config (view override takes precedence)
                         effective_config = view_override or tool_config
+                        transformed_schema = _transform_schema(None, effective_config)
+                        param_config = (
+                            {k: v.model_dump() for k, v in effective_config.parameters.items()}
+                            if effective_config.parameters else None
+                        )
 
                         # Handle aliases
                         if effective_config.aliases:
@@ -436,6 +646,8 @@ class MCPProxy:
                                     description=alias.description or "",
                                     server=server_name,
                                     original_name=tool_name,
+                                    input_schema=transformed_schema,
+                                    parameter_config=param_config,
                                 ))
                         else:
                             exposed_name = effective_config.name or tool_name
@@ -445,6 +657,8 @@ class MCPProxy:
                                 description=description,
                                 server=server_name,
                                 original_name=tool_name,
+                                input_schema=transformed_schema,
+                                parameter_config=param_config,
                             ))
         else:
             # Only include explicitly listed tools
@@ -463,6 +677,13 @@ class MCPProxy:
                         tool_schema = None
                         upstream_desc = ""
 
+                    # Transform schema based on parameter config
+                    transformed_schema = _transform_schema(tool_schema, tool_config)
+                    param_config = (
+                        {k: v.model_dump() for k, v in tool_config.parameters.items()}
+                        if tool_config.parameters else None
+                    )
+
                     # Handle aliases
                     if tool_config.aliases:
                         for alias in tool_config.aliases:
@@ -470,8 +691,9 @@ class MCPProxy:
                                 name=alias.name,
                                 description=alias.description or upstream_desc,
                                 server=server_name,
-                                input_schema=tool_schema,
+                                input_schema=transformed_schema,
                                 original_name=tool_name,
+                                parameter_config=param_config,
                             ))
                     else:
                         exposed_name = tool_config.name if tool_config.name else tool_name
@@ -480,8 +702,9 @@ class MCPProxy:
                             name=exposed_name,
                             description=description,
                             server=server_name,
-                            input_schema=tool_schema,
+                            input_schema=transformed_schema,
                             original_name=tool_name,
+                            parameter_config=param_config,
                         ))
 
         # Add composite tools
@@ -602,6 +825,7 @@ class MCPProxy:
             _tool_desc = tool_info.description or f"Tool: {_tool_name}"
             _input_schema = tool_info.input_schema
             _tool_original_name = tool_info.original_name
+            _param_config = tool_info.parameter_config
 
             if view and _tool_name in view.custom_tools:
                 # Register actual custom tool
@@ -635,15 +859,16 @@ class MCPProxy:
                     # Create wrapper that takes **kwargs for use with custom schema
 
                     def make_upstream_wrapper_kwargs(
-                        v: ToolView, name: str
+                        v: ToolView, name: str, param_cfg: dict[str, Any] | None
                     ) -> Callable[..., Any]:
                         async def upstream_wrapper(**kwargs: Any) -> Any:
                             """Call upstream tool with arguments."""
-                            return await v.call_tool(name, kwargs)
+                            transformed = _transform_args(kwargs, param_cfg)
+                            return await v.call_tool(name, transformed)
 
                         return upstream_wrapper
 
-                    wrapper = make_upstream_wrapper_kwargs(view, _tool_name)
+                    wrapper = make_upstream_wrapper_kwargs(view, _tool_name, _param_config)
                     tool = _create_tool_with_schema(
                         name=_tool_name,
                         description=_tool_desc,
@@ -655,15 +880,16 @@ class MCPProxy:
                     # Fall back to generic registration with dict argument
 
                     def make_upstream_wrapper_dict(
-                        v: ToolView, name: str
+                        v: ToolView, name: str, param_cfg: dict[str, Any] | None
                     ) -> Callable[..., Any]:
                         async def upstream_wrapper(arguments: dict | None = None) -> Any:
                             """Call upstream tool with arguments."""
-                            return await v.call_tool(name, arguments or {})
+                            transformed = _transform_args(arguments or {}, param_cfg)
+                            return await v.call_tool(name, transformed)
 
                         return upstream_wrapper
 
-                    wrapper = make_upstream_wrapper_dict(view, _tool_name)
+                    wrapper = make_upstream_wrapper_dict(view, _tool_name, _param_config)
                     wrapper.__name__ = _tool_name
                     wrapper.__doc__ = _tool_desc
                     mcp.tool(name=_tool_name, description=_tool_desc)(wrapper)
@@ -673,20 +899,33 @@ class MCPProxy:
                     # Create wrapper that takes **kwargs for use with custom schema
 
                     def make_direct_wrapper_kwargs(
-                        proxy: "MCPProxy", original_name: str, server: str
+                        proxy: "MCPProxy",
+                        original_name: str,
+                        server: str,
+                        param_cfg: dict[str, Any] | None,
                     ) -> Callable[..., Any]:
                         async def direct_wrapper(**kwargs: Any) -> Any:
                             """Call upstream tool directly via proxy."""
-                            if server not in proxy.upstream_clients:
-                                raise ValueError(f"Server '{server}' not connected")
-                            client = proxy.upstream_clients[server]
+                            if server not in proxy.config.mcp_servers:
+                                raise ValueError(f"Server '{server}' not configured")
+                            transformed = _transform_args(kwargs, param_cfg)
+                            # Use active client if available (connection pooling)
+                            active_client = proxy._active_clients.get(server)
+                            if active_client:
+                                return await active_client.call_tool(
+                                    original_name, transformed
+                                )
+                            # Fall back to creating a fresh client
+                            client = proxy._create_client_from_config(
+                                proxy.config.mcp_servers[server]
+                            )
                             async with client:
-                                return await client.call_tool(original_name, kwargs)
+                                return await client.call_tool(original_name, transformed)
 
                         return direct_wrapper
 
                     wrapper = make_direct_wrapper_kwargs(
-                        self, _tool_original_name, _tool_server
+                        self, _tool_original_name, _tool_server, _param_config
                     )
                     tool = _create_tool_with_schema(
                         name=_tool_name,
@@ -699,22 +938,33 @@ class MCPProxy:
                     # Fall back to generic registration with dict argument
 
                     def make_direct_wrapper_dict(
-                        proxy: "MCPProxy", original_name: str, server: str
+                        proxy: "MCPProxy",
+                        original_name: str,
+                        server: str,
+                        param_cfg: dict[str, Any] | None,
                     ) -> Callable[..., Any]:
                         async def direct_wrapper(arguments: dict | None = None) -> Any:
                             """Call upstream tool directly via proxy."""
-                            if server not in proxy.upstream_clients:
-                                raise ValueError(f"Server '{server}' not connected")
-                            client = proxy.upstream_clients[server]
-                            async with client:
-                                return await client.call_tool(
-                                    original_name, arguments or {}
+                            if server not in proxy.config.mcp_servers:
+                                raise ValueError(f"Server '{server}' not configured")
+                            transformed = _transform_args(arguments or {}, param_cfg)
+                            # Use active client if available (connection pooling)
+                            active_client = proxy._active_clients.get(server)
+                            if active_client:
+                                return await active_client.call_tool(
+                                    original_name, transformed
                                 )
+                            # Fall back to creating a fresh client
+                            client = proxy._create_client_from_config(
+                                proxy.config.mcp_servers[server]
+                            )
+                            async with client:
+                                return await client.call_tool(original_name, transformed)
 
                         return direct_wrapper
 
                     wrapper = make_direct_wrapper_dict(
-                        self, _tool_original_name, _tool_server
+                        self, _tool_original_name, _tool_server, _param_config
                     )
                     wrapper.__name__ = _tool_name
                     wrapper.__doc__ = _tool_desc
@@ -767,11 +1017,18 @@ class MCPProxy:
         # Create combined lifespan that handles all MCP apps
         @asynccontextmanager
         async def combined_lifespan(app: Starlette):  # pragma: no cover
-            # Initialize upstream connections
+            # Initialize upstream connections (creates clients, fetches tool schemas)
             await self.initialize()
-            # Use the default MCP app's lifespan for session management
-            async with default_mcp_app.lifespan(default_mcp_app):
-                yield
+            # Establish persistent connections to upstream servers
+            # This keeps stdio subprocesses alive for the lifetime of the server
+            await self.connect_clients()
+            try:
+                # Use the default MCP app's lifespan for session management
+                async with default_mcp_app.lifespan(default_mcp_app):
+                    yield
+            finally:
+                # Clean up persistent connections on shutdown
+                await self.disconnect_clients()
 
         # Build routes - order matters: more specific routes first
         routes: list[Route | Mount] = []
