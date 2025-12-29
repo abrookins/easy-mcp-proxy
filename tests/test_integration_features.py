@@ -137,7 +137,7 @@ class TestUpstreamConnections:
 
         # Mock _create_client_from_config to return our mock client
         with patch.object(
-            proxy, "_create_client_from_config", return_value=mock_client
+            proxy._client_manager, "create_client_from_config", return_value=mock_client
         ):
             # Call should go to upstream
             result = await proxy.call_upstream_tool("test", "my_tool", {"arg": "value"})

@@ -515,7 +515,7 @@ class TestMCPProxyErrorHandling:
         mock_transport_instance = MagicMock(spec=StdioTransport)
 
         with patch(
-            "mcp_proxy.proxy.StdioTransport", return_value=mock_transport_instance
+            "mcp_proxy.proxy.client.StdioTransport", return_value=mock_transport_instance
         ) as mock_transport_class:
             proxy._create_client_from_config(config.mcp_servers["fs"])
 
@@ -543,7 +543,7 @@ class TestMCPProxyErrorHandling:
         mock_transport_instance = MagicMock(spec=StdioTransport)
 
         with patch(
-            "mcp_proxy.proxy.StdioTransport", return_value=mock_transport_instance
+            "mcp_proxy.proxy.client.StdioTransport", return_value=mock_transport_instance
         ) as mock_transport_class:
             proxy._create_client_from_config(config.mcp_servers["fs"])
 
@@ -2270,7 +2270,7 @@ class TestProxyConnectionManagement:
         mock_client.__aexit__ = AsyncMock()
 
         with patch.object(
-            proxy, "_create_client_from_config", return_value=mock_client
+            proxy._client_manager, "create_client_from_config", return_value=mock_client
         ):
             await proxy.connect_clients()
 
@@ -2296,7 +2296,7 @@ class TestProxyConnectionManagement:
         mock_client.__aexit__ = AsyncMock()
 
         with patch.object(
-            proxy, "_create_client_from_config", return_value=mock_client
+            proxy._client_manager, "create_client_from_config", return_value=mock_client
         ):
             await proxy.connect_clients()
             assert proxy.has_active_connection("server")
@@ -2334,7 +2334,7 @@ class TestProxyConnectionManagement:
             return mock_good_client
 
         with patch.object(
-            proxy, "_create_client_from_config", side_effect=create_client_side_effect
+            proxy._client_manager, "create_client_from_config", side_effect=create_client_side_effect
         ):
             await proxy.connect_clients()
 
@@ -2358,7 +2358,7 @@ class TestProxyConnectionManagement:
         mock_client.__aexit__ = AsyncMock()
 
         with patch.object(
-            proxy, "_create_client_from_config", return_value=mock_client
+            proxy._client_manager, "create_client_from_config", return_value=mock_client
         ) as mock_create:
             await proxy.connect_clients()
             await proxy.connect_clients()  # Second call should be no-op
