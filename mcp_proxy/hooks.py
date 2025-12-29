@@ -43,4 +43,3 @@ async def execute_post_call(
 ) -> HookResult:
     """Execute a post-call hook."""
     return await hook(result, args, context)
-

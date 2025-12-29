@@ -26,9 +26,7 @@ class SearchTool:
             "required": ["query"],
         }
 
-    async def __call__(
-        self, query: str, limit: int | None = None
-    ) -> dict[str, Any]:
+    async def __call__(self, query: str, limit: int | None = None) -> dict[str, Any]:
         """Search for tools matching the query."""
         query_lower = query.lower()
 
@@ -63,4 +61,3 @@ class ToolSearcher:
             view_name=self.view_name,
             tools=self.tools,
         )
-

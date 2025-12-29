@@ -14,19 +14,17 @@ class TestParallelToolConfig:
 
         config = {
             "description": "Search all sources",
-            "inputs": {
-                "query": {"type": "string", "required": True}
-            },
+            "inputs": {"query": {"type": "string", "required": True}},
             "parallel": {
                 "memory": {
                     "tool": "redis.search_long_term_memory",
-                    "args": {"text": "{inputs.query}"}
+                    "args": {"text": "{inputs.query}"},
                 },
                 "code": {
                     "tool": "github.search_code",
-                    "args": {"query": "{inputs.query}"}
-                }
-            }
+                    "args": {"query": "{inputs.query}"},
+                },
+            },
         }
 
         parallel_tool = ParallelTool.from_config("search_all", config)
@@ -42,9 +40,9 @@ class TestParallelToolConfig:
         config = {
             "inputs": {
                 "query": {"type": "string", "required": True},
-                "limit": {"type": "integer", "required": False}
+                "limit": {"type": "integer", "required": False},
             },
-            "parallel": {}
+            "parallel": {},
         }
 
         parallel_tool = ParallelTool.from_config("test", config)
@@ -76,7 +74,7 @@ class TestParallelToolExecution:
                 "a": {"tool": "server.tool_a", "args": {"q": "{inputs.query}"}},
                 "b": {"tool": "server.tool_b", "args": {"q": "{inputs.query}"}},
                 "c": {"tool": "server.tool_c", "args": {"q": "{inputs.query}"}},
-            }
+            },
         }
 
         parallel_tool = ParallelTool.from_config("test", config)
@@ -104,7 +102,7 @@ class TestParallelToolExecution:
             "parallel": {
                 "memory": {"tool": "redis.search", "args": {}},
                 "code": {"tool": "github.search", "args": {}},
-            }
+            },
         }
 
         parallel_tool = ParallelTool.from_config("test", config)
@@ -130,12 +128,9 @@ class TestParallelToolExecution:
             "parallel": {
                 "a": {
                     "tool": "server.tool",
-                    "args": {
-                        "text": "{inputs.query}",
-                        "max_results": "{inputs.limit}"
-                    }
+                    "args": {"text": "{inputs.query}", "max_results": "{inputs.limit}"},
                 }
-            }
+            },
         }
 
         parallel_tool = ParallelTool.from_config("test", config)
@@ -164,7 +159,7 @@ class TestParallelToolErrorHandling:
             "parallel": {
                 "good": {"tool": "server.good", "args": {}},
                 "bad": {"tool": "server.fail", "args": {}},
-            }
+            },
         }
 
         parallel_tool = ParallelTool.from_config("test", config)
@@ -183,7 +178,7 @@ class TestParallelToolErrorHandling:
             "inputs": {},
             "parallel": {
                 "a": {"tool": "server.tool", "args": {}},
-            }
+            },
         }
 
         parallel_tool = ParallelTool.from_config("test", config)
@@ -210,10 +205,10 @@ class TestParallelToolErrorHandling:
                     "args": {
                         "text": "static value",  # Not a template
                         "count": 42,  # Not a string
-                        "query": "{inputs.query}"  # Template
-                    }
+                        "query": "{inputs.query}",  # Template
+                    },
                 }
-            }
+            },
         }
 
         parallel_tool = ParallelTool.from_config("test", config)
@@ -224,4 +219,3 @@ class TestParallelToolErrorHandling:
         assert captured_args["server.tool"]["text"] == "static value"
         assert captured_args["server.tool"]["count"] == 42
         assert captured_args["server.tool"]["query"] == "test"
-

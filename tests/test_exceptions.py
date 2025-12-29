@@ -26,10 +26,7 @@ class TestToolCallAborted:
     def test_tool_call_aborted_with_context(self):
         """ToolCallAborted can include tool context."""
         exc = ToolCallAborted(
-            reason="Unauthorized",
-            tool_name="search_memory",
-            view_name="redis-expert"
+            reason="Unauthorized", tool_name="search_memory", view_name="redis-expert"
         )
         assert exc.tool_name == "search_memory"
         assert exc.view_name == "redis-expert"
-

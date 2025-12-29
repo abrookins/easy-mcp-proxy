@@ -58,12 +58,18 @@ class ParallelTool:
 
     def _resolve_template(self, value: Any, inputs: dict[str, Any]) -> Any:
         """Resolve {inputs.X} templates in a value."""
-        if isinstance(value, str) and value.startswith("{inputs.") and value.endswith("}"):
+        if (
+            isinstance(value, str)
+            and value.startswith("{inputs.")
+            and value.endswith("}")
+        ):
             input_name = value[8:-1]  # Extract name from {inputs.X}
             return inputs.get(input_name, value)
         return value
 
-    def _resolve_args(self, args: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any]:
+    def _resolve_args(
+        self, args: dict[str, Any], inputs: dict[str, Any]
+    ) -> dict[str, Any]:
         """Resolve all templates in args dict."""
         return {k: self._resolve_template(v, inputs) for k, v in args.items()}
 
@@ -86,4 +92,3 @@ class ParallelTool:
         results = await asyncio.gather(*tasks)
 
         return dict(results)
-

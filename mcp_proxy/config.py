@@ -41,19 +41,16 @@ def validate_config(config: ProxyConfig) -> list[str]:
             if view_config.hooks.pre_call:
                 try:
                     from mcp_proxy.hooks import load_hook
+
                     load_hook(view_config.hooks.pre_call)
                 except (ImportError, AttributeError) as e:
-                    errors.append(
-                        f"View '{view_name}' has invalid pre_call hook: {e}"
-                    )
+                    errors.append(f"View '{view_name}' has invalid pre_call hook: {e}")
             if view_config.hooks.post_call:
                 try:
                     from mcp_proxy.hooks import load_hook
+
                     load_hook(view_config.hooks.post_call)
                 except (ImportError, AttributeError) as e:
-                    errors.append(
-                        f"View '{view_name}' has invalid post_call hook: {e}"
-                    )
+                    errors.append(f"View '{view_name}' has invalid post_call hook: {e}")
 
     return errors
-

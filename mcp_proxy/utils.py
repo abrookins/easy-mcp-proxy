@@ -38,4 +38,3 @@ def substitute_env_vars(obj: Any) -> Any:
     elif isinstance(obj, list):
         return [substitute_env_vars(item) for item in obj]
     return obj
-

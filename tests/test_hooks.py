@@ -21,7 +21,7 @@ class TestToolCallContext:
         ctx = ToolCallContext(
             view_name="redis-expert",
             tool_name="search_knowledge",
-            upstream_server="redis-memory-server"
+            upstream_server="redis-memory-server",
         )
         assert ctx.view_name == "redis-expert"
         assert ctx.tool_name == "search_knowledge"
@@ -132,4 +132,3 @@ class TestPostCallHook:
         )
 
         assert hook_result.result["_view"] == "redis-expert"
-

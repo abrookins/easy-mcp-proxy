@@ -34,12 +34,10 @@ class TestLoadConfig:
             "mcp_servers": {
                 "test": {
                     "url": "https://api.example.com",
-                    "headers": {
-                        "Authorization": "Bearer ${TEST_API_KEY}"
-                    }
+                    "headers": {"Authorization": "Bearer ${TEST_API_KEY}"},
                 }
             },
-            "tool_views": {}
+            "tool_views": {},
         }
         config_file = tmp_path / "config.yaml"
         config_file.write_text(yaml.dump(config_data))
@@ -51,12 +49,8 @@ class TestLoadConfig:
     def test_load_config_missing_env_var(self, tmp_path):
         """load_config should handle missing env vars gracefully."""
         config_data = {
-            "mcp_servers": {
-                "test": {
-                    "url": "${NONEXISTENT_VAR}"
-                }
-            },
-            "tool_views": {}
+            "mcp_servers": {"test": {"url": "${NONEXISTENT_VAR}"}},
+            "tool_views": {},
         }
         config_file = tmp_path / "config.yaml"
         config_file.write_text(yaml.dump(config_data))
@@ -92,9 +86,7 @@ class TestConfigValidation:
     def test_validate_tool_references(self, tmp_path):
         """Config should validate that tool references exist."""
         config_data = {
-            "mcp_servers": {
-                "server-a": {"command": "echo"}
-            },
+            "mcp_servers": {"server-a": {"command": "echo"}},
             "tool_views": {
                 "view": {
                     "tools": {
@@ -103,7 +95,7 @@ class TestConfigValidation:
                         }
                     }
                 }
-            }
+            },
         }
         config_file = tmp_path / "config.yaml"
         config_file.write_text(yaml.dump(config_data))
@@ -119,12 +111,8 @@ class TestConfigValidation:
         config_data = {
             "mcp_servers": {},
             "tool_views": {
-                "view": {
-                    "hooks": {
-                        "pre_call": "nonexistent.module.function"
-                    }
-                }
-            }
+                "view": {"hooks": {"pre_call": "nonexistent.module.function"}}
+            },
         }
         config_file = tmp_path / "config.yaml"
         config_file.write_text(yaml.dump(config_data))
@@ -140,12 +128,8 @@ class TestConfigValidation:
         config_data = {
             "mcp_servers": {},
             "tool_views": {
-                "view": {
-                    "hooks": {
-                        "post_call": "nonexistent.module.post_function"
-                    }
-                }
-            }
+                "view": {"hooks": {"post_call": "nonexistent.module.post_function"}}
+            },
         }
         config_file = tmp_path / "config.yaml"
         config_file.write_text(yaml.dump(config_data))
@@ -163,13 +147,8 @@ class TestEnvVarSubstitution:
     def test_substitute_env_vars_with_int(self, tmp_path):
         """_substitute_env_vars should pass through integers unchanged."""
         config_data = {
-            "mcp_servers": {
-                "test": {
-                    "command": "echo",
-                    "port": 8080
-                }
-            },
-            "tool_views": {}
+            "mcp_servers": {"test": {"command": "echo", "port": 8080}},
+            "tool_views": {},
         }
         config_file = tmp_path / "config.yaml"
         config_file.write_text(yaml.dump(config_data))
@@ -183,13 +162,8 @@ class TestEnvVarSubstitution:
     def test_substitute_env_vars_with_bool(self, tmp_path):
         """_substitute_env_vars should pass through booleans unchanged."""
         config_data = {
-            "mcp_servers": {
-                "test": {
-                    "command": "echo",
-                    "enabled": True
-                }
-            },
-            "tool_views": {}
+            "mcp_servers": {"test": {"command": "echo", "enabled": True}},
+            "tool_views": {},
         }
         config_file = tmp_path / "config.yaml"
         config_file.write_text(yaml.dump(config_data))
@@ -200,17 +174,11 @@ class TestEnvVarSubstitution:
     def test_substitute_env_vars_with_float(self, tmp_path):
         """_substitute_env_vars should pass through floats unchanged."""
         config_data = {
-            "mcp_servers": {
-                "test": {
-                    "command": "echo",
-                    "timeout": 30.5
-                }
-            },
-            "tool_views": {}
+            "mcp_servers": {"test": {"command": "echo", "timeout": 30.5}},
+            "tool_views": {},
         }
         config_file = tmp_path / "config.yaml"
         config_file.write_text(yaml.dump(config_data))
 
         config = load_config(config_file)
         assert config is not None
-

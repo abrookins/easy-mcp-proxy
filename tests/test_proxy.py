@@ -81,10 +81,8 @@ class TestMCPProxyClientCreation:
     async def test_create_client_for_command_server(self):
         """_create_client should handle command-based servers."""
         config = ProxyConfig(
-            mcp_servers={
-                "test": UpstreamServerConfig(command="echo", args=["test"])
-            },
-            tool_views={}
+            mcp_servers={"test": UpstreamServerConfig(command="echo", args=["test"])},
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -97,10 +95,8 @@ class TestMCPProxyClientCreation:
     async def test_create_client_for_url_server(self):
         """_create_client should handle URL-based servers."""
         config = ProxyConfig(
-            mcp_servers={
-                "test": UpstreamServerConfig(url="http://localhost:8080/mcp")
-            },
-            tool_views={}
+            mcp_servers={"test": UpstreamServerConfig(url="http://localhost:8080/mcp")},
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -161,11 +157,8 @@ class TestMCPProxyToolRegistration:
         config = ProxyConfig(
             mcp_servers={"server": {"command": "echo"}},
             tool_views={
-                "view": {
-                    "exposure_mode": "direct",
-                    "tools": {"server": {"tool_a": {}}}
-                }
-            }
+                "view": {"exposure_mode": "direct", "tools": {"server": {"tool_a": {}}}}
+            },
         )
         proxy = MCPProxy(config)
 
@@ -179,9 +172,9 @@ class TestMCPProxyToolRegistration:
             tool_views={
                 "view": {
                     "exposure_mode": "search",
-                    "tools": {"server": {"tool_a": {}, "tool_b": {}}}
+                    "tools": {"server": {"tool_a": {}, "tool_b": {}}},
                 }
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -216,7 +209,7 @@ class TestMCPProxyHookWrapping:
             post_hook=post_hook,
             view_name="test",
             tool_name="test_tool",
-            upstream_server="server"
+            upstream_server="server",
         )
 
         await wrapped(query="test")
@@ -237,7 +230,7 @@ class TestMCPProxyHookWrapping:
             post_hook=None,
             view_name="test",
             tool_name="test_tool",
-            upstream_server="server"
+            upstream_server="server",
         )
 
         result = await wrapped(query="test")
@@ -265,7 +258,7 @@ class TestMCPProxyHookWrapping:
             post_hook=None,
             view_name="test",
             tool_name="test_tool",
-            upstream_server="server"
+            upstream_server="server",
         )
 
         await wrapped()
@@ -293,7 +286,7 @@ class TestMCPProxyHookWrapping:
             post_hook=post_hook,
             view_name="test",
             tool_name="test_tool",
-            upstream_server="server"
+            upstream_server="server",
         )
 
         await wrapped()
@@ -317,7 +310,7 @@ class TestMCPProxyHookWrapping:
             post_hook=None,
             view_name="test",
             tool_name="test_tool",
-            upstream_server="server"
+            upstream_server="server",
         )
 
         result = await wrapped(query="test")
@@ -342,7 +335,7 @@ class TestMCPProxyHookWrapping:
             post_hook=post_hook,
             view_name="test",
             tool_name="test_tool",
-            upstream_server="server"
+            upstream_server="server",
         )
 
         result = await wrapped()
@@ -384,9 +377,9 @@ class TestMCPProxyToolExecution:
             tool_views={
                 "view": {
                     "exposure_mode": "direct",
-                    "tools": {"server": {"my_tool": {"description": "A tool"}}}
+                    "tools": {"server": {"my_tool": {"description": "A tool"}}},
                 }
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -431,12 +424,15 @@ class TestMCPProxyToolExecution:
                             "description": "Composite tool",
                             "inputs": {"query": {"type": "string"}},
                             "parallel": {
-                                "result": {"tool": "server.tool_a", "args": {"q": "{inputs.query}"}}
-                            }
+                                "result": {
+                                    "tool": "server.tool_a",
+                                    "args": {"q": "{inputs.query}"},
+                                }
+                            },
                         }
-                    }
+                    },
                 }
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -463,7 +459,9 @@ class TestMCPProxyToolExecution:
         result = await registered_tool.fn(arguments={"query": "test"})
 
         # The result should NOT be a stub message
-        assert "message" not in result or "call via view.call_tool" not in str(result.get("message", ""))
+        assert "message" not in result or "call via view.call_tool" not in str(
+            result.get("message", "")
+        )
         # Should have called upstream
         mock_client.call_tool.assert_called()
 
@@ -473,7 +471,9 @@ class TestMCPProxyErrorHandling:
 
     async def test_create_client_unknown_server_raises(self):
         """_create_client should raise for unknown server."""
-        config = ProxyConfig(mcp_servers={"known": UpstreamServerConfig(command="echo")}, tool_views={})
+        config = ProxyConfig(
+            mcp_servers={"known": UpstreamServerConfig(command="echo")}, tool_views={}
+        )
         proxy = MCPProxy(config)
 
         with pytest.raises(ValueError, match="not found in config"):
@@ -484,13 +484,74 @@ class TestMCPProxyErrorHandling:
         from mcp_proxy.proxy import MCPProxy
 
         # Create a config where we manually break the server config
-        config = ProxyConfig(mcp_servers={"broken": UpstreamServerConfig(command="echo")}, tool_views={})
+        config = ProxyConfig(
+            mcp_servers={"broken": UpstreamServerConfig(command="echo")}, tool_views={}
+        )
         proxy = MCPProxy(config)
 
         # Manually create a broken config for testing
         broken_config = UpstreamServerConfig(command=None, url=None)
         with pytest.raises(ValueError, match="must have either 'url' or 'command'"):
             proxy._create_client_from_config(broken_config)
+
+    def test_create_client_from_config_with_cwd(self):
+        """_create_client_from_config should pass cwd to StdioTransport."""
+        from unittest.mock import patch, MagicMock
+        from fastmcp.client.transports import StdioTransport
+
+        config = ProxyConfig(
+            mcp_servers={
+                "fs": UpstreamServerConfig(
+                    command="npx",
+                    args=["-y", "@modelcontextprotocol/server-filesystem", "/data"],
+                    cwd="/data",
+                )
+            },
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Create a real StdioTransport mock that passes isinstance checks
+        mock_transport_instance = MagicMock(spec=StdioTransport)
+
+        with patch(
+            "mcp_proxy.proxy.StdioTransport", return_value=mock_transport_instance
+        ) as mock_transport_class:
+            proxy._create_client_from_config(config.mcp_servers["fs"])
+
+            # Verify cwd was passed to StdioTransport
+            mock_transport_class.assert_called_once()
+            call_kwargs = mock_transport_class.call_args
+            assert call_kwargs.kwargs.get("cwd") == "/data"
+
+    def test_create_client_from_config_cwd_with_env_expansion(self):
+        """_create_client_from_config should expand env vars in cwd."""
+        from unittest.mock import patch, MagicMock
+        from fastmcp.client.transports import StdioTransport
+        import os
+
+        os.environ["TEST_CWD_PATH"] = "/expanded/path"
+
+        config = ProxyConfig(
+            mcp_servers={
+                "fs": UpstreamServerConfig(command="echo", cwd="${TEST_CWD_PATH}")
+            },
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        mock_transport_instance = MagicMock(spec=StdioTransport)
+
+        with patch(
+            "mcp_proxy.proxy.StdioTransport", return_value=mock_transport_instance
+        ) as mock_transport_class:
+            proxy._create_client_from_config(config.mcp_servers["fs"])
+
+            call_kwargs = mock_transport_class.call_args
+            cwd_value = call_kwargs.kwargs.get("cwd")
+            assert cwd_value == "/expanded/path"
+
+        del os.environ["TEST_CWD_PATH"]
 
     async def test_initialize_only_runs_once(self, sample_config_dict):
         """MCPProxy.initialize() should only run once."""
@@ -508,7 +569,9 @@ class TestMCPProxyErrorHandling:
 
     async def test_call_upstream_tool_no_client_raises(self):
         """call_upstream_tool should raise if no client for server."""
-        config = ProxyConfig(mcp_servers={"server": UpstreamServerConfig(command="echo")}, tool_views={})
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")}, tool_views={}
+        )
         proxy = MCPProxy(config)
         # Don't call initialize - no clients registered
 
@@ -525,7 +588,9 @@ class TestMCPProxyErrorHandling:
 
     async def test_fetch_upstream_tools_no_client_raises(self):
         """fetch_upstream_tools should raise if no client for server."""
-        config = ProxyConfig(mcp_servers={"server": UpstreamServerConfig(command="echo")}, tool_views={})
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")}, tool_views={}
+        )
         proxy = MCPProxy(config)
         # Don't call initialize - no clients registered
 
@@ -536,7 +601,9 @@ class TestMCPProxyErrorHandling:
         """refresh_upstream_tools should call fetch for all registered clients."""
         from unittest.mock import AsyncMock
 
-        config = ProxyConfig(mcp_servers={"server": UpstreamServerConfig(command="echo")}, tool_views={})
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")}, tool_views={}
+        )
         proxy = MCPProxy(config)
 
         # Mock the client
@@ -559,7 +626,7 @@ class TestDefaultViewIncludesAllUpstreamTools:
         # Server has NO 'tools' key - should include all tools from upstream
         config = ProxyConfig(
             mcp_servers={"server": {"command": "echo"}},  # No tools key
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -567,12 +634,18 @@ class TestDefaultViewIncludesAllUpstreamTools:
         mock_tool1 = MagicMock()
         mock_tool1.name = "tool_a"
         mock_tool1.description = "Tool A"
-        mock_tool1.inputSchema = {"type": "object", "properties": {"x": {"type": "string"}}}
+        mock_tool1.inputSchema = {
+            "type": "object",
+            "properties": {"x": {"type": "string"}},
+        }
 
         mock_tool2 = MagicMock()
         mock_tool2.name = "tool_b"
         mock_tool2.description = "Tool B"
-        mock_tool2.inputSchema = {"type": "object", "properties": {"y": {"type": "number"}}}
+        mock_tool2.inputSchema = {
+            "type": "object",
+            "properties": {"y": {"type": "number"}},
+        }
 
         mock_client = AsyncMock()
         mock_client.list_tools.return_value = [mock_tool1, mock_tool2]
@@ -603,10 +676,10 @@ class TestDefaultViewIncludesAllUpstreamTools:
             mcp_servers={
                 "server": {
                     "command": "echo",
-                    "tools": {"tool_a": {}}  # Only tool_a is configured
+                    "tools": {"tool_a": {}},  # Only tool_a is configured
                 }
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -648,9 +721,9 @@ class TestIncludeAllFetchesFromUpstream:
             tool_views={
                 "view": {
                     "include_all": True,
-                    "tools": {}  # No tools defined in config
+                    "tools": {},  # No tools defined in config
                 }
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -671,7 +744,9 @@ class TestIncludeAllFetchesFromUpstream:
 
         # FAILING ASSERTION: Currently returns empty because config has no tools
         tool_names = [t.name for t in tools]
-        assert "upstream_tool" in tool_names, f"Expected 'upstream_tool' in {tool_names}"
+        assert "upstream_tool" in tool_names, (
+            f"Expected 'upstream_tool' in {tool_names}"
+        )
 
     async def test_include_all_with_no_config_tools_still_works(self):
         """include_all should work even when server has no tools in config."""
@@ -680,12 +755,7 @@ class TestIncludeAllFetchesFromUpstream:
         # Server has no 'tools' key at all in config
         config = ProxyConfig(
             mcp_servers={"server": {"command": "echo"}},  # No tools key
-            tool_views={
-                "view": {
-                    "include_all": True,
-                    "tools": {}
-                }
-            }
+            tool_views={"view": {"include_all": True, "tools": {}}},
         )
         proxy = MCPProxy(config)
 
@@ -718,9 +788,7 @@ class TestIncludeAllFetchesFromUpstream:
         from mcp_proxy.models import ToolConfig, ToolViewConfig
 
         config = ProxyConfig(
-            mcp_servers={
-                "server": UpstreamServerConfig(url="http://example.com")
-            },
+            mcp_servers={"server": UpstreamServerConfig(url="http://example.com")},
             tool_views={
                 "view": ToolViewConfig(
                     include_all=True,
@@ -728,13 +796,12 @@ class TestIncludeAllFetchesFromUpstream:
                     tools={
                         "server": {
                             "tool_a": ToolConfig(
-                                name="renamed_tool_a",
-                                description="Custom description"
+                                name="renamed_tool_a", description="Custom description"
                             )
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -773,10 +840,10 @@ class TestDefaultMCPUpstreamCalls:
             mcp_servers={
                 "server": UpstreamServerConfig(
                     url="http://example.com",
-                    tools={"my_tool": {"description": "A tool"}}
+                    tools={"my_tool": {"description": "A tool"}},
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -787,11 +854,15 @@ class TestDefaultMCPUpstreamCalls:
         mock_upstream.call_tool = AsyncMock(return_value={"result": "success"})
 
         # Mock _create_client_from_config to return our mock client
-        with patch.object(proxy, '_create_client_from_config', return_value=mock_upstream):
+        with patch.object(
+            proxy, "_create_client_from_config", return_value=mock_upstream
+        ):
             # Call through the proxy's default server
             # Tools use "arguments" dict parameter per FastMCP convention
             async with Client(proxy.server) as client:
-                result = await client.call_tool("my_tool", {"arguments": {"arg": "value"}})
+                result = await client.call_tool(
+                    "my_tool", {"arguments": {"arg": "value"}}
+                )
 
             # Verify upstream was called with the arguments dict
             mock_upstream.call_tool.assert_called_once_with("my_tool", {"arg": "value"})
@@ -806,7 +877,7 @@ class TestToolNameAliasing:
             name="aliased_name",
             description="Test",
             server="test",
-            original_name="original_name"
+            original_name="original_name",
         )
 
         assert tool.name == "aliased_name"
@@ -830,13 +901,12 @@ class TestToolNameAliasing:
                     args=["test"],
                     tools={
                         "original_tool": ToolConfig(
-                            name="aliased_tool",
-                            description="Test description"
+                            name="aliased_tool", description="Test description"
                         )
-                    }
+                    },
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -855,12 +925,10 @@ class TestToolNameAliasing:
             mcp_servers={
                 "test-server": UpstreamServerConfig(
                     command="echo",
-                    tools={
-                        "my_tool": ToolConfig(description="No alias")
-                    }
+                    tools={"my_tool": ToolConfig(description="No alias")},
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -882,10 +950,10 @@ class TestToolNameAliasing:
                         "tool_a": ToolConfig(name="renamed_a", description="A"),
                         "tool_b": ToolConfig(description="B"),
                         "tool_c": ToolConfig(name="renamed_c", description="C"),
-                    }
+                    },
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -916,13 +984,12 @@ class TestToolNameAliasing:
                     url="http://example.com",
                     tools={
                         "original_tool_name": ToolConfig(
-                            name="aliased_tool_name",
-                            description="An aliased tool"
+                            name="aliased_tool_name", description="An aliased tool"
                         )
-                    }
+                    },
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -933,19 +1000,19 @@ class TestToolNameAliasing:
         mock_upstream.call_tool = AsyncMock(return_value={"result": "success"})
 
         # Mock _create_client_from_config to return our mock client
-        with patch.object(proxy, '_create_client_from_config', return_value=mock_upstream):
+        with patch.object(
+            proxy, "_create_client_from_config", return_value=mock_upstream
+        ):
             # Call using the aliased name
             async with Client(proxy.server) as client:
                 # The tool is exposed as "aliased_tool_name"
                 result = await client.call_tool(
-                    "aliased_tool_name",
-                    {"arguments": {"key": "value"}}
+                    "aliased_tool_name", {"arguments": {"key": "value"}}
                 )
 
             # But upstream should be called with "original_tool_name"
             mock_upstream.call_tool.assert_called_once_with(
-                "original_tool_name",
-                {"key": "value"}
+                "original_tool_name", {"key": "value"}
             )
 
 
@@ -960,7 +1027,7 @@ class TestToolNameAliasingInViews:
             mcp_servers={
                 "server": UpstreamServerConfig(
                     command="echo",
-                    tools={"upstream_tool": ToolConfig(description="Original")}
+                    tools={"upstream_tool": ToolConfig(description="Original")},
                 )
             },
             tool_views={
@@ -969,13 +1036,12 @@ class TestToolNameAliasingInViews:
                     tools={
                         "server": {
                             "upstream_tool": ToolConfig(
-                                name="view_aliased_tool",
-                                description="View override"
+                                name="view_aliased_tool", description="View override"
                             )
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -993,8 +1059,7 @@ class TestToolNameAliasingInViews:
         config = ProxyConfig(
             mcp_servers={
                 "server": UpstreamServerConfig(
-                    command="echo",
-                    tools={"tool_a": ToolConfig(description="A")}
+                    command="echo", tools={"tool_a": ToolConfig(description="A")}
                 )
             },
             tool_views={
@@ -1004,13 +1069,12 @@ class TestToolNameAliasingInViews:
                     tools={
                         "server": {
                             "tool_a": ToolConfig(
-                                name="renamed_in_view",
-                                description="Renamed"
+                                name="renamed_in_view", description="Renamed"
                             )
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -1162,14 +1226,18 @@ class TestToolAliases:
                     tools={
                         "create_item": ToolConfig(
                             aliases=[
-                                AliasConfig(name="create_memory", description="Save a memory"),
-                                AliasConfig(name="create_skill", description="Save a skill"),
+                                AliasConfig(
+                                    name="create_memory", description="Save a memory"
+                                ),
+                                AliasConfig(
+                                    name="create_skill", description="Save a skill"
+                                ),
                             ]
                         )
-                    }
+                    },
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -1204,10 +1272,10 @@ class TestToolAliases:
                                 AliasConfig(name="save_note", description="Note"),
                             ]
                         )
-                    }
+                    },
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -1240,14 +1308,19 @@ class TestToolAliases:
                         ),
                         "search_items": ToolConfig(
                             aliases=[
-                                AliasConfig(name="search_memories", description="Search memories"),
-                                AliasConfig(name="search_skills", description="Search skills"),
+                                AliasConfig(
+                                    name="search_memories",
+                                    description="Search memories",
+                                ),
+                                AliasConfig(
+                                    name="search_skills", description="Search skills"
+                                ),
                             ]
                         ),
-                    }
+                    },
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -1275,12 +1348,14 @@ class TestToolAliases:
                                 AliasConfig(name="alias_2", description="Second"),
                             ]
                         ),
-                        "renamed_tool": ToolConfig(name="new_name", description="Renamed"),
+                        "renamed_tool": ToolConfig(
+                            name="new_name", description="Renamed"
+                        ),
                         "plain_tool": ToolConfig(description="Plain"),
-                    }
+                    },
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -1313,7 +1388,7 @@ class TestAliasesInIncludeAllMode:
             mcp_servers={
                 "server": UpstreamServerConfig(
                     command="echo",
-                    tools={"base_tool": ToolConfig(description="Original tool")}
+                    tools={"base_tool": ToolConfig(description="Original tool")},
                 )
             },
             tool_views={
@@ -1324,14 +1399,18 @@ class TestAliasesInIncludeAllMode:
                         "server": {
                             "base_tool": ToolConfig(
                                 aliases=[
-                                    AliasConfig(name="alias_one", description="First alias"),
-                                    AliasConfig(name="alias_two", description="Second alias"),
+                                    AliasConfig(
+                                        name="alias_one", description="First alias"
+                                    ),
+                                    AliasConfig(
+                                        name="alias_two", description="Second alias"
+                                    ),
                                 ]
                             )
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -1371,11 +1450,15 @@ class TestAliasesInIncludeAllMode:
                     tools={
                         "tool_a": ToolConfig(
                             aliases=[
-                                AliasConfig(name="tool_a_alias1", description="Alias 1"),
-                                AliasConfig(name="tool_a_alias2", description="Alias 2"),
+                                AliasConfig(
+                                    name="tool_a_alias1", description="Alias 1"
+                                ),
+                                AliasConfig(
+                                    name="tool_a_alias2", description="Alias 2"
+                                ),
                             ]
                         )
-                    }
+                    },
                 )
             },
             tool_views={
@@ -1384,9 +1467,9 @@ class TestAliasesInIncludeAllMode:
                     include_all=True,
                     tools={
                         "server": {}  # No view overrides
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -1410,9 +1493,7 @@ class TestAliasesInExplicitToolMode:
         from mcp_proxy.models import AliasConfig, ToolConfig, ToolViewConfig
 
         config = ProxyConfig(
-            mcp_servers={
-                "server": UpstreamServerConfig(command="echo")
-            },
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
             tool_views={
                 "test-view": ToolViewConfig(
                     description="Test view",
@@ -1425,9 +1506,9 @@ class TestAliasesInExplicitToolMode:
                                 ]
                             )
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -1440,7 +1521,7 @@ class TestAliasesInExplicitToolMode:
         upstream_tool.inputSchema = {
             "type": "object",
             "properties": {"query": {"type": "string"}},
-            "required": ["query"]
+            "required": ["query"],
         }
 
         proxy._upstream_tools["server"] = [upstream_tool]
@@ -1454,7 +1535,10 @@ class TestAliasesInExplicitToolMode:
 
         # Should have the upstream schema
         assert by_name["search_by_name"].input_schema is not None
-        assert by_name["search_by_name"].input_schema["properties"]["query"]["type"] == "string"
+        assert (
+            by_name["search_by_name"].input_schema["properties"]["query"]["type"]
+            == "string"
+        )
 
         # Original name should be preserved
         assert by_name["search_by_name"].original_name == "search_tool"
@@ -1473,9 +1557,9 @@ class TestToolExecutionWithInputSchema:
             tool_views={
                 "view": {
                     "exposure_mode": "direct",
-                    "tools": {"server": {"my_tool": {"description": "A tool"}}}
+                    "tools": {"server": {"my_tool": {"description": "A tool"}}},
                 }
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -1494,7 +1578,7 @@ class TestToolExecutionWithInputSchema:
         upstream_tool.inputSchema = {
             "type": "object",
             "properties": {"query": {"type": "string"}},
-            "required": ["query"]
+            "required": ["query"],
         }
         proxy._upstream_tools["server"] = [upstream_tool]
 
@@ -1523,10 +1607,7 @@ class TestToolExecutionWithInputSchema:
         from fastmcp import FastMCP
 
         config = ProxyConfig(
-            mcp_servers={
-                "server": UpstreamServerConfig(command="echo")
-            },
-            tool_views={}
+            mcp_servers={"server": UpstreamServerConfig(command="echo")}, tool_views={}
         )
         proxy = MCPProxy(config)
 
@@ -1547,7 +1628,7 @@ class TestToolExecutionWithInputSchema:
                 input_schema={
                     "type": "object",
                     "properties": {"arg1": {"type": "string"}},
-                }
+                },
             )
         ]
 
@@ -1560,11 +1641,15 @@ class TestToolExecutionWithInputSchema:
         assert registered_tool is not None
 
         # Mock _create_client_from_config to return our mock client
-        with patch.object(proxy, '_create_client_from_config', return_value=mock_client):
+        with patch.object(
+            proxy, "_create_client_from_config", return_value=mock_client
+        ):
             # Call the tool (direct routing without view)
             result = await registered_tool.fn(arg1="test")
 
-            mock_client.call_tool.assert_called_once_with("direct_tool", {"arg1": "test"})
+            mock_client.call_tool.assert_called_once_with(
+                "direct_tool", {"arg1": "test"}
+            )
             assert result == {"result": "direct_success"}
 
     async def test_direct_routing_server_not_configured_raises(self):
@@ -1573,7 +1658,7 @@ class TestToolExecutionWithInputSchema:
 
         config = ProxyConfig(
             mcp_servers={},  # No servers configured
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -1584,7 +1669,7 @@ class TestToolExecutionWithInputSchema:
                 description="Test",
                 server="nonexistent_server",
                 original_name="test_tool",
-                input_schema={"type": "object"}
+                input_schema={"type": "object"},
             )
         ]
 
@@ -1596,7 +1681,9 @@ class TestToolExecutionWithInputSchema:
         assert registered_tool is not None
 
         # Calling should raise because server is not configured
-        with pytest.raises(ValueError, match="Server 'nonexistent_server' not configured"):
+        with pytest.raises(
+            ValueError, match="Server 'nonexistent_server' not configured"
+        ):
             await registered_tool.fn(arg="value")
 
     async def test_direct_routing_uses_active_client(self):
@@ -1605,10 +1692,7 @@ class TestToolExecutionWithInputSchema:
         from fastmcp import FastMCP
 
         config = ProxyConfig(
-            mcp_servers={
-                "server": UpstreamServerConfig(command="echo")
-            },
-            tool_views={}
+            mcp_servers={"server": UpstreamServerConfig(command="echo")}, tool_views={}
         )
         proxy = MCPProxy(config)
 
@@ -1627,7 +1711,7 @@ class TestToolExecutionWithInputSchema:
                 input_schema={
                     "type": "object",
                     "properties": {"arg1": {"type": "string"}},
-                }
+                },
             )
         ]
 
@@ -1647,10 +1731,7 @@ class TestToolExecutionWithInputSchema:
         from fastmcp import FastMCP
 
         config = ProxyConfig(
-            mcp_servers={
-                "server": UpstreamServerConfig(command="echo")
-            },
-            tool_views={}
+            mcp_servers={"server": UpstreamServerConfig(command="echo")}, tool_views={}
         )
         proxy = MCPProxy(config)
 
@@ -1666,7 +1747,7 @@ class TestToolExecutionWithInputSchema:
                 description="A dict tool",
                 server="server",
                 original_name="dict_tool",
-                input_schema=None  # No schema = dict wrapper
+                input_schema=None,  # No schema = dict wrapper
             )
         ]
 
@@ -1780,9 +1861,7 @@ class TestParameterBinding:
         from mcp_proxy.proxy import _transform_schema
         from mcp_proxy.models import ToolConfig, ParameterConfig
 
-        tool_config = ToolConfig(
-            parameters={"path": ParameterConfig(hidden=True)}
-        )
+        tool_config = ToolConfig(parameters={"path": ParameterConfig(hidden=True)})
 
         result = _transform_schema(None, tool_config)
 
@@ -1862,9 +1941,9 @@ class TestParameterBinding:
                             name="list_categories",
                             parameters={
                                 "path": ParameterConfig(hidden=True, default=".")
-                            }
+                            },
                         )
-                    }
+                    },
                 )
             },
             tool_views={},
@@ -1909,12 +1988,11 @@ class TestParameterBinding:
                             name="list_categories",
                             parameters={
                                 "path": ParameterConfig(
-                                    rename="category",
-                                    description="Category to list"
+                                    rename="category", description="Category to list"
                                 )
-                            }
+                            },
                         )
-                    }
+                    },
                 )
             },
             tool_views={},
@@ -1940,7 +2018,10 @@ class TestParameterBinding:
         # Original param should be renamed
         assert "path" not in tool.input_schema["properties"]
         assert "category" in tool.input_schema["properties"]
-        assert tool.input_schema["properties"]["category"]["description"] == "Category to list"
+        assert (
+            tool.input_schema["properties"]["category"]["description"]
+            == "Category to list"
+        )
         assert "category" in tool.input_schema["required"]
 
     def test_transform_schema_default_makes_optional(self):
@@ -1955,9 +2036,7 @@ class TestParameterBinding:
             },
             "required": ["path"],
         }
-        tool_config = ToolConfig(
-            parameters={"path": ParameterConfig(default=".")}
-        )
+        tool_config = ToolConfig(parameters={"path": ParameterConfig(default=".")})
 
         result = _transform_schema(schema, tool_config)
 
@@ -1978,9 +2057,7 @@ class TestParameterBinding:
             "required": ["path"],
         }
         tool_config = ToolConfig(
-            parameters={
-                "path": ParameterConfig(rename="folder", default="/home")
-            }
+            parameters={"path": ParameterConfig(rename="folder", default="/home")}
         )
 
         result = _transform_schema(schema, tool_config)
@@ -2075,9 +2152,7 @@ class TestParameterBinding:
             },
             "required": [],  # path is optional
         }
-        tool_config = ToolConfig(
-            parameters={"path": ParameterConfig(rename="folder")}
-        )
+        tool_config = ToolConfig(parameters={"path": ParameterConfig(rename="folder")})
 
         result = _transform_schema(schema, tool_config)
 
@@ -2096,9 +2171,7 @@ class TestParameterBinding:
             },
             "required": [],  # path is already optional
         }
-        tool_config = ToolConfig(
-            parameters={"path": ParameterConfig(default=".")}
-        )
+        tool_config = ToolConfig(parameters={"path": ParameterConfig(default=".")})
 
         result = _transform_schema(schema, tool_config)
 
@@ -2196,7 +2269,9 @@ class TestProxyConnectionManagement:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
 
-        with patch.object(proxy, "_create_client_from_config", return_value=mock_client):
+        with patch.object(
+            proxy, "_create_client_from_config", return_value=mock_client
+        ):
             await proxy.connect_clients()
 
         assert proxy.has_active_connection("server")
@@ -2220,7 +2295,9 @@ class TestProxyConnectionManagement:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
 
-        with patch.object(proxy, "_create_client_from_config", return_value=mock_client):
+        with patch.object(
+            proxy, "_create_client_from_config", return_value=mock_client
+        ):
             await proxy.connect_clients()
             assert proxy.has_active_connection("server")
 
@@ -2248,6 +2325,7 @@ class TestProxyConnectionManagement:
         mock_good_client.__aexit__ = AsyncMock()
 
         call_count = 0
+
         def create_client_side_effect(cfg):
             nonlocal call_count
             call_count += 1
@@ -2255,7 +2333,9 @@ class TestProxyConnectionManagement:
                 raise ConnectionError("Cannot connect")
             return mock_good_client
 
-        with patch.object(proxy, "_create_client_from_config", side_effect=create_client_side_effect):
+        with patch.object(
+            proxy, "_create_client_from_config", side_effect=create_client_side_effect
+        ):
             await proxy.connect_clients()
 
         # Bad server should not be connected
@@ -2277,7 +2357,9 @@ class TestProxyConnectionManagement:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
 
-        with patch.object(proxy, "_create_client_from_config", return_value=mock_client) as mock_create:
+        with patch.object(
+            proxy, "_create_client_from_config", return_value=mock_client
+        ) as mock_create:
             await proxy.connect_clients()
             await proxy.connect_clients()  # Second call should be no-op
 
@@ -2363,7 +2445,9 @@ class TestProxyConnectionManagement:
         existing_client = MagicMock()
         proxy.upstream_clients["server"] = existing_client
 
-        with patch.object(proxy, "_create_client", new_callable=AsyncMock) as mock_create:
+        with patch.object(
+            proxy, "_create_client", new_callable=AsyncMock
+        ) as mock_create:
             with patch.object(proxy, "refresh_upstream_tools", new_callable=AsyncMock):
                 await proxy.initialize()
 
@@ -2386,7 +2470,9 @@ class TestProxyConnectionManagement:
         existing_client = MagicMock()
         proxy.upstream_clients["server"] = existing_client
 
-        with patch.object(proxy, "_create_client", new_callable=AsyncMock) as mock_create:
+        with patch.object(
+            proxy, "_create_client", new_callable=AsyncMock
+        ) as mock_create:
             with patch.object(proxy, "fetch_upstream_tools", new_callable=AsyncMock):
                 proxy.sync_fetch_tools()
 

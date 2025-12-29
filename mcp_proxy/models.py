@@ -82,6 +82,7 @@ class UpstreamServerConfig(BaseModel):
 
     command: str | None = None
     args: list[str] = []
+    cwd: str | None = None  # Working directory for stdio servers
     url: str | None = None
     env: dict[str, str] = {}
     headers: dict[str, str] = {}
@@ -95,4 +96,3 @@ class ProxyConfig(BaseModel):
 
     mcp_servers: dict[str, UpstreamServerConfig] = {}
     tool_views: dict[str, ToolViewConfig] = {}
-

@@ -151,3 +151,30 @@ mcp_servers:
           Delete a skill that is outdated or no longer applicable.
 
 
+# Tool views with custom tools
+tool_views:
+  # Default view exposes all upstream tools plus custom tools
+  default:
+    description: "Default view with all tools and code quality analysis"
+    include_all: true
+    custom_tools:
+      # Custom Python tool that wraps the MFCQI CLI for code quality analysis
+      # See tools/mfcqi.py for the implementation
+      - module: tools.mfcqi.analyze_code_quality
+
+  # Read-only view for safe exploration
+  read-only:
+    description: "Read-only tools for safe code exploration"
+    tools:
+      github:
+        search_code: {}
+        search_issues: {}
+        get_file_contents: {}
+        list_issues: {}
+        get_issue: {}
+      redis-memory-server:
+        search_long_term_memory: {}
+        get_long_term_memory: {}
+      skills-server:
+        search_skills: {}
+        get_skill: {}

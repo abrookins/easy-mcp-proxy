@@ -26,10 +26,10 @@ class TestMCPProtocolIntegration:
                     tools={
                         "tool_a": {"description": "Tool A description"},
                         "tool_b": {"description": "Tool B description"},
-                    }
+                    },
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -54,7 +54,7 @@ class TestMCPProtocolIntegration:
                         "search_issues": {},
                         "get_file_contents": {},
                         "create_branch": {},
-                    }
+                    },
                 )
             },
             tool_views={
@@ -65,9 +65,9 @@ class TestMCPProtocolIntegration:
                             "search_code": {"description": "Search code"},
                             "search_issues": {"description": "Search issues"},
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -90,12 +90,10 @@ class TestMCPProtocolIntegration:
             mcp_servers={
                 "test": UpstreamServerConfig(
                     command="echo",
-                    tools={
-                        "my_tool": {"description": "This is my tool description"}
-                    }
+                    tools={"my_tool": {"description": "This is my tool description"}},
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -113,10 +111,10 @@ class TestMCPProtocolIntegration:
                     tools={
                         "tool_one": {"description": "First tool"},
                         "tool_two": {"description": "Second tool"},
-                    }
+                    },
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -139,7 +137,7 @@ class TestMCPProtocolIntegration:
                     url="https://example.com/mcp",
                     tools={
                         "search_code": {"description": "Original description"},
-                    }
+                    },
                 )
             },
             tool_views={
@@ -147,11 +145,13 @@ class TestMCPProtocolIntegration:
                     description="Research tools",
                     tools={
                         "github": {
-                            "search_code": {"description": "Research-specific description"},
+                            "search_code": {
+                                "description": "Research-specific description"
+                            },
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -205,10 +205,10 @@ class TestMCPClientIntegration:
                     tools={
                         "my_tool": {"description": "My tool description"},
                         "another_tool": {"description": "Another description"},
-                    }
+                    },
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -244,7 +244,7 @@ class TestMCPClientIntegration:
                         "search_issues": {"description": "Search issues"},
                         "create_branch": {"description": "Create branch"},
                         "merge_pr": {"description": "Merge PR"},
-                    }
+                    },
                 )
             },
             tool_views={
@@ -255,9 +255,9 @@ class TestMCPClientIntegration:
                             "search_code": {},
                             "search_issues": {},
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -292,10 +292,10 @@ class TestStdioServerIntegration:
                     tools={
                         "tool_a": {"description": "Tool A"},
                         "tool_b": {"description": "Tool B"},
-                    }
+                    },
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -314,12 +314,10 @@ class TestStdioServerIntegration:
             mcp_servers={
                 "test": UpstreamServerConfig(
                     command="echo",
-                    tools={
-                        "my_tool": {"description": "My special tool"}
-                    }
+                    tools={"my_tool": {"description": "My special tool"}},
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -331,10 +329,7 @@ class TestStdioServerIntegration:
     @pytest.mark.asyncio
     async def test_get_view_tools_unknown_view_raises(self):
         """get_view_tools() should raise ValueError for unknown view."""
-        config = ProxyConfig(
-            mcp_servers={},
-            tool_views={}
-        )
+        config = ProxyConfig(mcp_servers={}, tool_views={})
         proxy = MCPProxy(config)
 
         with pytest.raises(ValueError, match="View 'nonexistent' not found"):
@@ -357,9 +352,9 @@ class TestStdioServerIntegration:
                         "github": {
                             "search_code": {"description": "Search code in repos"},
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -375,10 +370,7 @@ class TestStdioServerIntegration:
         from fastmcp.exceptions import ToolError
 
         # Create config with no servers
-        config = ProxyConfig(
-            mcp_servers={},
-            tool_views={}
-        )
+        config = ProxyConfig(mcp_servers={}, tool_views={})
         proxy = MCPProxy(config)
 
         # Manually register a tool that references a non-existent server
@@ -390,7 +382,7 @@ class TestStdioServerIntegration:
                 name="my_tool",
                 description="My tool",
                 server="nonexistent",
-                original_name="my_tool"
+                original_name="my_tool",
             )
         ]
         test_mcp = FastMCP(name="test")
@@ -429,12 +421,9 @@ class TestHTTPServerIntegration:
 
         # Run server and connect with HTTP transport
         async with run_server_async(mcp) as url:
-            async with Client(
-                transport=StreamableHttpTransport(url)
-            ) as client:
+            async with Client(transport=StreamableHttpTransport(url)) as client:
                 tools = await client.list_tools()
                 assert len(tools) == 2
                 tool_names = [t.name for t in tools]
                 assert "tool_one" in tool_names
                 assert "tool_two" in tool_names
-

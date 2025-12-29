@@ -25,7 +25,7 @@ class TestToolViewInitialization:
             description="Test view",
             custom_tools=[
                 {"not_module": "value"},  # Missing 'module' key - should be skipped
-            ]
+            ],
         )
         view = ToolView(name="test", config=config)
 
@@ -35,12 +35,7 @@ class TestToolViewInitialization:
     async def test_tool_view_initialize_loads_tools(self):
         """ToolView.initialize() should load tools from upstream servers."""
         config = ToolViewConfig(
-            tools={
-                "upstream-server": {
-                    "tool_a": ToolConfig(),
-                    "tool_b": ToolConfig()
-                }
-            }
+            tools={"upstream-server": {"tool_a": ToolConfig(), "tool_b": ToolConfig()}}
         )
         view = ToolView(name="test", config=config)
 
@@ -82,7 +77,7 @@ class TestToolViewInitialization:
             config = ToolViewConfig(
                 hooks=HooksConfig(
                     pre_call="test_hooks_module.pre_call",
-                    post_call="test_hooks_module.post_call"
+                    post_call="test_hooks_module.post_call",
                 )
             )
             view = ToolView(name="test", config=config)
@@ -106,8 +101,7 @@ class TestToolViewInitialization:
         try:
             config = ToolViewConfig(
                 hooks=HooksConfig(
-                    pre_call="test_hooks_pre_only.pre_call",
-                    post_call=None
+                    pre_call="test_hooks_pre_only.pre_call", post_call=None
                 )
             )
             view = ToolView(name="test", config=config)
@@ -130,8 +124,7 @@ class TestToolViewInitialization:
         try:
             config = ToolViewConfig(
                 hooks=HooksConfig(
-                    pre_call=None,
-                    post_call="test_hooks_post_only.post_call"
+                    pre_call=None, post_call="test_hooks_post_only.post_call"
                 )
             )
             view = ToolView(name="test", config=config)
@@ -147,7 +140,7 @@ class TestToolViewInitialization:
         config = ToolViewConfig(
             tools={
                 "server-a": {"tool_1": ToolConfig()},
-                "server-b": {"tool_2": ToolConfig()}
+                "server-b": {"tool_2": ToolConfig()},
             }
         )
         view = ToolView(name="test", config=config)
@@ -231,9 +224,7 @@ class TestToolViewCallTool:
         """ToolView.call_tool() should call upstream and return result."""
         from unittest.mock import AsyncMock
 
-        config = ToolViewConfig(
-            tools={"server-a": {"my_tool": ToolConfig()}}
-        )
+        config = ToolViewConfig(tools={"server-a": {"my_tool": ToolConfig()}})
         view = ToolView("test", config)
 
         # Mock upstream client
@@ -254,9 +245,7 @@ class TestToolViewCallTool:
             args["modified"] = True
             return HookResult(args=args)
 
-        config = ToolViewConfig(
-            tools={"server-a": {"my_tool": ToolConfig()}}
-        )
+        config = ToolViewConfig(tools={"server-a": {"my_tool": ToolConfig()}})
         view = ToolView("test", config)
         view._pre_call_hook = modify_args
 
@@ -278,9 +267,7 @@ class TestToolViewCallTool:
         async def transform_result(result, args, context):
             return HookResult(result={"transformed": True, **result})
 
-        config = ToolViewConfig(
-            tools={"server-a": {"my_tool": ToolConfig()}}
-        )
+        config = ToolViewConfig(tools={"server-a": {"my_tool": ToolConfig()}})
         view = ToolView("test", config)
         view._post_call_hook = transform_result
 
@@ -328,9 +315,7 @@ class TestToolViewCallTool:
         async def no_op_hook(args, context):
             return HookResult()  # No args modification
 
-        config = ToolViewConfig(
-            tools={"server-a": {"my_tool": ToolConfig()}}
-        )
+        config = ToolViewConfig(tools={"server-a": {"my_tool": ToolConfig()}})
         view = ToolView("test", config)
         view._pre_call_hook = no_op_hook
 
@@ -351,9 +336,7 @@ class TestToolViewCallTool:
         async def no_op_hook(result, args, context):
             return HookResult()  # No result modification (result=None)
 
-        config = ToolViewConfig(
-            tools={"server-a": {"my_tool": ToolConfig()}}
-        )
+        config = ToolViewConfig(tools={"server-a": {"my_tool": ToolConfig()}})
         view = ToolView("test", config)
         view._post_call_hook = no_op_hook
 
@@ -381,8 +364,14 @@ class TestToolViewCompositeTool:
                     description="Search multiple sources",
                     inputs={"query": {"type": "string"}},
                     parallel={
-                        "source_a": {"tool": "server-a.tool_a", "args": {"q": "{inputs.query}"}},
-                        "source_b": {"tool": "server-b.tool_b", "args": {"q": "{inputs.query}"}},
+                        "source_a": {
+                            "tool": "server-a.tool_a",
+                            "args": {"q": "{inputs.query}"},
+                        },
+                        "source_b": {
+                            "tool": "server-b.tool_b",
+                            "args": {"q": "{inputs.query}"},
+                        },
                     },
                 )
             }
@@ -412,7 +401,10 @@ class TestToolViewCompositeTool:
                     description="Dual search",
                     inputs={"query": {"type": "string"}},
                     parallel={
-                        "result": {"tool": "server.tool_a", "args": {"q": "{inputs.query}"}},
+                        "result": {
+                            "tool": "server.tool_a",
+                            "args": {"q": "{inputs.query}"},
+                        },
                     },
                 )
             }
@@ -486,7 +478,10 @@ class TestToolViewCompositeTool:
                     description="Tool without server.tool format",
                     inputs={"query": {"type": "string"}},
                     parallel={
-                        "result": {"tool": "no_dot_format", "args": {}},  # Missing the dot
+                        "result": {
+                            "tool": "no_dot_format",
+                            "args": {},
+                        },  # Missing the dot
                     },
                 )
             }
@@ -511,7 +506,10 @@ class TestToolViewCompositeTool:
                     description="Successful composite",
                     inputs={"query": {"type": "string"}},
                     parallel={
-                        "search": {"tool": "server.search_tool", "args": {"q": "{inputs.query}"}},
+                        "search": {
+                            "tool": "server.search_tool",
+                            "args": {"q": "{inputs.query}"},
+                        },
                     },
                 )
             }
@@ -534,7 +532,9 @@ class TestToolViewCompositeTool:
 class TestToolViewCustomToolErrors:
     """Tests for custom tool error handling."""
 
-    async def test_custom_tool_call_upstream_unknown_tool_raises(self, tmp_path, monkeypatch):
+    async def test_custom_tool_call_upstream_unknown_tool_raises(
+        self, tmp_path, monkeypatch
+    ):
         """Custom tool calling unknown upstream should raise."""
         from mcp_proxy.models import ToolViewConfig
         from mcp_proxy.views import ToolView
@@ -543,7 +543,7 @@ class TestToolViewCustomToolErrors:
         module_dir = tmp_path / "test_hooks"
         module_dir.mkdir()
         (module_dir / "__init__.py").write_text("")
-        (module_dir / "tools.py").write_text('''
+        (module_dir / "tools.py").write_text("""
 from mcp_proxy.custom_tools import custom_tool
 from mcp_proxy.custom_tools import ProxyContext
 
@@ -551,7 +551,7 @@ from mcp_proxy.custom_tools import ProxyContext
 async def call_unknown(ctx: ProxyContext, query: str) -> dict:
     # Try to call a tool that doesn't exist with wrong format
     return await ctx.call_tool("no_dot_format", query=query)
-''')
+""")
         monkeypatch.syspath_prepend(str(tmp_path))
 
         config = ToolViewConfig(
@@ -563,7 +563,9 @@ async def call_unknown(ctx: ProxyContext, query: str) -> dict:
         with pytest.raises(ValueError, match="Unknown upstream tool"):
             await view.call_tool("call_unknown", {"query": "test"})
 
-    async def test_custom_tool_call_upstream_unknown_server_raises(self, tmp_path, monkeypatch):
+    async def test_custom_tool_call_upstream_unknown_server_raises(
+        self, tmp_path, monkeypatch
+    ):
         """Custom tool calling tool on unknown server should raise."""
         from mcp_proxy.models import ToolViewConfig
         from mcp_proxy.views import ToolView
@@ -572,7 +574,7 @@ async def call_unknown(ctx: ProxyContext, query: str) -> dict:
         module_dir = tmp_path / "unknown_server_hooks"
         module_dir.mkdir()
         (module_dir / "__init__.py").write_text("")
-        (module_dir / "tools.py").write_text('''
+        (module_dir / "tools.py").write_text("""
 from mcp_proxy.custom_tools import custom_tool
 from mcp_proxy.custom_tools import ProxyContext
 
@@ -580,14 +582,16 @@ from mcp_proxy.custom_tools import ProxyContext
 async def call_unknown_server(ctx: ProxyContext, query: str) -> dict:
     # Try to call a tool on a server that doesn't exist
     return await ctx.call_tool("missing_server.tool", query=query)
-''')
+""")
         monkeypatch.syspath_prepend(str(tmp_path))
 
         config = ToolViewConfig(
             custom_tools=[{"module": "unknown_server_hooks.tools.call_unknown_server"}]
         )
         view = ToolView("test", config)
-        view._upstream_clients = {"other_server": None}  # Has a server, but not the one we call
+        view._upstream_clients = {
+            "other_server": None
+        }  # Has a server, but not the one we call
 
         with pytest.raises(ValueError, match="Unknown upstream tool"):
             await view.call_tool("call_unknown_server", {"query": "test"})
@@ -602,7 +606,7 @@ async def call_unknown_server(ctx: ProxyContext, query: str) -> dict:
         module_dir = tmp_path / "success_hooks"
         module_dir.mkdir()
         (module_dir / "__init__.py").write_text("")
-        (module_dir / "tools.py").write_text('''
+        (module_dir / "tools.py").write_text("""
 from mcp_proxy.custom_tools import custom_tool
 from mcp_proxy.custom_tools import ProxyContext
 
@@ -610,7 +614,7 @@ from mcp_proxy.custom_tools import ProxyContext
 async def call_valid(ctx: ProxyContext, query: str) -> dict:
     result = await ctx.call_tool("server.search", query=query)
     return {"wrapped": result}
-''')
+""")
         monkeypatch.syspath_prepend(str(tmp_path))
 
         config = ToolViewConfig(
@@ -636,11 +640,7 @@ class TestToolViewActiveClient:
         """call_tool should use active client when available."""
         from unittest.mock import AsyncMock
 
-        config = ToolViewConfig(
-            tools={
-                "server": {"my_tool": ToolConfig()}
-            }
-        )
+        config = ToolViewConfig(tools={"server": {"my_tool": ToolConfig()}})
         view = ToolView(name="test", config=config)
 
         # Mock stored client (fallback)
@@ -666,11 +666,7 @@ class TestToolViewActiveClient:
         """_call_upstream_tool should use active client when available."""
         from unittest.mock import AsyncMock
 
-        config = ToolViewConfig(
-            tools={
-                "server": {"tool": ToolConfig()}
-            }
-        )
+        config = ToolViewConfig(tools={"server": {"tool": ToolConfig()}})
         view = ToolView(name="test", config=config)
 
         # Mock stored client
@@ -691,4 +687,3 @@ class TestToolViewActiveClient:
         active_client.call_tool.assert_called_once_with("my_tool", {"query": "test"})
         stored_client.call_tool.assert_not_called()
         assert result == {"active": True}
-

@@ -17,13 +17,9 @@ def sample_config_dict():
             "test-view": {
                 "description": "Test view",
                 "exposure_mode": "direct",
-                "tools": {
-                    "test-server": {
-                        "test_tool": {}
-                    }
-                }
+                "tools": {"test-server": {"test_tool": {}}},
             }
-        }
+        },
     }
 
 
@@ -31,6 +27,7 @@ def sample_config_dict():
 def sample_config_yaml(tmp_path, sample_config_dict):
     """Write sample config to a YAML file."""
     import yaml
+
     config_file = tmp_path / "config.yaml"
     config_file.write_text(yaml.dump(sample_config_dict))
     return config_file
@@ -46,14 +43,14 @@ def config_with_tools_dict():
                 "tools": {
                     "search_code": {"description": "Search code"},
                     "search_issues": {"description": "Search issues"},
-                }
+                },
             },
             "memory": {
                 "command": "memory-server",
                 "tools": {
                     "store": {"description": "Store data"},
-                }
-            }
+                },
+            },
         },
         "tool_views": {
             "research": {
@@ -62,9 +59,9 @@ def config_with_tools_dict():
                     "github": {
                         "search_code": {},
                     }
-                }
+                },
             }
-        }
+        },
     }
 
 
@@ -72,7 +69,7 @@ def config_with_tools_dict():
 def config_with_tools_yaml(tmp_path, config_with_tools_dict):
     """Write config with tools to a YAML file."""
     import yaml
+
     config_file = tmp_path / "config.yaml"
     config_file.write_text(yaml.dump(config_with_tools_dict))
     return config_file
-

@@ -64,7 +64,7 @@ class TestCLITools:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["tools", "--config", str(sample_config_yaml), "--server", "test-server"]
+            ["tools", "--config", str(sample_config_yaml), "--server", "test-server"],
         )
 
         # Verify option is accepted
@@ -89,7 +89,7 @@ class TestCLITools:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["tools", "--config", str(config_with_tools_yaml), "--server", "github"]
+            ["tools", "--config", str(config_with_tools_yaml), "--server", "github"],
         )
 
         assert result.exit_code == 0
@@ -130,8 +130,7 @@ class TestCLITools:
         runner = CliRunner()
         # Filter by github - should NOT show memory tools
         result = runner.invoke(
-            main,
-            ["tools", "--server", "github", "--config", str(config_file)]
+            main, ["tools", "--server", "github", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -172,7 +171,7 @@ class TestCLISchema:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["schema", "test-server.test_tool", "--config", str(sample_config_yaml)]
+            ["schema", "test-server.test_tool", "--config", str(sample_config_yaml)],
         )
 
         # Would need upstream to get actual schema
@@ -184,8 +183,7 @@ class TestCLISchema:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["schema", "--json", "--config", str(sample_config_yaml)]
+            main, ["schema", "--json", "--config", str(sample_config_yaml)]
         )
 
         # Verify --json flag is accepted
@@ -198,7 +196,7 @@ class TestCLISchema:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["schema", "--server", "test-server", "--config", str(sample_config_yaml)]
+            ["schema", "--server", "test-server", "--config", str(sample_config_yaml)],
         )
 
         assert result.exit_code in (0, 1)
@@ -209,8 +207,7 @@ class TestCLISchema:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["schema", "invalidtoolname", "--config", str(sample_config_yaml)]
+            main, ["schema", "invalidtoolname", "--config", str(sample_config_yaml)]
         )
 
         assert result.exit_code == 1
@@ -222,8 +219,7 @@ class TestCLISchema:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["schema", "unknown-server.tool", "--config", str(sample_config_yaml)]
+            main, ["schema", "unknown-server.tool", "--config", str(sample_config_yaml)]
         )
 
         assert result.exit_code == 1
@@ -237,7 +233,13 @@ class TestCLISchema:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["schema", "test-server.test_tool", "--json", "--config", str(sample_config_yaml)]
+            [
+                "schema",
+                "test-server.test_tool",
+                "--json",
+                "--config",
+                str(sample_config_yaml),
+            ],
         )
 
         # Now attempts actual connection - may fail with connection error
@@ -253,7 +255,14 @@ class TestCLISchema:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["schema", "--server", "test-server", "--json", "--config", str(sample_config_yaml)]
+            [
+                "schema",
+                "--server",
+                "test-server",
+                "--json",
+                "--config",
+                str(sample_config_yaml),
+            ],
         )
 
         # Now attempts actual connection - may fail
@@ -268,7 +277,7 @@ class TestCLISchema:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["schema", "--server", "nonexistent", "--config", str(sample_config_yaml)]
+            ["schema", "--server", "nonexistent", "--config", str(sample_config_yaml)],
         )
 
         assert result.exit_code == 1
@@ -279,10 +288,7 @@ class TestCLISchema:
         from mcp_proxy.cli import main
 
         runner = CliRunner()
-        result = runner.invoke(
-            main,
-            ["schema", "--config", str(sample_config_yaml)]
-        )
+        result = runner.invoke(main, ["schema", "--config", str(sample_config_yaml)])
 
         assert result.exit_code == 0
         assert "test-server" in result.output
@@ -294,8 +300,7 @@ class TestCLISchema:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["schema", "--json", "--config", str(sample_config_yaml)]
+            main, ["schema", "--json", "--config", str(sample_config_yaml)]
         )
 
         assert result.exit_code == 0
@@ -312,10 +317,7 @@ class TestCLIValidate:
         from mcp_proxy.cli import main
 
         runner = CliRunner()
-        result = runner.invoke(
-            main,
-            ["validate", "--config", str(sample_config_yaml)]
-        )
+        result = runner.invoke(main, ["validate", "--config", str(sample_config_yaml)])
 
         # Config is valid, so should succeed
         assert result.exit_code == 0
@@ -360,10 +362,7 @@ tool_views:
         from mcp_proxy.cli import main
 
         runner = CliRunner()
-        result = runner.invoke(
-            main,
-            ["validate", "--config", str(sample_config_yaml)]
-        )
+        result = runner.invoke(main, ["validate", "--config", str(sample_config_yaml)])
 
         # Without real upstreams, may report connection failures
         # Just verify command runs
@@ -377,10 +376,7 @@ class TestCLIConfig:
         from mcp_proxy.cli import main
 
         runner = CliRunner()
-        result = runner.invoke(
-            main,
-            ["config", "--config", str(sample_config_yaml)]
-        )
+        result = runner.invoke(main, ["config", "--config", str(sample_config_yaml)])
 
         assert result.exit_code == 0
         assert "mcp_servers" in result.output
@@ -391,8 +387,7 @@ class TestCLIConfig:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["config", "--resolved", "--config", str(sample_config_yaml)]
+            main, ["config", "--resolved", "--config", str(sample_config_yaml)]
         )
 
         assert result.exit_code == 0
@@ -436,8 +431,7 @@ class TestCLIServe:
         runner = CliRunner()
         # Don't actually run the server, just check option parsing
         result = runner.invoke(
-            main,
-            ["serve", "--config", str(sample_config_yaml), "--help"]
+            main, ["serve", "--config", str(sample_config_yaml), "--help"]
         )
 
         assert result.exit_code == 0
@@ -523,10 +517,13 @@ class TestCLICall:
         result = runner.invoke(
             main,
             [
-                "call", "test-server.test_tool",
-                "--config", str(sample_config_yaml),
-                "--arg", "query=test"
-            ]
+                "call",
+                "test-server.test_tool",
+                "--config",
+                str(sample_config_yaml),
+                "--arg",
+                "query=test",
+            ],
         )
 
         # Would need upstream to actually call
@@ -551,7 +548,15 @@ class TestCLIServerAdd:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["server", "add", "my-server", "--command", "echo", "--config", str(config_file)]
+            [
+                "server",
+                "add",
+                "my-server",
+                "--command",
+                "echo",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -569,11 +574,16 @@ class TestCLIServerAdd:
         result = runner.invoke(
             main,
             [
-                "server", "add", "my-server",
-                "--command", "uv",
-                "--args", "tool,run,--from,some-package,some-command",
-                "--config", str(config_file)
-            ]
+                "server",
+                "add",
+                "my-server",
+                "--command",
+                "uv",
+                "--args",
+                "tool,run,--from,some-package,some-command",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -592,10 +602,14 @@ class TestCLIServerAdd:
         result = runner.invoke(
             main,
             [
-                "server", "add", "github",
-                "--url", "https://api.githubcopilot.com/mcp/",
-                "--config", str(config_file)
-            ]
+                "server",
+                "add",
+                "github",
+                "--url",
+                "https://api.githubcopilot.com/mcp/",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -614,17 +628,53 @@ class TestCLIServerAdd:
         result = runner.invoke(
             main,
             [
-                "server", "add", "my-server",
-                "--command", "echo",
-                "--env", "REDIS_URL=redis://localhost:6379",
-                "--env", "DEBUG=true",
-                "--config", str(config_file)
-            ]
+                "server",
+                "add",
+                "my-server",
+                "--command",
+                "echo",
+                "--env",
+                "REDIS_URL=redis://localhost:6379",
+                "--env",
+                "DEBUG=true",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
         content = config_file.read_text()
         assert "REDIS_URL" in content
+
+    def test_server_add_with_cwd(self, tmp_path):
+        """'server add' should accept --cwd for working directory."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("mcp_servers: {}\ntool_views: {}\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "add",
+                "filesystem",
+                "--command",
+                "npx",
+                "--args",
+                "-y,@modelcontextprotocol/server-filesystem,/data",
+                "--cwd",
+                "/data",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "filesystem" in content
+        assert "cwd: /data" in content
 
     def test_server_add_with_headers(self, tmp_path):
         """'server add' should accept --header for HTTP headers."""
@@ -637,16 +687,47 @@ class TestCLIServerAdd:
         result = runner.invoke(
             main,
             [
-                "server", "add", "github",
-                "--url", "https://api.githubcopilot.com/mcp/",
-                "--header", "Authorization=Bearer ${GITHUB_TOKEN}",
-                "--config", str(config_file)
-            ]
+                "server",
+                "add",
+                "github",
+                "--url",
+                "https://api.githubcopilot.com/mcp/",
+                "--header",
+                "Authorization=Bearer ${GITHUB_TOKEN}",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
         content = config_file.read_text()
         assert "Authorization" in content
+
+    def test_server_add_cwd_requires_command(self, tmp_path):
+        """'server add --cwd' should fail without --command."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("mcp_servers: {}\ntool_views: {}\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "add",
+                "my-server",
+                "--url",
+                "https://example.com/mcp",
+                "--cwd",
+                "/data",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "--cwd requires --command" in result.output
 
     def test_server_add_fails_without_command_or_url(self, tmp_path):
         """'server add' should fail if neither --command nor --url is provided."""
@@ -657,8 +738,7 @@ class TestCLIServerAdd:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["server", "add", "my-server", "--config", str(config_file)]
+            main, ["server", "add", "my-server", "--config", str(config_file)]
         )
 
         assert result.exit_code != 0
@@ -668,12 +748,22 @@ class TestCLIServerAdd:
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("mcp_servers:\n  existing:\n    command: echo\ntool_views: {}\n")
+        config_file.write_text(
+            "mcp_servers:\n  existing:\n    command: echo\ntool_views: {}\n"
+        )
 
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["server", "add", "existing", "--command", "echo", "--config", str(config_file)]
+            [
+                "server",
+                "add",
+                "existing",
+                "--command",
+                "echo",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code != 0
@@ -688,12 +778,13 @@ class TestCLIServerRemove:
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("mcp_servers:\n  my-server:\n    command: echo\ntool_views: {}\n")
+        config_file.write_text(
+            "mcp_servers:\n  my-server:\n    command: echo\ntool_views: {}\n"
+        )
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["server", "remove", "my-server", "--config", str(config_file)]
+            main, ["server", "remove", "my-server", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -709,8 +800,7 @@ class TestCLIServerRemove:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["server", "remove", "nonexistent", "--config", str(config_file)]
+            main, ["server", "remove", "nonexistent", "--config", str(config_file)]
         )
 
         assert result.exit_code != 0
@@ -732,8 +822,7 @@ class TestCLIServerRemove:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["server", "remove", "my-server", "--config", str(config_file)]
+            main, ["server", "remove", "my-server", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -759,7 +848,7 @@ class TestCLIServerRemove:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["server", "remove", "github", "--force", "--config", str(config_file)]
+            ["server", "remove", "github", "--force", "--config", str(config_file)],
         )
 
         assert result.exit_code == 0
@@ -784,10 +873,7 @@ class TestCLIServerList:
         )
 
         runner = CliRunner()
-        result = runner.invoke(
-            main,
-            ["server", "list", "--config", str(config_file)]
-        )
+        result = runner.invoke(main, ["server", "list", "--config", str(config_file)])
 
         assert result.exit_code == 0
         assert "server-a" in result.output
@@ -801,10 +887,7 @@ class TestCLIServerList:
         config_file.write_text("mcp_servers: {}\ntool_views: {}\n")
 
         runner = CliRunner()
-        result = runner.invoke(
-            main,
-            ["server", "list", "--config", str(config_file)]
-        )
+        result = runner.invoke(main, ["server", "list", "--config", str(config_file)])
 
         assert result.exit_code == 0
 
@@ -817,16 +900,21 @@ class TestCLIServerSetTools:
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("mcp_servers:\n  github:\n    url: https://example.com\ntool_views: {}\n")
+        config_file.write_text(
+            "mcp_servers:\n  github:\n    url: https://example.com\ntool_views: {}\n"
+        )
 
         runner = CliRunner()
         result = runner.invoke(
             main,
             [
-                "server", "set-tools", "github",
+                "server",
+                "set-tools",
+                "github",
                 "search_code,search_issues,get_file_contents",
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -845,7 +933,14 @@ class TestCLIServerSetTools:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["server", "set-tools", "nonexistent", "tool1,tool2", "--config", str(config_file)]
+            [
+                "server",
+                "set-tools",
+                "nonexistent",
+                "tool1,tool2",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code != 0
@@ -865,7 +960,14 @@ class TestCLIServerSetTools:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["server", "set-tools", "github", "", "--config", str(config_file)]  # Empty string
+            [
+                "server",
+                "set-tools",
+                "github",
+                "",
+                "--config",
+                str(config_file),
+            ],  # Empty string
         )
 
         assert result.exit_code == 0
@@ -891,14 +993,17 @@ class TestCLIServerClearTools:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["server", "clear-tools", "github", "--config", str(config_file)]
+            main, ["server", "clear-tools", "github", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
         content = config_file.read_text()
         # tools section should be removed or empty
-        assert "search_code" not in content or "tools: {}" in content or "tools:" not in content
+        assert (
+            "search_code" not in content
+            or "tools: {}" in content
+            or "tools:" not in content
+        )
 
     def test_server_clear_tools_not_found(self, tmp_path):
         """'server clear-tools' on non-existent server should error."""
@@ -909,8 +1014,7 @@ class TestCLIServerClearTools:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["server", "clear-tools", "nonexistent", "--config", str(config_file)]
+            main, ["server", "clear-tools", "nonexistent", "--config", str(config_file)]
         )
 
         assert result.exit_code == 1
@@ -922,16 +1026,12 @@ class TestCLIServerClearTools:
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
-            "mcp_servers:\n"
-            "  github:\n"
-            "    url: https://example.com\n"
-            "tool_views: {}\n"
+            "mcp_servers:\n  github:\n    url: https://example.com\ntool_views: {}\n"
         )
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["server", "clear-tools", "github", "--config", str(config_file)]
+            main, ["server", "clear-tools", "github", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -958,10 +1058,14 @@ class TestCLIServerSetToolDescription:
         result = runner.invoke(
             main,
             [
-                "server", "set-tool-description", "github", "search_code",
+                "server",
+                "set-tool-description",
+                "github",
+                "search_code",
                 "Use this to search code. Focus on symbols.\n\n{original}",
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -975,20 +1079,21 @@ class TestCLIServerSetToolDescription:
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
-            "mcp_servers:\n"
-            "  github:\n"
-            "    url: https://example.com\n"
-            "tool_views: {}\n"
+            "mcp_servers:\n  github:\n    url: https://example.com\ntool_views: {}\n"
         )
 
         runner = CliRunner()
         result = runner.invoke(
             main,
             [
-                "server", "set-tool-description", "github", "search_code",
+                "server",
+                "set-tool-description",
+                "github",
+                "search_code",
                 "Custom instructions here",
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1004,10 +1109,14 @@ class TestCLIServerSetToolDescription:
         result = runner.invoke(
             main,
             [
-                "server", "set-tool-description", "nonexistent", "tool",
+                "server",
+                "set-tool-description",
+                "nonexistent",
+                "tool",
                 "description",
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 1
@@ -1032,10 +1141,14 @@ class TestCLIServerSetToolDescription:
         result = runner.invoke(
             main,
             [
-                "server", "set-tool-description", "github", "search_code",
+                "server",
+                "set-tool-description",
+                "github",
+                "search_code",
                 "",  # Empty string
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1061,10 +1174,14 @@ class TestCLIServerSetToolDescription:
         result = runner.invoke(
             main,
             [
-                "server", "set-tool-description", "github", "search_code",
+                "server",
+                "set-tool-description",
+                "github",
+                "search_code",
                 "",  # Empty string - nothing to clear
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1087,8 +1204,7 @@ class TestCLIViewCreate:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["view", "create", "research", "--config", str(config_file)]
+            main, ["view", "create", "research", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -1106,10 +1222,14 @@ class TestCLIViewCreate:
         result = runner.invoke(
             main,
             [
-                "view", "create", "research",
-                "--description", "Tools for research tasks",
-                "--config", str(config_file)
-            ]
+                "view",
+                "create",
+                "research",
+                "--description",
+                "Tools for research tasks",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1123,16 +1243,12 @@ class TestCLIViewCreate:
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
-            "mcp_servers: {}\n"
-            "tool_views:\n"
-            "  existing:\n"
-            "    description: Already here\n"
+            "mcp_servers: {}\ntool_views:\n  existing:\n    description: Already here\n"
         )
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["view", "create", "existing", "--config", str(config_file)]
+            main, ["view", "create", "existing", "--config", str(config_file)]
         )
 
         assert result.exit_code != 0
@@ -1148,16 +1264,12 @@ class TestCLIViewDelete:
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
-            "mcp_servers: {}\n"
-            "tool_views:\n"
-            "  my-view:\n"
-            "    description: Test view\n"
+            "mcp_servers: {}\ntool_views:\n  my-view:\n    description: Test view\n"
         )
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["view", "delete", "my-view", "--config", str(config_file)]
+            main, ["view", "delete", "my-view", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -1173,8 +1285,7 @@ class TestCLIViewDelete:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["view", "delete", "nonexistent", "--config", str(config_file)]
+            main, ["view", "delete", "nonexistent", "--config", str(config_file)]
         )
 
         assert result.exit_code != 0
@@ -1199,10 +1310,7 @@ class TestCLIViewList:
         )
 
         runner = CliRunner()
-        result = runner.invoke(
-            main,
-            ["view", "list", "--config", str(config_file)]
-        )
+        result = runner.invoke(main, ["view", "list", "--config", str(config_file)])
 
         assert result.exit_code == 0
         assert "view-a" in result.output
@@ -1216,10 +1324,7 @@ class TestCLIViewList:
         config_file.write_text("mcp_servers: {}\ntool_views: {}\n")
 
         runner = CliRunner()
-        result = runner.invoke(
-            main,
-            ["view", "list", "--config", str(config_file)]
-        )
+        result = runner.invoke(main, ["view", "list", "--config", str(config_file)])
 
         assert result.exit_code == 0
 
@@ -1244,7 +1349,7 @@ class TestCLIViewAddServer:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["view", "add-server", "research", "github", "--config", str(config_file)]
+            ["view", "add-server", "research", "github", "--config", str(config_file)],
         )
 
         assert result.exit_code == 0
@@ -1269,10 +1374,15 @@ class TestCLIViewAddServer:
         result = runner.invoke(
             main,
             [
-                "view", "add-server", "research", "github",
-                "--tools", "search_code,search_issues",
-                "--config", str(config_file)
-            ]
+                "view",
+                "add-server",
+                "research",
+                "github",
+                "--tools",
+                "search_code,search_issues",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1286,16 +1396,20 @@ class TestCLIViewAddServer:
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
-            "mcp_servers:\n"
-            "  github:\n"
-            "    url: https://example.com\n"
-            "tool_views: {}\n"
+            "mcp_servers:\n  github:\n    url: https://example.com\ntool_views: {}\n"
         )
 
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["view", "add-server", "nonexistent", "github", "--config", str(config_file)]
+            [
+                "view",
+                "add-server",
+                "nonexistent",
+                "github",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code != 0
@@ -1316,7 +1430,14 @@ class TestCLIViewAddServer:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["view", "add-server", "research", "nonexistent", "--config", str(config_file)]
+            [
+                "view",
+                "add-server",
+                "research",
+                "nonexistent",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code != 0
@@ -1346,7 +1467,14 @@ class TestCLIViewRemoveServer:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["view", "remove-server", "research", "github", "--config", str(config_file)]
+            [
+                "view",
+                "remove-server",
+                "research",
+                "github",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1365,7 +1493,14 @@ class TestCLIViewRemoveServer:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["view", "remove-server", "nonexistent", "github", "--config", str(config_file)]
+            [
+                "view",
+                "remove-server",
+                "nonexistent",
+                "github",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code != 0
@@ -1388,11 +1523,17 @@ class TestCLIViewRemoveServer:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["view", "remove-server", "research", "github", "--config", str(config_file)]
+            [
+                "view",
+                "remove-server",
+                "research",
+                "github",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code != 0
-
 
 
 # =============================================================================
@@ -1414,11 +1555,16 @@ class TestCLIServerAddEdgeCases:
         result = runner.invoke(
             main,
             [
-                "server", "add", "my-server",
-                "--command", "echo",
-                "--url", "https://example.com",
-                "--config", str(config_file)
-            ]
+                "server",
+                "add",
+                "my-server",
+                "--command",
+                "echo",
+                "--url",
+                "https://example.com",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code != 0
@@ -1434,11 +1580,16 @@ class TestCLIServerAddEdgeCases:
         result = runner.invoke(
             main,
             [
-                "server", "add", "my-server",
-                "--url", "https://example.com",
-                "--args", "arg1,arg2",
-                "--config", str(config_file)
-            ]
+                "server",
+                "add",
+                "my-server",
+                "--url",
+                "https://example.com",
+                "--args",
+                "arg1,arg2",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code != 0
@@ -1454,11 +1605,16 @@ class TestCLIServerAddEdgeCases:
         result = runner.invoke(
             main,
             [
-                "server", "add", "my-server",
-                "--command", "echo",
-                "--header", "Authorization=Bearer token",
-                "--config", str(config_file)
-            ]
+                "server",
+                "add",
+                "my-server",
+                "--command",
+                "echo",
+                "--header",
+                "Authorization=Bearer token",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code != 0
@@ -1474,12 +1630,18 @@ class TestCLIServerAddEdgeCases:
         result = runner.invoke(
             main,
             [
-                "server", "add", "my-server",
-                "--command", "echo",
-                "--env", "INVALID_NO_EQUALS",  # No = sign
-                "--env", "VALID=value",
-                "--config", str(config_file)
-            ]
+                "server",
+                "add",
+                "my-server",
+                "--command",
+                "echo",
+                "--env",
+                "INVALID_NO_EQUALS",  # No = sign
+                "--env",
+                "VALID=value",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1498,12 +1660,18 @@ class TestCLIServerAddEdgeCases:
         result = runner.invoke(
             main,
             [
-                "server", "add", "my-server",
-                "--command", "echo",
-                "--env", "INVALID1",  # No = sign
-                "--env", "INVALID2",  # No = sign
-                "--config", str(config_file)
-            ]
+                "server",
+                "add",
+                "my-server",
+                "--command",
+                "echo",
+                "--env",
+                "INVALID1",  # No = sign
+                "--env",
+                "INVALID2",  # No = sign
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1522,12 +1690,18 @@ class TestCLIServerAddEdgeCases:
         result = runner.invoke(
             main,
             [
-                "server", "add", "my-server",
-                "--url", "https://example.com",
-                "--header", "INVALID_NO_EQUALS",  # No = sign
-                "--header", "Authorization=token",
-                "--config", str(config_file)
-            ]
+                "server",
+                "add",
+                "my-server",
+                "--url",
+                "https://example.com",
+                "--header",
+                "INVALID_NO_EQUALS",  # No = sign
+                "--header",
+                "Authorization=token",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1546,12 +1720,18 @@ class TestCLIServerAddEdgeCases:
         result = runner.invoke(
             main,
             [
-                "server", "add", "my-server",
-                "--url", "https://example.com",
-                "--header", "INVALID1",  # No = sign
-                "--header", "INVALID2",  # No = sign
-                "--config", str(config_file)
-            ]
+                "server",
+                "add",
+                "my-server",
+                "--url",
+                "https://example.com",
+                "--header",
+                "INVALID1",  # No = sign
+                "--header",
+                "INVALID2",  # No = sign
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1576,7 +1756,15 @@ class TestCLIServerAddEdgeCases:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["server", "add", "new-server", "--command", "echo", "--config", str(config_file)]
+            [
+                "server",
+                "add",
+                "new-server",
+                "--command",
+                "echo",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1596,11 +1784,16 @@ class TestCLIServerAddEdgeCases:
         result = runner.invoke(
             main,
             [
-                "server", "add", "github",
-                "--url", "https://api.github.com",
-                "--header", "Authorization=Bearer ${GITHUB_TOKEN}",
-                "--config", str(config_file)
-            ]
+                "server",
+                "add",
+                "github",
+                "--url",
+                "https://api.github.com",
+                "--header",
+                "Authorization=Bearer ${GITHUB_TOKEN}",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1629,13 +1822,16 @@ class TestCLIServerRemoveEdgeCases:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["server", "remove", "github", "--config", str(config_file)]
+            main, ["server", "remove", "github", "--config", str(config_file)]
         )
 
         # Should either fail or warn about the reference
         # For safety, it should probably fail without --force
-        assert result.exit_code != 0 or "view" in result.output.lower() or "reference" in result.output.lower()
+        assert (
+            result.exit_code != 0
+            or "view" in result.output.lower()
+            or "reference" in result.output.lower()
+        )
 
     def test_server_remove_with_force_removes_references(self, tmp_path):
         """'server remove --force' should remove server and clean up view references."""
@@ -1656,7 +1852,7 @@ class TestCLIServerRemoveEdgeCases:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["server", "remove", "github", "--force", "--config", str(config_file)]
+            ["server", "remove", "github", "--force", "--config", str(config_file)],
         )
 
         assert result.exit_code == 0
@@ -1679,8 +1875,7 @@ class TestCLIServerRemoveEdgeCases:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["server", "remove", "server-a", "--config", str(config_file)]
+            main, ["server", "remove", "server-a", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -1710,7 +1905,7 @@ class TestCLIServerSetToolsEdgeCases:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["server", "set-tools", "github", "new_tool", "--config", str(config_file)]
+            ["server", "set-tools", "github", "new_tool", "--config", str(config_file)],
         )
 
         assert result.exit_code == 0
@@ -1734,8 +1929,7 @@ class TestCLIServerSetToolsEdgeCases:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["server", "set-tools", "github", "", "--config", str(config_file)]
+            main, ["server", "set-tools", "github", "", "--config", str(config_file)]
         )
 
         # Could either clear tools or reject empty input
@@ -1758,7 +1952,14 @@ class TestCLIServerSetToolsEdgeCases:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["server", "set-tools", "my-server", "tool1,tool2", "--config", str(config_file)]
+            [
+                "server",
+                "set-tools",
+                "my-server",
+                "tool1,tool2",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1791,10 +1992,14 @@ class TestCLIServerSetToolDescriptionEdgeCases:
         result = runner.invoke(
             main,
             [
-                "server", "set-tool-description", "github", "search_code",
+                "server",
+                "set-tool-description",
+                "github",
+                "search_code",
                 multiline_desc,
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1819,10 +2024,14 @@ class TestCLIServerSetToolDescriptionEdgeCases:
         result = runner.invoke(
             main,
             [
-                "server", "set-tool-description", "github", "search_code",
+                "server",
+                "set-tool-description",
+                "github",
+                "search_code",
                 "Completely new description without original.",
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1848,10 +2057,14 @@ class TestCLIServerSetToolDescriptionEdgeCases:
         result = runner.invoke(
             main,
             [
-                "server", "set-tool-description", "github", "search_code",
+                "server",
+                "set-tool-description",
+                "github",
+                "search_code",
                 "",
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         # Should clear the description or the tool config
@@ -1872,10 +2085,14 @@ class TestCLIViewCreateEdgeCases:
         result = runner.invoke(
             main,
             [
-                "view", "create", "research",
-                "--exposure-mode", "search",
-                "--config", str(config_file)
-            ]
+                "view",
+                "create",
+                "research",
+                "--exposure-mode",
+                "search",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1897,8 +2114,7 @@ class TestCLIViewCreateEdgeCases:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["view", "create", "new-view", "--config", str(config_file)]
+            main, ["view", "create", "new-view", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -1931,10 +2147,15 @@ class TestCLIViewAddServerEdgeCases:
         result = runner.invoke(
             main,
             [
-                "view", "add-server", "research", "github",
-                "--tools", "new_tool",
-                "--config", str(config_file)
-            ]
+                "view",
+                "add-server",
+                "research",
+                "github",
+                "--tools",
+                "new_tool",
+                "--config",
+                str(config_file),
+            ],
         )
 
         # Should either update or warn about existing
@@ -1959,10 +2180,15 @@ class TestCLIViewAddServerEdgeCases:
         result = runner.invoke(
             main,
             [
-                "view", "add-server", "research", "github",
-                "--tools", "search_code",
-                "--config", str(config_file)
-            ]
+                "view",
+                "add-server",
+                "research",
+                "github",
+                "--tools",
+                "search_code",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -1985,10 +2211,14 @@ class TestCLIViewAddServerEdgeCases:
         result = runner.invoke(
             main,
             [
-                "view", "add-server", "research", "github",
+                "view",
+                "add-server",
+                "research",
+                "github",
                 "--all",
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         # Should add server with all tools (not filtered)
@@ -2014,8 +2244,7 @@ class TestCLIViewDeleteEdgeCases:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["view", "delete", "view-a", "--config", str(config_file)]
+            main, ["view", "delete", "view-a", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -2045,8 +2274,7 @@ class TestCLIServerListEdgeCases:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["server", "list", "--json", "--config", str(config_file)]
+            main, ["server", "list", "--json", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -2069,8 +2297,7 @@ class TestCLIServerListEdgeCases:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["server", "list", "--verbose", "--config", str(config_file)]
+            main, ["server", "list", "--verbose", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -2097,8 +2324,7 @@ class TestCLIServerListEdgeCases:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["server", "list", "--verbose", "--config", str(config_file)]
+            main, ["server", "list", "--verbose", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -2123,8 +2349,7 @@ class TestCLIServerListEdgeCases:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["server", "list", "--verbose", "--config", str(config_file)]
+            main, ["server", "list", "--verbose", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -2153,8 +2378,7 @@ class TestCLIViewListEdgeCases:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["view", "list", "--json", "--config", str(config_file)]
+            main, ["view", "list", "--json", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -2181,8 +2405,7 @@ class TestCLIViewListEdgeCases:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["view", "list", "--verbose", "--config", str(config_file)]
+            main, ["view", "list", "--verbose", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -2205,8 +2428,7 @@ class TestCLIViewListEdgeCases:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["view", "list", "--verbose", "--config", str(config_file)]
+            main, ["view", "list", "--verbose", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -2217,16 +2439,12 @@ class TestCLIViewListEdgeCases:
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
-            "mcp_servers: {}\n"
-            "tool_views:\n"
-            "  minimal:\n"
-            "    exposure_mode: direct\n"
+            "mcp_servers: {}\ntool_views:\n  minimal:\n    exposure_mode: direct\n"
         )
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["view", "list", "--verbose", "--config", str(config_file)]
+            main, ["view", "list", "--verbose", "--config", str(config_file)]
         )
 
         assert result.exit_code == 0
@@ -2263,10 +2481,7 @@ class TestCLIConfigFileEdgeCases:
         config_file.write_text("mcp_servers: [\ninvalid yaml content")
 
         runner = CliRunner()
-        result = runner.invoke(
-            main,
-            ["server", "list", "--config", str(config_file)]
-        )
+        result = runner.invoke(main, ["server", "list", "--config", str(config_file)])
 
         assert result.exit_code != 0
         assert "error" in result.output.lower() or "invalid" in result.output.lower()
@@ -2279,10 +2494,7 @@ class TestCLIConfigFileEdgeCases:
         config_file.write_text("")
 
         runner = CliRunner()
-        result = runner.invoke(
-            main,
-            ["server", "list", "--config", str(config_file)]
-        )
+        result = runner.invoke(main, ["server", "list", "--config", str(config_file)])
 
         # Should either work with defaults or error gracefully
         assert result.exit_code in (0, 1)
@@ -2310,10 +2522,14 @@ class TestCLIViewSetTools:
         result = runner.invoke(
             main,
             [
-                "view", "set-tools", "research", "github",
+                "view",
+                "set-tools",
+                "research",
+                "github",
                 "search_code,search_issues,get_file_contents",
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -2332,7 +2548,15 @@ class TestCLIViewSetTools:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["view", "set-tools", "nonexistent", "github", "tool1", "--config", str(config_file)]
+            [
+                "view",
+                "set-tools",
+                "nonexistent",
+                "github",
+                "tool1",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code != 0
@@ -2356,7 +2580,15 @@ class TestCLIViewSetTools:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["view", "set-tools", "research", "github", "new_tool", "--config", str(config_file)]
+            [
+                "view",
+                "set-tools",
+                "research",
+                "github",
+                "new_tool",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -2383,7 +2615,15 @@ class TestCLIViewSetTools:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["view", "set-tools", "research", "github", "", "--config", str(config_file)]
+            [
+                "view",
+                "set-tools",
+                "research",
+                "github",
+                "",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -2407,7 +2647,15 @@ class TestCLIViewSetTools:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["view", "set-tools", "research", "github", "tool1,tool2", "--config", str(config_file)]
+            [
+                "view",
+                "set-tools",
+                "research",
+                "github",
+                "tool1,tool2",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -2439,7 +2687,7 @@ class TestCLIViewClearTools:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["view", "clear-tools", "research", "github", "--config", str(config_file)]
+            ["view", "clear-tools", "research", "github", "--config", str(config_file)],
         )
 
         assert result.exit_code == 0
@@ -2457,7 +2705,14 @@ class TestCLIViewClearTools:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["view", "clear-tools", "nonexistent", "github", "--config", str(config_file)]
+            [
+                "view",
+                "clear-tools",
+                "nonexistent",
+                "github",
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code != 0
@@ -2479,7 +2734,7 @@ class TestCLIViewClearTools:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["view", "clear-tools", "research", "github", "--config", str(config_file)]
+            ["view", "clear-tools", "research", "github", "--config", str(config_file)],
         )
 
         assert result.exit_code != 0
@@ -2508,10 +2763,15 @@ class TestCLIViewSetToolDescription:
         result = runner.invoke(
             main,
             [
-                "view", "set-tool-description", "research", "github", "search_code",
+                "view",
+                "set-tool-description",
+                "research",
+                "github",
+                "search_code",
                 "Custom view-specific instructions.\n\n{original}",
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -2536,10 +2796,15 @@ class TestCLIViewSetToolDescription:
         result = runner.invoke(
             main,
             [
-                "view", "set-tool-description", "research", "github", "new_tool",
+                "view",
+                "set-tool-description",
+                "research",
+                "github",
+                "new_tool",
                 "Tool description",
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -2568,10 +2833,15 @@ class TestCLIViewSetToolDescription:
         result = runner.invoke(
             main,
             [
-                "view", "set-tool-description", "research", "github", "search_code",
+                "view",
+                "set-tool-description",
+                "research",
+                "github",
+                "search_code",
                 "",
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -2590,10 +2860,15 @@ class TestCLIViewSetToolDescription:
         result = runner.invoke(
             main,
             [
-                "view", "set-tool-description", "nonexistent", "github", "tool",
+                "view",
+                "set-tool-description",
+                "nonexistent",
+                "github",
+                "tool",
                 "description",
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 1
@@ -2619,10 +2894,15 @@ class TestCLIViewSetToolDescription:
         result = runner.invoke(
             main,
             [
-                "view", "set-tool-description", "research", "github", "search_code",
+                "view",
+                "set-tool-description",
+                "research",
+                "github",
+                "search_code",
                 "",  # Empty string - nothing to clear
-                "--config", str(config_file)
-            ]
+                "--config",
+                str(config_file),
+            ],
         )
 
         assert result.exit_code == 0
@@ -2648,7 +2928,10 @@ mcp_servers:
         mock_tool = MagicMock()
         mock_tool.name = "search"
         mock_tool.description = "Search for items"
-        mock_tool.inputSchema = {"type": "object", "properties": {"q": {"type": "string"}}}
+        mock_tool.inputSchema = {
+            "type": "object",
+            "properties": {"q": {"type": "string"}},
+        }
 
         mock_client = MagicMock()
         mock_client.list_tools = AsyncMock(return_value=[mock_tool])
@@ -2658,7 +2941,9 @@ mcp_servers:
         async def mock_create_client(self, server_name):
             return mock_client
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["schema", "test.search", "-c", str(config_file)])
@@ -2698,10 +2983,14 @@ mcp_servers:
         async def mock_create_client(self, server_name):
             return mock_client
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
 
         runner = CliRunner()
-        result = runner.invoke(main, ["schema", "--server", "myserver", "-c", str(config_file)])
+        result = runner.invoke(
+            main, ["schema", "--server", "myserver", "-c", str(config_file)]
+        )
 
         assert "myserver" in result.output.lower() or "Server" in result.output
         assert "tool_a" in result.output
@@ -2736,7 +3025,9 @@ mcp_servers:
         async def mock_create_client(self, server_name):
             return mock_client
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["schema", "-c", str(config_file)])
@@ -2795,7 +3086,9 @@ mcp_servers:
         async def mock_create_client(self, server_name):
             return mock_client
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["schema", "-c", str(config_file)])
@@ -2837,19 +3130,23 @@ mcp_servers:
         mock_tool_blocked2.inputSchema = {}
 
         mock_client = MagicMock()
-        mock_client.list_tools = AsyncMock(return_value=[
-            mock_tool_allowed, mock_tool_blocked1, mock_tool_blocked2
-        ])
+        mock_client.list_tools = AsyncMock(
+            return_value=[mock_tool_allowed, mock_tool_blocked1, mock_tool_blocked2]
+        )
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
         async def mock_create_client(self, server_name):
             return mock_client
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
 
         runner = CliRunner()
-        result = runner.invoke(main, ["schema", "--server", "myserver", "-c", str(config_file)])
+        result = runner.invoke(
+            main, ["schema", "--server", "myserver", "-c", str(config_file)]
+        )
 
         assert result.exit_code == 0
         assert "allowed_tool" in result.output
@@ -2885,12 +3182,21 @@ mcp_servers:
         async def mock_create_client(self, server_name):
             return mock_client
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
 
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["call", "myserver.do_something", "-a", "query=test", "-c", str(config_file)]
+            [
+                "call",
+                "myserver.do_something",
+                "-a",
+                "query=test",
+                "-c",
+                str(config_file),
+            ],
         )
 
         assert "Calling myserver.do_something" in result.output
@@ -2916,14 +3222,18 @@ mcp_servers:
         mock_tool.name = "tool1"
 
         mock_client = MagicMock()
-        mock_client.list_tools = AsyncMock(return_value=[mock_tool, mock_tool, mock_tool])
+        mock_client.list_tools = AsyncMock(
+            return_value=[mock_tool, mock_tool, mock_tool]
+        )
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
         async def mock_create_client(self, server_name):
             return mock_client
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["validate", "-C", "-c", str(config_file)])
@@ -2960,10 +3270,14 @@ mcp_servers:
         async def mock_create_client(self, server_name):
             return mock_client
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
 
         runner = CliRunner()
-        result = runner.invoke(main, ["schema", "test.nonexistent_tool", "-c", str(config_file)])
+        result = runner.invoke(
+            main, ["schema", "test.nonexistent_tool", "-c", str(config_file)]
+        )
 
         assert "not found" in result.output
 
@@ -2994,10 +3308,14 @@ mcp_servers:
         async def mock_create_client(self, server_name):
             return mock_client
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
 
         runner = CliRunner()
-        result = runner.invoke(main, ["schema", "test.missing", "--json", "-c", str(config_file)])
+        result = runner.invoke(
+            main, ["schema", "test.missing", "--json", "-c", str(config_file)]
+        )
 
         data = json.loads(result.output)
         assert "error" in data
@@ -3020,7 +3338,10 @@ mcp_servers:
         mock_tool = MagicMock()
         mock_tool.name = "search"
         mock_tool.description = "Search tool"
-        mock_tool.inputSchema = {"type": "object", "properties": {"q": {"type": "string"}}}
+        mock_tool.inputSchema = {
+            "type": "object",
+            "properties": {"q": {"type": "string"}},
+        }
 
         mock_client = MagicMock()
         mock_client.list_tools = AsyncMock(return_value=[mock_tool])
@@ -3030,10 +3351,14 @@ mcp_servers:
         async def mock_create_client(self, server_name):
             return mock_client
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
 
         runner = CliRunner()
-        result = runner.invoke(main, ["schema", "test.search", "--json", "-c", str(config_file)])
+        result = runner.invoke(
+            main, ["schema", "test.search", "--json", "-c", str(config_file)]
+        )
 
         data = json.loads(result.output)
         assert "tool" in data
@@ -3067,10 +3392,14 @@ mcp_servers:
         async def mock_create_client(self, server_name):
             return mock_client
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
 
         runner = CliRunner()
-        result = runner.invoke(main, ["schema", "--server", "myserver", "--json", "-c", str(config_file)])
+        result = runner.invoke(
+            main, ["schema", "--server", "myserver", "--json", "-c", str(config_file)]
+        )
 
         data = json.loads(result.output)
         assert "server" in data
@@ -3092,7 +3421,9 @@ mcp_servers:
         async def mock_create_client_fails(self, server_name):
             raise RuntimeError("Connection refused")
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["schema", "-c", str(config_file)])
@@ -3115,7 +3446,9 @@ mcp_servers:
         async def mock_create_client_fails(self, server_name):
             raise RuntimeError("Connection refused")
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["schema", "--json", "-c", str(config_file)])
@@ -3140,10 +3473,14 @@ mcp_servers:
         async def mock_create_client_fails(self, server_name):
             raise RuntimeError("Connection refused")
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails
+        )
 
         runner = CliRunner()
-        result = runner.invoke(main, ["schema", "--server", "broken", "--json", "-c", str(config_file)])
+        result = runner.invoke(
+            main, ["schema", "--server", "broken", "--json", "-c", str(config_file)]
+        )
 
         # Should output JSON with error
         data = json.loads(result.output)
@@ -3165,7 +3502,9 @@ mcp_servers:
         async def mock_create_client_fails(self, server_name):
             raise RuntimeError("Connection refused")
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["schema", "broken.tool", "-c", str(config_file)])
@@ -3188,7 +3527,9 @@ mcp_servers:
         async def mock_create_client_fails(self, server_name):
             raise RuntimeError("Server not available")
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["call", "myserver.tool", "-c", str(config_file)])
@@ -3227,7 +3568,9 @@ mcp_servers:
 """)
 
         runner = CliRunner()
-        result = runner.invoke(main, ["call", "nonexistent.tool", "-c", str(config_file)])
+        result = runner.invoke(
+            main, ["call", "nonexistent.tool", "-c", str(config_file)]
+        )
 
         assert result.exit_code == 1
         assert "not found" in result.output
@@ -3259,11 +3602,25 @@ mcp_servers:
         async def mock_create_client(self, server_name):
             return mock_client
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
 
         runner = CliRunner()
         # Pass an arg without = sign - should be skipped
-        result = runner.invoke(main, ["call", "myserver.tool", "-a", "no_equals", "-a", "valid=value", "-c", str(config_file)])
+        result = runner.invoke(
+            main,
+            [
+                "call",
+                "myserver.tool",
+                "-a",
+                "no_equals",
+                "-a",
+                "valid=value",
+                "-c",
+                str(config_file),
+            ],
+        )
 
         # Should still work, just skip the invalid arg
         assert "Calling myserver.tool" in result.output
@@ -3298,7 +3655,9 @@ mcp_servers:
         async def mock_create_client(self, server_name):
             return mock_client
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["call", "myserver.tool", "-c", str(config_file)])
@@ -3331,7 +3690,9 @@ mcp_servers:
         async def mock_create_client(self, server_name):
             return mock_client
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["call", "myserver.tool", "-c", str(config_file)])
@@ -3355,7 +3716,9 @@ mcp_servers:
         async def mock_create_client_fails(self, server_name):
             raise ConnectionError("Cannot connect to server")
 
-        monkeypatch.setattr("mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails)
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client_fails
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["validate", "-C", "-c", str(config_file)])
@@ -3363,3 +3726,983 @@ mcp_servers:
         assert "Checking upstream connections" in result.output
         assert "failed" in result.output or "Cannot connect" in result.output
         assert result.exit_code == 1
+
+
+class TestCLIServerRenameTool:
+    """Tests for 'mcp-proxy server rename-tool' command."""
+
+    def test_rename_tool_sets_name(self, tmp_path):
+        """'server rename-tool' should set custom name for tool."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  github:\n"
+            "    command: npx\n"
+            "    args: [-y, '@github/mcp-server']\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "rename-tool",
+                "github",
+                "search_code",
+                "find_code",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "search_code" in content
+        assert "name: find_code" in content
+
+    def test_rename_tool_when_tools_dict_exists(self, tmp_path):
+        """'server rename-tool' should work when tools dict already exists."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  github:\n"
+            "    command: echo\n"
+            "    tools:\n"
+            "      other_tool: {}\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "rename-tool",
+                "github",
+                "search_code",
+                "find_code",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "other_tool" in content  # Existing tool preserved
+        assert "search_code" in content
+        assert "name: find_code" in content
+
+    def test_rename_tool_when_tool_entry_exists(self, tmp_path):
+        """'server rename-tool' should work when tool entry already exists."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  github:\n"
+            "    command: echo\n"
+            "    tools:\n"
+            "      search_code:\n"
+            "        description: existing\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "rename-tool",
+                "github",
+                "search_code",
+                "find_code",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "description: existing" in content  # Existing config preserved
+        assert "name: find_code" in content
+
+    def test_rename_tool_server_not_found(self, tmp_path):
+        """'server rename-tool' on non-existent server should error."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("mcp_servers: {}\ntool_views: {}\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "rename-tool",
+                "nonexistent",
+                "tool",
+                "new_name",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower()
+
+
+class TestCLIServerSetToolParam:
+    """Tests for 'mcp-proxy server set-tool-param' command."""
+
+    def test_set_tool_param_hidden_with_default(self, tmp_path):
+        """'server set-tool-param' should set hidden param with default."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  fs:\n"
+            "    command: npx\n"
+            "    args: [-y, '@modelcontextprotocol/server-filesystem']\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "set-tool-param",
+                "fs",
+                "list_directory",
+                "path",
+                "--hidden",
+                "--default",
+                ".",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "parameters" in content
+        assert "hidden: true" in content
+        assert "default: '.'" in content or "default: ." in content
+
+    def test_set_tool_param_rename(self, tmp_path):
+        """'server set-tool-param' should rename parameter."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("mcp_servers:\n  fs:\n    command: echo\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "set-tool-param",
+                "fs",
+                "list_directory",
+                "path",
+                "--rename",
+                "folder",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "rename: folder" in content
+
+    def test_set_tool_param_description(self, tmp_path):
+        """'server set-tool-param' should set parameter description."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("mcp_servers:\n  fs:\n    command: echo\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "set-tool-param",
+                "fs",
+                "search",
+                "query",
+                "--description",
+                "The search query",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "description: The search query" in content
+
+    def test_set_tool_param_clear(self, tmp_path):
+        """'server set-tool-param --clear' should remove parameter config."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  fs:\n"
+            "    command: echo\n"
+            "    tools:\n"
+            "      mytool:\n"
+            "        parameters:\n"
+            "          path:\n"
+            "            hidden: true\n"
+            "            default: '.'\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "set-tool-param",
+                "fs",
+                "mytool",
+                "path",
+                "--clear",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        # parameters should be removed since it's now empty
+        assert "hidden: true" not in content
+
+    def test_set_tool_param_no_options_errors(self, tmp_path):
+        """'server set-tool-param' without options should error."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("mcp_servers:\n  fs:\n    command: echo\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "set-tool-param",
+                "fs",
+                "mytool",
+                "path",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "at least one" in result.output.lower()
+
+    def test_set_tool_param_server_not_found(self, tmp_path):
+        """'server set-tool-param' on non-existent server should error."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("mcp_servers: {}\ntool_views: {}\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "set-tool-param",
+                "nonexistent",
+                "tool",
+                "param",
+                "--hidden",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower()
+
+    def test_set_tool_param_json_default(self, tmp_path):
+        """'server set-tool-param' should parse JSON defaults."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("mcp_servers:\n  fs:\n    command: echo\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "set-tool-param",
+                "fs",
+                "mytool",
+                "count",
+                "--default",
+                "10",  # Should be parsed as integer
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "default: 10" in content
+
+    def test_set_tool_param_clear_nonexistent_param(self, tmp_path):
+        """'server set-tool-param --clear' on non-existent param should succeed."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  fs:\n"
+            "    command: echo\n"
+            "    tools:\n"
+            "      mytool:\n"
+            "        parameters:\n"
+            "          other_param:\n"
+            "            hidden: true\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "set-tool-param",
+                "fs",
+                "mytool",
+                "nonexistent",
+                "--clear",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        # other_param should still exist
+        assert "other_param" in content
+        assert "hidden: true" in content
+
+    def test_set_tool_param_clear_keeps_other_params(self, tmp_path):
+        """'server set-tool-param --clear' should keep other parameters."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  fs:\n"
+            "    command: echo\n"
+            "    tools:\n"
+            "      mytool:\n"
+            "        parameters:\n"
+            "          path:\n"
+            "            hidden: true\n"
+            "          query:\n"
+            "            description: search\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "server",
+                "set-tool-param",
+                "fs",
+                "mytool",
+                "path",
+                "--clear",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        # path should be removed but query should remain
+        assert "hidden: true" not in content
+        assert "query" in content
+        assert "description: search" in content
+
+
+class TestCLIViewRenameTool:
+    """Tests for 'mcp-proxy view rename-tool' command."""
+
+    def test_view_rename_tool_sets_name(self, tmp_path):
+        """'view rename-tool' should set custom name for tool in view."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  github:\n"
+            "    command: echo\n"
+            "tool_views:\n"
+            "  research:\n"
+            "    tools:\n"
+            "      github:\n"
+            "        search_code: {}\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "rename-tool",
+                "research",
+                "github",
+                "search_code",
+                "find_code",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "name: find_code" in content
+
+    def test_view_rename_tool_view_not_found(self, tmp_path):
+        """'view rename-tool' on non-existent view should error."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("mcp_servers: {}\ntool_views: {}\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "rename-tool",
+                "nonexistent",
+                "github",
+                "tool",
+                "new_name",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower()
+
+    def test_view_rename_tool_creates_tools_dict(self, tmp_path):
+        """'view rename-tool' should create tools dict if not exists."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  github:\n"
+            "    command: echo\n"
+            "tool_views:\n"
+            "  research:\n"
+            "    description: test\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "rename-tool",
+                "research",
+                "github",
+                "search_code",
+                "find_code",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "name: find_code" in content
+
+    def test_view_rename_tool_creates_server_entry(self, tmp_path):
+        """'view rename-tool' should create server entry if not exists."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  github:\n"
+            "    command: echo\n"
+            "tool_views:\n"
+            "  research:\n"
+            "    tools:\n"
+            "      other_server: {}\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "rename-tool",
+                "research",
+                "github",
+                "search_code",
+                "find_code",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "github" in content
+        assert "name: find_code" in content
+
+    def test_view_rename_tool_creates_tool_entry(self, tmp_path):
+        """'view rename-tool' should create tool entry if not exists."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  github:\n"
+            "    command: echo\n"
+            "tool_views:\n"
+            "  research:\n"
+            "    tools:\n"
+            "      github:\n"
+            "        other_tool: {}\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "rename-tool",
+                "research",
+                "github",
+                "search_code",
+                "find_code",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "other_tool" in content  # Preserved
+        assert "search_code" in content
+        assert "name: find_code" in content
+
+
+class TestCLIViewSetToolParam:
+    """Tests for 'mcp-proxy view set-tool-param' command."""
+
+    def test_view_set_tool_param_hidden_with_default(self, tmp_path):
+        """'view set-tool-param' should set hidden param with default."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  fs:\n"
+            "    command: echo\n"
+            "tool_views:\n"
+            "  myview:\n"
+            "    tools:\n"
+            "      fs:\n"
+            "        list_directory: {}\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "set-tool-param",
+                "myview",
+                "fs",
+                "list_directory",
+                "path",
+                "--hidden",
+                "--default",
+                ".",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "parameters" in content
+        assert "hidden: true" in content
+
+    def test_view_set_tool_param_rename(self, tmp_path):
+        """'view set-tool-param' should rename parameter."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  fs:\n"
+            "    command: echo\n"
+            "tool_views:\n"
+            "  myview:\n"
+            "    tools: {}\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "set-tool-param",
+                "myview",
+                "fs",
+                "list_directory",
+                "path",
+                "--rename",
+                "category",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "rename: category" in content
+
+    def test_view_set_tool_param_description(self, tmp_path):
+        """'view set-tool-param' should set parameter description."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  fs:\n"
+            "    command: echo\n"
+            "tool_views:\n"
+            "  myview:\n"
+            "    tools: {}\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "set-tool-param",
+                "myview",
+                "fs",
+                "search",
+                "query",
+                "--description",
+                "The search query",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "description: The search query" in content
+
+    def test_view_set_tool_param_clear(self, tmp_path):
+        """'view set-tool-param --clear' should remove parameter config."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  fs:\n"
+            "    command: echo\n"
+            "tool_views:\n"
+            "  myview:\n"
+            "    tools:\n"
+            "      fs:\n"
+            "        mytool:\n"
+            "          parameters:\n"
+            "            path:\n"
+            "              hidden: true\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "set-tool-param",
+                "myview",
+                "fs",
+                "mytool",
+                "path",
+                "--clear",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "hidden: true" not in content
+
+    def test_view_set_tool_param_view_not_found(self, tmp_path):
+        """'view set-tool-param' on non-existent view should error."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("mcp_servers: {}\ntool_views: {}\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "set-tool-param",
+                "nonexistent",
+                "fs",
+                "tool",
+                "param",
+                "--hidden",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower()
+
+    def test_view_set_tool_param_no_options_errors(self, tmp_path):
+        """'view set-tool-param' without options should error."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  fs:\n"
+            "    command: echo\n"
+            "tool_views:\n"
+            "  myview:\n"
+            "    tools: {}\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "set-tool-param",
+                "myview",
+                "fs",
+                "mytool",
+                "path",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "at least one" in result.output.lower()
+
+    def test_view_set_tool_param_creates_tools_dict(self, tmp_path):
+        """'view set-tool-param' should create tools dict if not exists."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  fs:\n"
+            "    command: echo\n"
+            "tool_views:\n"
+            "  myview:\n"
+            "    description: test\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "set-tool-param",
+                "myview",
+                "fs",
+                "mytool",
+                "path",
+                "--hidden",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "hidden: true" in content
+
+    def test_view_set_tool_param_creates_server_entry(self, tmp_path):
+        """'view set-tool-param' should create server entry if not exists."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  fs:\n"
+            "    command: echo\n"
+            "tool_views:\n"
+            "  myview:\n"
+            "    tools:\n"
+            "      other: {}\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "set-tool-param",
+                "myview",
+                "fs",
+                "mytool",
+                "path",
+                "--hidden",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "fs:" in content
+        assert "hidden: true" in content
+
+    def test_view_set_tool_param_creates_tool_entry(self, tmp_path):
+        """'view set-tool-param' should create tool entry if not exists."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  fs:\n"
+            "    command: echo\n"
+            "tool_views:\n"
+            "  myview:\n"
+            "    tools:\n"
+            "      fs:\n"
+            "        other_tool: {}\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "set-tool-param",
+                "myview",
+                "fs",
+                "mytool",
+                "path",
+                "--hidden",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "other_tool" in content  # Preserved
+        assert "mytool" in content
+        assert "hidden: true" in content
+
+    def test_view_set_tool_param_clear_nonexistent_param(self, tmp_path):
+        """'view set-tool-param --clear' on non-existent param should succeed."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  fs:\n"
+            "    command: echo\n"
+            "tool_views:\n"
+            "  myview:\n"
+            "    tools:\n"
+            "      fs:\n"
+            "        mytool:\n"
+            "          parameters:\n"
+            "            other_param:\n"
+            "              hidden: true\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "set-tool-param",
+                "myview",
+                "fs",
+                "mytool",
+                "nonexistent",
+                "--clear",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        # other_param should still exist
+        assert "other_param" in content
+        assert "hidden: true" in content
+
+    def test_view_set_tool_param_clear_keeps_other_params(self, tmp_path):
+        """'view set-tool-param --clear' should keep other parameters."""
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  fs:\n"
+            "    command: echo\n"
+            "tool_views:\n"
+            "  myview:\n"
+            "    tools:\n"
+            "      fs:\n"
+            "        mytool:\n"
+            "          parameters:\n"
+            "            path:\n"
+            "              hidden: true\n"
+            "            query:\n"
+            "              description: search\n"
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "view",
+                "set-tool-param",
+                "myview",
+                "fs",
+                "mytool",
+                "path",
+                "--clear",
+                "--config",
+                str(config_file),
+            ],
+        )
+
+        assert result.exit_code == 0
+        content = config_file.read_text()
+        # path should be removed but query should remain
+        assert "hidden: true" not in content
+        assert "query" in content
+        assert "description: search" in content

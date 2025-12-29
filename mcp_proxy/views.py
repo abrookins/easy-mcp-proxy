@@ -49,7 +49,7 @@ class ToolView:
                     "description": comp_config.description,
                     "inputs": comp_config.inputs,
                     "parallel": comp_config.parallel,
-                }
+                },
             )
 
         # Load custom tools from config
@@ -95,6 +95,7 @@ class ToolView:
 
     def _transform_tool(self, tool: Any, config: ToolConfig) -> Any:
         """Transform a tool with name/description overrides."""
+
         # Create a simple wrapper with transformed attributes
         class TransformedTool:
             pass
@@ -222,4 +223,3 @@ class ToolView:
         parallel_tool = self.composite_tools[tool_name]
         parallel_tool._call_tool_fn = self._call_upstream_tool
         return await parallel_tool.execute(args)
-

@@ -21,7 +21,7 @@ class TestHTTPViewRouting:
             mcp_servers={
                 "server-a": UpstreamServerConfig(command="echo", args=["test"])
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -36,7 +36,7 @@ class TestHTTPViewRouting:
             mcp_servers={
                 "server-a": UpstreamServerConfig(command="echo", args=["test"])
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
         app = proxy.http_app()
@@ -50,24 +50,23 @@ class TestHTTPViewRouting:
                 route_paths.append(route.path)
 
         # The default MCP app should be mounted at "/" or "" (empty path for root mount)
-        assert "/" in route_paths or "" in route_paths, f"Expected root mount, got: {route_paths}"
+        assert "/" in route_paths or "" in route_paths, (
+            f"Expected root mount, got: {route_paths}"
+        )
 
     def test_view_path_exists_for_each_view(self):
         """Each view should be mounted at /view/<name>."""
         config = ProxyConfig(
-            mcp_servers={
-                "github": UpstreamServerConfig(url="https://example.com/mcp")
-            },
+            mcp_servers={"github": UpstreamServerConfig(url="https://example.com/mcp")},
             tool_views={
                 "research": ToolViewConfig(
-                    description="Research tools",
-                    tools={"github": {"search_code": {}}}
+                    description="Research tools", tools={"github": {"search_code": {}}}
                 ),
                 "coding": ToolViewConfig(
                     description="Coding tools",
-                    tools={"github": {"get_file_contents": {}}}
-                )
-            }
+                    tools={"github": {"get_file_contents": {}}},
+                ),
+            },
         )
         proxy = MCPProxy(config)
         app = proxy.http_app()
@@ -86,9 +85,7 @@ class TestHTTPViewRouting:
         """Accessing a non-existent view should return 404."""
         config = ProxyConfig(
             mcp_servers={},
-            tool_views={
-                "research": ToolViewConfig(description="Research tools")
-            }
+            tool_views={"research": ToolViewConfig(description="Research tools")},
         )
         proxy = MCPProxy(config)
         app = proxy.http_app()
@@ -101,9 +98,7 @@ class TestHTTPViewRouting:
         """GET /views/<nonexistent> should return 404."""
         config = ProxyConfig(
             mcp_servers={},
-            tool_views={
-                "research": ToolViewConfig(description="Research tools")
-            }
+            tool_views={"research": ToolViewConfig(description="Research tools")},
         )
         proxy = MCPProxy(config)
         app = proxy.http_app()
@@ -120,19 +115,17 @@ class TestHTTPViewToolIsolation:
     def test_view_only_exposes_configured_tools(self):
         """Each view should only expose its configured tools."""
         config = ProxyConfig(
-            mcp_servers={
-                "github": UpstreamServerConfig(url="https://example.com/mcp")
-            },
+            mcp_servers={"github": UpstreamServerConfig(url="https://example.com/mcp")},
             tool_views={
                 "research": ToolViewConfig(
                     description="Research tools",
-                    tools={"github": {"search_code": {}, "search_issues": {}}}
+                    tools={"github": {"search_code": {}, "search_issues": {}}},
                 ),
                 "coding": ToolViewConfig(
                     description="Coding tools",
-                    tools={"github": {"get_file_contents": {}, "create_branch": {}}}
-                )
-            }
+                    tools={"github": {"get_file_contents": {}, "create_branch": {}}},
+                ),
+            },
         )
         proxy = MCPProxy(config)
 
@@ -158,14 +151,14 @@ class TestHTTPViewToolIsolation:
             mcp_servers={
                 "github": UpstreamServerConfig(
                     url="https://example.com/mcp",
-                    tools={"search_code": {}, "get_file_contents": {}}
+                    tools={"search_code": {}, "get_file_contents": {}},
                 ),
                 "memory": UpstreamServerConfig(
                     command="memory-server",
-                    tools={"search_memory": {}, "create_memory": {}}
-                )
+                    tools={"search_memory": {}, "create_memory": {}},
+                ),
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -176,9 +169,7 @@ class TestHTTPViewToolDescriptions:
     def test_view_applies_custom_tool_descriptions(self):
         """Each view can have custom descriptions for tools."""
         config = ProxyConfig(
-            mcp_servers={
-                "github": UpstreamServerConfig(url="https://example.com/mcp")
-            },
+            mcp_servers={"github": UpstreamServerConfig(url="https://example.com/mcp")},
             tool_views={
                 "research": ToolViewConfig(
                     description="Research tools",
@@ -188,7 +179,7 @@ class TestHTTPViewToolDescriptions:
                                 "description": "Use for research. {original}"
                             }
                         }
-                    }
+                    },
                 ),
                 "coding": ToolViewConfig(
                     description="Coding tools",
@@ -198,9 +189,9 @@ class TestHTTPViewToolDescriptions:
                                 "description": "Find code to modify. {original}"
                             }
                         }
-                    }
-                )
-            }
+                    },
+                ),
+            },
         )
         proxy = MCPProxy(config)
 
@@ -228,15 +219,15 @@ class TestHTTPAppConfiguration:
 
         # Check that routes are prefixed with /api/v1
         route_paths = [r.path for r in app.routes if hasattr(r, "path")]
-        assert any("/api/v1" in p for p in route_paths), f"Expected /api/v1 prefix, got: {route_paths}"
+        assert any("/api/v1" in p for p in route_paths), (
+            f"Expected /api/v1 prefix, got: {route_paths}"
+        )
 
     def test_http_app_custom_view_prefix(self):
         """http_app should accept custom view path prefix."""
         config = ProxyConfig(
             mcp_servers={},
-            tool_views={
-                "research": ToolViewConfig(description="Research")
-            }
+            tool_views={"research": ToolViewConfig(description="Research")},
         )
         proxy = MCPProxy(config)
 
@@ -245,7 +236,9 @@ class TestHTTPAppConfiguration:
 
         # Check that view is mounted with custom prefix
         route_paths = [r.path for r in app.routes if hasattr(r, "path")]
-        assert "/views/research" in route_paths, f"Expected /views/research, got: {route_paths}"
+        assert "/views/research" in route_paths, (
+            f"Expected /views/research, got: {route_paths}"
+        )
 
 
 class TestHTTPViewListing:
@@ -258,7 +251,7 @@ class TestHTTPViewListing:
             tool_views={
                 "research": ToolViewConfig(description="Research tools"),
                 "coding": ToolViewConfig(description="Coding tools"),
-            }
+            },
         )
         proxy = MCPProxy(config)
         app = proxy.http_app()
@@ -274,15 +267,13 @@ class TestHTTPViewListing:
     def test_view_info_endpoint(self):
         """Should have endpoint to get view info."""
         config = ProxyConfig(
-            mcp_servers={
-                "github": UpstreamServerConfig(url="https://example.com/mcp")
-            },
+            mcp_servers={"github": UpstreamServerConfig(url="https://example.com/mcp")},
             tool_views={
                 "research": ToolViewConfig(
                     description="Research tools",
-                    tools={"github": {"search_code": {}, "search_issues": {}}}
+                    tools={"github": {"search_code": {}, "search_issues": {}}},
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
         app = proxy.http_app()
@@ -329,10 +320,10 @@ class TestHTTPViewServerSubset:
                     description="Project management tools",
                     tools={
                         "github": {"search_issues": {}},
-                        "jira": {"search_issues": {}, "create_issue": {}}
-                    }
+                        "jira": {"search_issues": {}, "create_issue": {}},
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -353,9 +344,9 @@ class TestHTTPViewServerSubset:
                 "all-github": ToolViewConfig(
                     description="All GitHub tools",
                     include_all=True,
-                    tools={"github": {}}  # Empty means all
+                    tools={"github": {}},  # Empty means all
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 

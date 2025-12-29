@@ -37,8 +37,10 @@ class TestToolSearcher:
         result = await search_tool(query="memory")
 
         assert len(result["tools"]) == 2
-        assert all("memory" in t["name"] or "memory" in t["description"].lower()
-                   for t in result["tools"])
+        assert all(
+            "memory" in t["name"] or "memory" in t["description"].lower()
+            for t in result["tools"]
+        )
 
     async def test_search_tool_empty_query_returns_all(self):
         """Empty query should return all tools in the view."""
@@ -92,10 +94,8 @@ class TestToolSearcher:
                 "description": "Search memories",
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "query": {"type": "string"}
-                    }
-                }
+                    "properties": {"query": {"type": "string"}},
+                },
             },
         ]
 
@@ -120,9 +120,9 @@ class TestSearchModeCallThrough:
             tool_views={
                 "view": {
                     "exposure_mode": "search",
-                    "tools": {"server": {"tool_a": {}, "tool_b": {}}}
+                    "tools": {"server": {"tool_a": {}, "tool_b": {}}},
                 }
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -133,8 +133,9 @@ class TestSearchModeCallThrough:
         assert "view_search_tools" in tool_names
 
         # FAILING ASSERTION: Should also have call_tool meta-tool
-        assert "view_call_tool" in tool_names, \
+        assert "view_call_tool" in tool_names, (
             "Search mode should register view_call_tool to allow calling found tools"
+        )
 
     async def test_search_mode_call_tool_executes_upstream(self):
         """The call_tool meta-tool should execute the specified tool."""
@@ -147,9 +148,11 @@ class TestSearchModeCallThrough:
             tool_views={
                 "view": {
                     "exposure_mode": "search",
-                    "tools": {"server": {"search_code": {"description": "Search code"}}}
+                    "tools": {
+                        "server": {"search_code": {"description": "Search code"}}
+                    },
                 }
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -173,7 +176,9 @@ class TestSearchModeCallThrough:
         assert call_tool_fn is not None, "view_call_tool should be registered"
 
         # Call the meta-tool to execute search_code
-        result = await call_tool_fn(tool_name="search_code", arguments={"query": "test"})
+        result = await call_tool_fn(
+            tool_name="search_code", arguments={"query": "test"}
+        )
 
         # Should have called upstream
         mock_client.call_tool.assert_called_once_with("search_code", {"query": "test"})
@@ -189,15 +194,14 @@ class TestSearchModeCallThrough:
             mcp_servers={
                 "github": UpstreamServerConfig(
                     url="http://example.com",
-                    tools={"search_code": {"description": "Search code"}}
+                    tools={"search_code": {"description": "Search code"}},
                 )
             },
             tool_views={
                 "view": ToolViewConfig(
-                    exposure_mode="search",
-                    tools={"github": {"search_code": {}}}
+                    exposure_mode="search", tools={"github": {"search_code": {}}}
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
         mcp = proxy.get_view_mcp("view")
@@ -214,4 +218,3 @@ class TestSearchModeCallThrough:
         # Call with unknown tool name should raise
         with pytest.raises(ValueError, match="Unknown tool 'nonexistent'"):
             await call_tool_fn(tool_name="nonexistent", arguments={})
-

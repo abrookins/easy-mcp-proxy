@@ -62,10 +62,11 @@ def save_config_raw(config_path: Path, data: dict[str, Any]) -> None:
 def config_option(required: bool = False):
     """Decorator for --config option."""
     return click.option(
-        "--config", "-c",
+        "--config",
+        "-c",
         default=None,
         type=click.Path(exists=False),
-        help=f"Config file path (default: {DEFAULT_CONFIG_FILE})"
+        help=f"Config file path (default: {DEFAULT_CONFIG_FILE})",
     )
 
 
@@ -114,7 +115,9 @@ def tools(config: str | None, server: str | None):
 @config_option()
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.option("--server", "-s", default=None, help="Filter by server name")
-def schema(tool_name: str | None, config: str | None, as_json: bool, server: str | None):
+def schema(
+    tool_name: str | None, config: str | None, as_json: bool, server: str | None
+):
     """Show schema for a specific tool or all tools."""
     import json as json_module
 
@@ -133,9 +136,15 @@ def schema(tool_name: str | None, config: str | None, as_json: bool, server: str
                 async with client:
                     tools = await client.list_tools()
                     # Filter tools based on config's tool constraints
-                    allowed_tools = server_config.tools.keys() if server_config.tools else None
+                    allowed_tools = (
+                        server_config.tools.keys() if server_config.tools else None
+                    )
                     all_tools[server_name] = [
-                        {"name": t.name, "description": getattr(t, "description", ""), "inputSchema": getattr(t, "inputSchema", {})}
+                        {
+                            "name": t.name,
+                            "description": getattr(t, "description", ""),
+                            "inputSchema": getattr(t, "inputSchema", {}),
+                        }
                         for t in tools
                         if allowed_tools is None or t.name in allowed_tools
                     ]
@@ -161,23 +170,34 @@ def schema(tool_name: str | None, config: str | None, as_json: bool, server: str
 
         if isinstance(server_tools, dict) and "error" in server_tools:
             if as_json:
-                click.echo(json_module.dumps({"tool": tool_name, "error": server_tools["error"]}))
+                click.echo(
+                    json_module.dumps(
+                        {"tool": tool_name, "error": server_tools["error"]}
+                    )
+                )
             else:
-                click.echo(f"Error connecting to {server_name}: {server_tools['error']}", err=True)
+                click.echo(
+                    f"Error connecting to {server_name}: {server_tools['error']}",
+                    err=True,
+                )
             raise SystemExit(1)
 
         tool_schema = next((t for t in server_tools if t["name"] == tool), None)
 
         if as_json:
             if tool_schema:
-                click.echo(json_module.dumps({"tool": tool_name, "schema": tool_schema}))
+                click.echo(
+                    json_module.dumps({"tool": tool_name, "schema": tool_schema})
+                )
             else:
                 click.echo(json_module.dumps({"tool": tool_name, "error": "not found"}))
         else:
             if tool_schema:
                 click.echo(f"Tool: {tool_name}")
                 click.echo(f"Description: {tool_schema.get('description', 'N/A')}")
-                click.echo(f"Parameters: {json_module.dumps(tool_schema.get('inputSchema', {}), indent=2)}")
+                click.echo(
+                    f"Parameters: {json_module.dumps(tool_schema.get('inputSchema', {}), indent=2)}"
+                )
             else:
                 click.echo(f"Tool '{tool}' not found on server '{server_name}'")
 
@@ -191,9 +211,15 @@ def schema(tool_name: str | None, config: str | None, as_json: bool, server: str
 
         if isinstance(server_tools, dict) and "error" in server_tools:
             if as_json:
-                click.echo(json_module.dumps({"server": server, "error": server_tools["error"]}))
+                click.echo(
+                    json_module.dumps(
+                        {"server": server, "error": server_tools["error"]}
+                    )
+                )
             else:
-                click.echo(f"Error connecting to {server}: {server_tools['error']}", err=True)
+                click.echo(
+                    f"Error connecting to {server}: {server_tools['error']}", err=True
+                )
             raise SystemExit(1)
 
         if as_json:
@@ -220,7 +246,9 @@ def schema(tool_name: str | None, config: str | None, as_json: bool, server: str
 
 @main.command()
 @config_option()
-@click.option("--check-connections", "-C", is_flag=True, help="Check upstream server connections")
+@click.option(
+    "--check-connections", "-C", is_flag=True, help="Check upstream server connections"
+)
 def validate(config: str | None, check_connections: bool):
     """Validate configuration file."""
     from mcp_proxy.config import validate_config
@@ -246,7 +274,10 @@ def validate(config: str | None, check_connections: bool):
                         client = await proxy._create_client(server_name)
                         async with client:
                             tools = await client.list_tools()
-                            results[server_name] = {"status": "connected", "tools": len(tools)}
+                            results[server_name] = {
+                                "status": "connected",
+                                "tools": len(tools),
+                            }
                     except Exception as e:
                         results[server_name] = {"status": "failed", "error": str(e)}
                 return results
@@ -257,7 +288,10 @@ def validate(config: str | None, check_connections: bool):
                 if result["status"] == "connected":
                     click.echo(f"  {server_name}: connected ({result['tools']} tools)")
                 else:
-                    click.echo(f"  {server_name}: connection failed - {result['error']}", err=True)
+                    click.echo(
+                        f"  {server_name}: connection failed - {result['error']}",
+                        err=True,
+                    )
                     all_ok = False
 
             if not all_ok:
@@ -271,10 +305,24 @@ def validate(config: str | None, check_connections: bool):
 
 @main.command()
 @config_option()
-@click.option("--transport", "-t", default="stdio", type=click.Choice(["stdio", "http"]), help="Transport type")
+@click.option(
+    "--transport",
+    "-t",
+    default="stdio",
+    type=click.Choice(["stdio", "http"]),
+    help="Transport type",
+)
 @click.option("--port", "-p", default=8000, type=int, help="Port for HTTP transport")
-@click.option("--env-file", "-e", default=".env", type=click.Path(), help="Path to .env file (default: .env)")
-def serve(config: str | None, transport: str, port: int, env_file: str):  # pragma: no cover
+@click.option(
+    "--env-file",
+    "-e",
+    default=".env",
+    type=click.Path(),
+    help="Path to .env file (default: .env)",
+)
+def serve(
+    config: str | None, transport: str, port: int, env_file: str
+):  # pragma: no cover
     """Start the MCP proxy server."""
     from dotenv import load_dotenv
 
@@ -384,7 +432,7 @@ async def post_call(result, args: dict, context: ToolCallContext) -> HookResult:
     """Post-call hook - modify result."""
     return HookResult(result=result)
 ''',
-        "config": '''mcp_servers:
+        "config": """mcp_servers:
   example:
     command: echo
     args: ["hello"]
@@ -393,7 +441,7 @@ tool_views:
   default:
     description: "Default view"
     exposure_mode: direct
-''',
+""",
     }
     click.echo(examples[what])
 
@@ -412,8 +460,13 @@ def server():
 @server.command("add")
 @click.argument("name")
 @config_option()
-@click.option("--command", "cmd", default=None, help="Command to run (for stdio servers)")
-@click.option("--args", "args_str", default=None, help="Comma-separated command arguments")
+@click.option(
+    "--command", "cmd", default=None, help="Command to run (for stdio servers)"
+)
+@click.option(
+    "--args", "args_str", default=None, help="Comma-separated command arguments"
+)
+@click.option("--cwd", default=None, help="Working directory for stdio servers")
 @click.option("--url", default=None, help="URL for remote HTTP servers")
 @click.option("--env", multiple=True, help="Environment variables as KEY=VALUE")
 @click.option("--header", multiple=True, help="HTTP headers as KEY=VALUE")
@@ -422,6 +475,7 @@ def server_add(
     config: str | None,
     cmd: str | None,
     args_str: str | None,
+    cwd: str | None,
     url: str | None,
     env: tuple[str, ...],
     header: tuple[str, ...],
@@ -447,6 +501,10 @@ def server_add(
         click.echo("Error: --args requires --command", err=True)
         raise SystemExit(1)
 
+    if cwd and not cmd:
+        click.echo("Error: --cwd requires --command", err=True)
+        raise SystemExit(1)
+
     if header and not url:
         click.echo("Error: --header requires --url", err=True)
         raise SystemExit(1)
@@ -458,6 +516,8 @@ def server_add(
         server_config["command"] = cmd
         if args_str:
             server_config["args"] = args_str.split(",")
+        if cwd:
+            server_config["cwd"] = cwd
 
     if url:
         server_config["url"] = url
@@ -488,8 +548,6 @@ def server_add(
     click.echo(f"Added server '{name}'")
 
 
-
-
 @server.command("remove")
 @click.argument("name")
 @config_option()
@@ -513,7 +571,7 @@ def server_remove(name: str, config: str | None, force: bool):
         click.echo(
             f"Error: Server '{name}' is referenced by views: {', '.join(referencing_views)}. "
             f"Use --force to remove anyway.",
-            err=True
+            err=True,
         )
         raise SystemExit(1)
 
@@ -646,6 +704,144 @@ def server_set_tool_description(
     click.echo(f"Updated description for '{server_name}.{tool_name}'")
 
 
+@server.command("rename-tool")
+@click.argument("server_name")
+@click.argument("tool_name")
+@click.argument("new_name")
+@config_option()
+def server_rename_tool(
+    server_name: str, tool_name: str, new_name: str, config: str | None
+):
+    """Rename a tool (expose under a different name)."""
+    config_path = get_config_path(config)
+    data = load_config_raw(config_path)
+
+    if server_name not in data["mcp_servers"]:
+        click.echo(f"Error: Server '{server_name}' not found", err=True)
+        raise SystemExit(1)
+
+    server_config = data["mcp_servers"][server_name]
+
+    # Ensure tools dict exists
+    if "tools" not in server_config:
+        server_config["tools"] = {}
+
+    # Ensure tool entry exists
+    if tool_name not in server_config["tools"]:
+        server_config["tools"][tool_name] = {}
+
+    # Set name
+    server_config["tools"][tool_name]["name"] = new_name
+
+    save_config_raw(config_path, data)
+    click.echo(f"Renamed '{server_name}.{tool_name}' to '{new_name}'")
+
+
+@server.command("set-tool-param")
+@click.argument("server_name")
+@click.argument("tool_name")
+@click.argument("param_name")
+@config_option()
+@click.option("--hidden", is_flag=True, help="Hide this parameter from exposed schema")
+@click.option("--default", "default_val", default=None, help="Default value to inject")
+@click.option(
+    "--rename", "rename_to", default=None, help="Expose parameter under different name"
+)
+@click.option("--description", default=None, help="Override parameter description")
+@click.option("--clear", is_flag=True, help="Remove parameter configuration")
+def server_set_tool_param(
+    server_name: str,
+    tool_name: str,
+    param_name: str,
+    config: str | None,
+    hidden: bool,
+    default_val: str | None,
+    rename_to: str | None,
+    description: str | None,
+    clear: bool,
+):
+    """Configure parameter binding for a tool.
+
+    Hide parameters, set defaults, rename, or override descriptions.
+
+    Examples:
+
+    \b
+      # Hide 'path' and inject default
+      mcp-proxy server set-tool-param myserver mytool path --hidden --default "."
+
+    \b
+      # Rename 'path' to 'folder'
+      mcp-proxy server set-tool-param myserver mytool path --rename folder
+
+    \b
+      # Override description
+      mcp-proxy server set-tool-param myserver mytool query --description "Search query"
+
+    \b
+      # Clear parameter config
+      mcp-proxy server set-tool-param myserver mytool path --clear
+    """
+    config_path = get_config_path(config)
+    data = load_config_raw(config_path)
+
+    if server_name not in data["mcp_servers"]:
+        click.echo(f"Error: Server '{server_name}' not found", err=True)
+        raise SystemExit(1)
+
+    server_config = data["mcp_servers"][server_name]
+
+    # Ensure tools dict exists
+    if "tools" not in server_config:
+        server_config["tools"] = {}
+
+    # Ensure tool entry exists
+    if tool_name not in server_config["tools"]:
+        server_config["tools"][tool_name] = {}
+
+    tool_config = server_config["tools"][tool_name]
+
+    # Ensure parameters dict exists
+    if "parameters" not in tool_config:
+        tool_config["parameters"] = {}
+
+    if clear:
+        # Remove parameter config
+        if param_name in tool_config["parameters"]:
+            del tool_config["parameters"][param_name]
+            if not tool_config["parameters"]:
+                del tool_config["parameters"]
+        click.echo(f"Cleared parameter config for '{param_name}'")
+    else:
+        # Build parameter config
+        param_config: dict[str, Any] = {}
+        if hidden:
+            param_config["hidden"] = True
+        if default_val is not None:
+            # Try to parse as JSON for complex values
+            import json
+
+            try:
+                param_config["default"] = json.loads(default_val)
+            except json.JSONDecodeError:
+                param_config["default"] = default_val
+        if rename_to:
+            param_config["rename"] = rename_to
+        if description:
+            param_config["description"] = description
+
+        if not param_config:
+            click.echo(
+                "Error: At least one of --hidden, --default, --rename, or --description required",
+                err=True,
+            )
+            raise SystemExit(1)
+
+        tool_config["parameters"][param_name] = param_config
+        click.echo(f"Updated parameter '{param_name}' for '{server_name}.{tool_name}'")
+
+    save_config_raw(config_path, data)
+
 
 # =============================================================================
 # View command group
@@ -662,9 +858,15 @@ def view():
 @click.argument("name")
 @config_option()
 @click.option("--description", "-d", default=None, help="View description")
-@click.option("--exposure-mode", default="direct", type=click.Choice(["direct", "search"]),
-              help="Tool exposure mode")
-def view_create(name: str, config: str | None, description: str | None, exposure_mode: str):
+@click.option(
+    "--exposure-mode",
+    default="direct",
+    type=click.Choice(["direct", "search"]),
+    help="Tool exposure mode",
+)
+def view_create(
+    name: str, config: str | None, description: str | None, exposure_mode: str
+):
     """Create a new tool view."""
     config_path = get_config_path(config)
     data = load_config_raw(config_path)
@@ -736,14 +938,21 @@ def view_list(config: str | None, as_json: bool, verbose: bool):
 @click.argument("view_name")
 @click.argument("server_name")
 @config_option()
-@click.option("--tools", "tools_str", default=None, help="Comma-separated list of tools to include")
-@click.option("--all", "include_all", is_flag=True, help="Include all tools from server")
+@click.option(
+    "--tools",
+    "tools_str",
+    default=None,
+    help="Comma-separated list of tools to include",
+)
+@click.option(
+    "--all", "include_all", is_flag=True, help="Include all tools from server"
+)
 def view_add_server(
     view_name: str,
     server_name: str,
     config: str | None,
     tools_str: str | None,
-    include_all: bool
+    include_all: bool,
 ):
     """Add a server to a view."""
     config_path = get_config_path(config)
@@ -807,7 +1016,9 @@ def view_remove_server(view_name: str, server_name: str, config: str | None):
 @click.argument("server_name")
 @click.argument("tools_str")
 @config_option()
-def view_set_tools(view_name: str, server_name: str, tools_str: str, config: str | None):
+def view_set_tools(
+    view_name: str, server_name: str, tools_str: str, config: str | None
+):
     """Set tool allowlist for a server in a view (comma-separated)."""
     config_path = get_config_path(config)
     data = load_config_raw(config_path)
@@ -860,7 +1071,6 @@ def view_clear_tools(view_name: str, server_name: str, config: str | None):
     click.echo(f"Cleared tool filter for '{server_name}' in view '{view_name}'")
 
 
-
 @view.command("set-tool-description")
 @click.argument("view_name")
 @click.argument("server_name")
@@ -872,7 +1082,7 @@ def view_set_tool_description(
     server_name: str,
     tool_name: str,
     description: str,
-    config: str | None
+    config: str | None,
 ):
     """Set custom description for a tool in a view. Use {original} to include original."""
     config_path = get_config_path(config)
@@ -905,3 +1115,151 @@ def view_set_tool_description(
 
     save_config_raw(config_path, data)
     click.echo(f"Updated description for '{view_name}/{server_name}.{tool_name}'")
+
+
+@view.command("rename-tool")
+@click.argument("view_name")
+@click.argument("server_name")
+@click.argument("tool_name")
+@click.argument("new_name")
+@config_option()
+def view_rename_tool(
+    view_name: str, server_name: str, tool_name: str, new_name: str, config: str | None
+):
+    """Rename a tool in a view (expose under a different name)."""
+    config_path = get_config_path(config)
+    data = load_config_raw(config_path)
+
+    if view_name not in data["tool_views"]:
+        click.echo(f"Error: View '{view_name}' not found", err=True)
+        raise SystemExit(1)
+
+    view_config = data["tool_views"][view_name]
+
+    # Ensure tools dict exists
+    if "tools" not in view_config:
+        view_config["tools"] = {}
+
+    # Ensure server entry exists
+    if server_name not in view_config["tools"]:
+        view_config["tools"][server_name] = {}
+
+    # Ensure tool entry exists
+    if tool_name not in view_config["tools"][server_name]:
+        view_config["tools"][server_name][tool_name] = {}
+
+    # Set name
+    view_config["tools"][server_name][tool_name]["name"] = new_name
+
+    save_config_raw(config_path, data)
+    click.echo(f"Renamed '{view_name}/{server_name}.{tool_name}' to '{new_name}'")
+
+
+@view.command("set-tool-param")
+@click.argument("view_name")
+@click.argument("server_name")
+@click.argument("tool_name")
+@click.argument("param_name")
+@config_option()
+@click.option("--hidden", is_flag=True, help="Hide this parameter from exposed schema")
+@click.option("--default", "default_val", default=None, help="Default value to inject")
+@click.option(
+    "--rename", "rename_to", default=None, help="Expose parameter under different name"
+)
+@click.option("--description", default=None, help="Override parameter description")
+@click.option("--clear", is_flag=True, help="Remove parameter configuration")
+def view_set_tool_param(
+    view_name: str,
+    server_name: str,
+    tool_name: str,
+    param_name: str,
+    config: str | None,
+    hidden: bool,
+    default_val: str | None,
+    rename_to: str | None,
+    description: str | None,
+    clear: bool,
+):
+    """Configure parameter binding for a tool in a view.
+
+    Hide parameters, set defaults, rename, or override descriptions.
+
+    Examples:
+
+    \b
+      # Hide 'path' and inject default
+      mcp-proxy view set-tool-param myview myserver mytool path --hidden --default "."
+
+    \b
+      # Rename 'path' to 'folder'
+      mcp-proxy view set-tool-param myview myserver mytool path --rename folder
+
+    \b
+      # Clear parameter config
+      mcp-proxy view set-tool-param myview myserver mytool path --clear
+    """
+    config_path = get_config_path(config)
+    data = load_config_raw(config_path)
+
+    if view_name not in data["tool_views"]:
+        click.echo(f"Error: View '{view_name}' not found", err=True)
+        raise SystemExit(1)
+
+    view_config = data["tool_views"][view_name]
+
+    # Ensure tools dict exists
+    if "tools" not in view_config:
+        view_config["tools"] = {}
+
+    # Ensure server entry exists
+    if server_name not in view_config["tools"]:
+        view_config["tools"][server_name] = {}
+
+    # Ensure tool entry exists
+    if tool_name not in view_config["tools"][server_name]:
+        view_config["tools"][server_name][tool_name] = {}
+
+    tool_config = view_config["tools"][server_name][tool_name]
+
+    # Ensure parameters dict exists
+    if "parameters" not in tool_config:
+        tool_config["parameters"] = {}
+
+    if clear:
+        # Remove parameter config
+        if param_name in tool_config["parameters"]:
+            del tool_config["parameters"][param_name]
+            if not tool_config["parameters"]:
+                del tool_config["parameters"]
+        click.echo(f"Cleared parameter config for '{param_name}'")
+    else:
+        # Build parameter config
+        param_config: dict[str, Any] = {}
+        if hidden:
+            param_config["hidden"] = True
+        if default_val is not None:
+            # Try to parse as JSON for complex values
+            import json
+
+            try:
+                param_config["default"] = json.loads(default_val)
+            except json.JSONDecodeError:
+                param_config["default"] = default_val
+        if rename_to:
+            param_config["rename"] = rename_to
+        if description:
+            param_config["description"] = description
+
+        if not param_config:
+            click.echo(
+                "Error: At least one of --hidden, --default, --rename, or --description required",
+                err=True,
+            )
+            raise SystemExit(1)
+
+        tool_config["parameters"][param_name] = param_config
+        click.echo(
+            f"Updated parameter '{param_name}' for '{view_name}/{server_name}.{tool_name}'"
+        )
+
+    save_config_raw(config_path, data)

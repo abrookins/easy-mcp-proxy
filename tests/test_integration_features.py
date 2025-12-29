@@ -40,7 +40,7 @@ class TestUpstreamConnections:
                     args=["test"],
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -62,7 +62,7 @@ class TestUpstreamConnections:
                     headers={"Authorization": "Bearer token123"},
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -81,7 +81,7 @@ class TestUpstreamConnections:
                 "server-a": UpstreamServerConfig(command="echo", args=["a"]),
                 "server-b": UpstreamServerConfig(command="echo", args=["b"]),
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -96,10 +96,7 @@ class TestUpstreamConnections:
         """MCPProxy should fetch actual tool lists from upstream servers."""
         # This requires mocking an actual MCP server
         config = ProxyConfig(
-            mcp_servers={
-                "test": UpstreamServerConfig(command="echo")
-            },
-            tool_views={}
+            mcp_servers={"test": UpstreamServerConfig(command="echo")}, tool_views={}
         )
         proxy = MCPProxy(config)
 
@@ -125,11 +122,10 @@ class TestUpstreamConnections:
         config = ProxyConfig(
             mcp_servers={
                 "test": UpstreamServerConfig(
-                    command="echo",
-                    tools={"my_tool": {"description": "My tool"}}
+                    command="echo", tools={"my_tool": {"description": "My tool"}}
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -140,7 +136,9 @@ class TestUpstreamConnections:
         mock_client.call_tool.return_value = {"result": "from_upstream"}
 
         # Mock _create_client_from_config to return our mock client
-        with patch.object(proxy, '_create_client_from_config', return_value=mock_client):
+        with patch.object(
+            proxy, "_create_client_from_config", return_value=mock_client
+        ):
             # Call should go to upstream
             result = await proxy.call_upstream_tool("test", "my_tool", {"arg": "value"})
 
@@ -164,10 +162,10 @@ class TestUpstreamConnections:
             mcp_servers={
                 "test": UpstreamServerConfig(
                     url="http://example.com/mcp",
-                    headers={"Authorization": "Bearer ${TEST_API_KEY}"}
+                    headers={"Authorization": "Bearer ${TEST_API_KEY}"},
                 )
             },
-            tool_views={}
+            tool_views={},
         )
         proxy = MCPProxy(config)
 
@@ -200,7 +198,9 @@ mcp_servers:
 """)
 
         runner = CliRunner()
-        result = runner.invoke(main, ["schema", "github.search_code", "-c", str(config_file)])
+        result = runner.invoke(
+            main, ["schema", "github.search_code", "-c", str(config_file)]
+        )
 
         # Should no longer say "requires upstream connection" - it actually tries
         assert "requires upstream connection" not in result.output
@@ -240,7 +240,9 @@ mcp_servers:
 """)
 
         runner = CliRunner()
-        result = runner.invoke(main, ["schema", "--server", "test", "-c", str(config_file)])
+        result = runner.invoke(
+            main, ["schema", "--server", "test", "-c", str(config_file)]
+        )
 
         # Should no longer say "requires upstream connection"
         assert "requires upstream connection" not in result.output
@@ -270,8 +272,7 @@ mcp_servers:
 
         runner = CliRunner()
         result = runner.invoke(
-            main,
-            ["call", "test.some_tool", "-a", "arg=value", "-c", str(config_file)]
+            main, ["call", "test.some_tool", "-a", "arg=value", "-c", str(config_file)]
         )
 
         # Should no longer say "requires upstream connection"
@@ -294,7 +295,16 @@ mcp_servers:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["call", "test.tool", "-a", "query=hello", "-a", "limit=10", "-c", str(config_file)]
+            [
+                "call",
+                "test.tool",
+                "-a",
+                "query=hello",
+                "-a",
+                "limit=10",
+                "-c",
+                str(config_file),
+            ],
         )
 
         # Should no longer say "requires upstream connection"
@@ -322,23 +332,21 @@ class TestCompositeToolsIntegration:
                     "composite_tools": {
                         "search_all": {
                             "description": "Search all sources",
-                            "inputs": {
-                                "query": {"type": "string", "required": True}
-                            },
+                            "inputs": {"query": {"type": "string", "required": True}},
                             "parallel": {
                                 "memory": {
                                     "tool": "redis.search_long_term_memory",
-                                    "args": {"text": "{inputs.query}"}
+                                    "args": {"text": "{inputs.query}"},
                                 },
                                 "code": {
                                     "tool": "github.search_code",
-                                    "args": {"query": "{inputs.query}"}
-                                }
-                            }
+                                    "args": {"query": "{inputs.query}"},
+                                },
+                            },
                         }
-                    }
+                    },
                 }
-            }
+            },
         }
 
         config = ProxyConfig(**config_dict)
@@ -366,11 +374,11 @@ class TestCompositeToolsIntegration:
                             "parallel": {
                                 "a": {"tool": "redis.search", "args": {}},
                                 "b": {"tool": "github.search", "args": {}},
-                            }
+                            },
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -396,13 +404,19 @@ class TestCompositeToolsIntegration:
                             "description": "Parallel execution",
                             "inputs": {"q": {"type": "string"}},
                             "parallel": {
-                                "a": {"tool": "server.tool_a", "args": {"q": "{inputs.q}"}},
-                                "b": {"tool": "server.tool_b", "args": {"q": "{inputs.q}"}},
-                            }
+                                "a": {
+                                    "tool": "server.tool_a",
+                                    "args": {"q": "{inputs.q}"},
+                                },
+                                "b": {
+                                    "tool": "server.tool_b",
+                                    "args": {"q": "{inputs.q}"},
+                                },
+                            },
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -433,13 +447,13 @@ class TestCustomToolsIntegration:
         module_dir = tmp_path / "my_hooks"
         module_dir.mkdir()
         (module_dir / "__init__.py").write_text("")
-        (module_dir / "tools.py").write_text('''
+        (module_dir / "tools.py").write_text("""
 from mcp_proxy.custom_tools import custom_tool, ProxyContext
 
 @custom_tool(name="smart_search", description="Smart search with context")
 async def smart_search(query: str, ctx: ProxyContext = None) -> dict:
     return {"result": query}
-''')
+""")
         monkeypatch.syspath_prepend(str(tmp_path))
 
         config = ProxyConfig(
@@ -447,11 +461,9 @@ async def smart_search(query: str, ctx: ProxyContext = None) -> dict:
             tool_views={
                 "smart": ToolViewConfig(
                     description="Smart tools",
-                    custom_tools=[
-                        {"module": "my_hooks.tools.smart_search"}
-                    ]
+                    custom_tools=[{"module": "my_hooks.tools.smart_search"}],
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -468,25 +480,23 @@ async def smart_search(query: str, ctx: ProxyContext = None) -> dict:
         module_dir = tmp_path / "ctx_hooks"
         module_dir.mkdir()
         (module_dir / "__init__.py").write_text("")
-        (module_dir / "tools.py").write_text('''
+        (module_dir / "tools.py").write_text("""
 from mcp_proxy.custom_tools import custom_tool, ProxyContext
 
 @custom_tool(name="composed", description="Composed tool")
 async def composed(query: str, ctx: ProxyContext = None) -> dict:
     upstream_result = await ctx.call_tool("server.upstream_tool", text=query)
     return {"composed": True, "upstream": upstream_result}
-''')
+""")
         monkeypatch.syspath_prepend(str(tmp_path))
 
         config = ProxyConfig(
-            mcp_servers={
-                "server": UpstreamServerConfig(command="echo")
-            },
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
             tool_views={
                 "composed": ToolViewConfig(
                     custom_tools=[{"module": "ctx_hooks.tools.composed"}]
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -513,13 +523,13 @@ async def composed(query: str, ctx: ProxyContext = None) -> dict:
         module_dir = tmp_path / "mcp_hooks"
         module_dir.mkdir()
         (module_dir / "__init__.py").write_text("")
-        (module_dir / "tools.py").write_text('''
+        (module_dir / "tools.py").write_text("""
 from mcp_proxy.custom_tools import custom_tool
 
 @custom_tool(name="mcp_tool", description="MCP callable tool")
 async def mcp_tool(x: int) -> dict:
     return {"doubled": x * 2}
-''')
+""")
         monkeypatch.syspath_prepend(str(tmp_path))
 
         config = ProxyConfig(
@@ -528,7 +538,7 @@ async def mcp_tool(x: int) -> dict:
                 "custom": ToolViewConfig(
                     custom_tools=[{"module": "mcp_hooks.tools.mcp_tool"}]
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -559,7 +569,7 @@ class TestToolRenamingIntegration:
             mcp_servers={
                 "server": UpstreamServerConfig(
                     command="echo",
-                    tools={"original_name": {"description": "Original tool"}}
+                    tools={"original_name": {"description": "Original tool"}},
                 )
             },
             tool_views={
@@ -569,12 +579,12 @@ class TestToolRenamingIntegration:
                         "server": {
                             "original_name": {
                                 "name": "better_name",
-                                "description": "Renamed tool"
+                                "description": "Renamed tool",
                             }
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -592,20 +602,13 @@ class TestToolRenamingIntegration:
 
         config = ProxyConfig(
             mcp_servers={
-                "server": UpstreamServerConfig(
-                    command="echo",
-                    tools={"old_name": {}}
-                )
+                "server": UpstreamServerConfig(command="echo", tools={"old_name": {}})
             },
             tool_views={
                 "view": ToolViewConfig(
-                    tools={
-                        "server": {
-                            "old_name": {"name": "new_name"}
-                        }
-                    }
+                    tools={"server": {"old_name": {"name": "new_name"}}}
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -620,18 +623,12 @@ class TestToolRenamingIntegration:
     async def test_renamed_tool_routes_to_original(self):
         """Calling renamed tool should route to original upstream tool."""
         config = ProxyConfig(
-            mcp_servers={
-                "server": UpstreamServerConfig(command="echo")
-            },
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
             tool_views={
                 "view": ToolViewConfig(
-                    tools={
-                        "server": {
-                            "original_tool": {"name": "aliased_tool"}
-                        }
-                    }
+                    tools={"server": {"original_tool": {"name": "aliased_tool"}}}
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -667,13 +664,13 @@ class TestIncludeAllIntegration:
                     tools={
                         "tool_1": {"description": "Tool 1"},
                         "tool_2": {"description": "Tool 2"},
-                    }
+                    },
                 ),
                 "server-b": UpstreamServerConfig(
                     command="echo",
                     tools={
                         "tool_3": {"description": "Tool 3"},
-                    }
+                    },
                 ),
             },
             tool_views={
@@ -681,7 +678,7 @@ class TestIncludeAllIntegration:
                     description="All tools from all servers",
                     include_all=True,
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -706,18 +703,16 @@ class TestIncludeAllIntegration:
                     command="echo",
                     tools={
                         "tool_from_a": {"description": "Tool from A"},
-                    }
+                    },
                 ),
                 "server-b": UpstreamServerConfig(
                     command="echo",
                     tools={
                         "tool_from_b": {"description": "Tool from B"},
-                    }
+                    },
                 ),
             },
-            tool_views={
-                "all": ToolViewConfig(include_all=True)
-            }
+            tool_views={"all": ToolViewConfig(include_all=True)},
         )
         proxy = MCPProxy(config)
 
@@ -737,19 +732,17 @@ class TestIncludeAllIntegration:
                     command="echo",
                     tools={
                         "auto_tool": {},
-                    }
+                    },
                 )
             },
             tool_views={
                 "mixed": ToolViewConfig(
                     include_all=True,
                     tools={
-                        "server": {
-                            "auto_tool": {"description": "Custom description"}
-                        }
-                    }
+                        "server": {"auto_tool": {"description": "Custom description"}}
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -782,7 +775,7 @@ class TestSearchModeIntegration:
                         "tool_a": {},
                         "tool_b": {},
                         "tool_c": {},
-                    }
+                    },
                 )
             },
             tool_views={
@@ -795,9 +788,9 @@ class TestSearchModeIntegration:
                             "tool_b": {},
                             "tool_c": {},
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -826,7 +819,7 @@ class TestSearchModeIntegration:
                     tools={
                         "search_code": {"description": "Search code"},
                         "search_issues": {"description": "Search issues"},
-                    }
+                    },
                 )
             },
             tool_views={
@@ -837,9 +830,9 @@ class TestSearchModeIntegration:
                             "search_code": {},
                             "search_issues": {},
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -848,6 +841,7 @@ class TestSearchModeIntegration:
 
         from fastmcp import Client
         import json
+
         async with Client(view_mcp) as client:
             result = await client.call_tool("github_search_tools", {"query": "search"})
 
@@ -864,9 +858,7 @@ class TestSearchModeIntegration:
     async def test_search_mode_call_tool_executes_upstream(self):
         """In search mode, calling a tool by name should still work."""
         config = ProxyConfig(
-            mcp_servers={
-                "server": UpstreamServerConfig(command="echo")
-            },
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
             tool_views={
                 "search-view": ToolViewConfig(
                     exposure_mode="search",
@@ -874,9 +866,9 @@ class TestSearchModeIntegration:
                         "server": {
                             "actual_tool": {},
                         }
-                    }
+                    },
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
 
@@ -901,24 +893,19 @@ class TestSearchModeIntegration:
 
         config = ProxyConfig(
             mcp_servers={
-                "server": UpstreamServerConfig(
-                    command="echo",
-                    tools={"tool": {}}
-                )
+                "server": UpstreamServerConfig(command="echo", tools={"tool": {}})
             },
             tool_views={
                 "search": ToolViewConfig(
-                    exposure_mode="search",
-                    tools={"server": {"tool": {}}}
+                    exposure_mode="search", tools={"server": {"tool": {}}}
                 )
-            }
+            },
         )
         proxy = MCPProxy(config)
         app = proxy.http_app()
 
         async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"
         ) as client:
             # Get view info
             resp = await client.get("/views/search")
@@ -979,4 +966,3 @@ mcp_servers:
         assert "Checking upstream connections" in result.output
         # Either shows tools count or connection error
         assert "tools" in result.output.lower() or "failed" in result.output.lower()
-

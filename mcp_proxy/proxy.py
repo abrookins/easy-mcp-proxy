@@ -75,6 +75,7 @@ def _transform_schema(
 
     # Deep copy to avoid mutating the original
     import copy
+
     new_schema = copy.deepcopy(schema)
 
     properties = new_schema.get("properties", {})
@@ -277,8 +278,13 @@ class MCPProxy:
             # Stdio-based server (command execution)
             command = config.command
             args = config.args or []
-            env = {k: expand_env_vars(v) for k, v in config.env.items()} if config.env else None
-            transport = StdioTransport(command=command, args=args, env=env)
+            env = (
+                {k: expand_env_vars(v) for k, v in config.env.items()}
+                if config.env
+                else None
+            )
+            cwd = expand_env_vars(config.cwd) if config.cwd else None
+            transport = StdioTransport(command=command, args=args, env=env, cwd=cwd)
             return Client(transport=transport)
         else:
             raise ValueError("Server config must have either 'url' or 'command'")
@@ -304,7 +310,9 @@ class MCPProxy:
         # Initialize views with upstream clients
         # Views will use get_active_client() for tool calls
         for view in self.views.values():
-            await view.initialize(self.upstream_clients, get_client=self.get_active_client)
+            await view.initialize(
+                self.upstream_clients, get_client=self.get_active_client
+            )
 
         self._initialized = True
 
@@ -463,7 +471,9 @@ class MCPProxy:
 
         return wrapped
 
-    def run(self, transport: str = "stdio", port: int | None = None) -> None:  # pragma: no cover
+    def run(
+        self, transport: str = "stdio", port: int | None = None
+    ) -> None:  # pragma: no cover
         """Run the proxy server."""
         # Pre-fetch tools from upstream servers to get their schemas
         self.sync_fetch_tools()
@@ -509,53 +519,75 @@ class MCPProxy:
                     for tool_name, tool_config in server_config.tools.items():
                         # Get schema from upstream if available
                         upstream_tool = upstream_by_name.get(tool_name)
-                        tool_schema = getattr(upstream_tool, "inputSchema", None) if upstream_tool else None
-                        upstream_desc = getattr(upstream_tool, "description", "") if upstream_tool else ""
+                        tool_schema = (
+                            getattr(upstream_tool, "inputSchema", None)
+                            if upstream_tool
+                            else None
+                        )
+                        upstream_desc = (
+                            getattr(upstream_tool, "description", "")
+                            if upstream_tool
+                            else ""
+                        )
 
                         # Transform schema based on parameter config
                         transformed_schema = _transform_schema(tool_schema, tool_config)
                         param_config = (
-                            {k: v.model_dump() for k, v in tool_config.parameters.items()}
-                            if tool_config.parameters else None
+                            {
+                                k: v.model_dump()
+                                for k, v in tool_config.parameters.items()
+                            }
+                            if tool_config.parameters
+                            else None
                         )
 
                         # Handle aliases: if aliases defined, create multiple tools
                         if tool_config.aliases:
                             for alias in tool_config.aliases:
-                                tools.append(ToolInfo(
-                                    name=alias.name,
-                                    description=alias.description or upstream_desc,
+                                tools.append(
+                                    ToolInfo(
+                                        name=alias.name,
+                                        description=alias.description or upstream_desc,
+                                        server=server_name,
+                                        input_schema=transformed_schema,
+                                        original_name=tool_name,
+                                        parameter_config=param_config,
+                                    )
+                                )
+                        else:
+                            # Single tool (possibly renamed)
+                            exposed_name = (
+                                tool_config.name if tool_config.name else tool_name
+                            )
+                            description = tool_config.description or upstream_desc
+                            tools.append(
+                                ToolInfo(
+                                    name=exposed_name,
+                                    description=description,
                                     server=server_name,
                                     input_schema=transformed_schema,
                                     original_name=tool_name,
                                     parameter_config=param_config,
-                                ))
-                        else:
-                            # Single tool (possibly renamed)
-                            exposed_name = tool_config.name if tool_config.name else tool_name
-                            description = tool_config.description or upstream_desc
-                            tools.append(ToolInfo(
-                                name=exposed_name,
-                                description=description,
-                                server=server_name,
-                                input_schema=transformed_schema,
-                                original_name=tool_name,
-                                parameter_config=param_config,
-                            ))
+                                )
+                            )
                 else:
                     # No tools config - include ALL tools from upstream
                     upstream_tools = self._upstream_tools.get(server_name, [])
                     for upstream_tool in upstream_tools:
                         tool_name = upstream_tool.name
-                        tool_description = getattr(upstream_tool, "description", "") or ""
+                        tool_description = (
+                            getattr(upstream_tool, "description", "") or ""
+                        )
                         tool_schema = getattr(upstream_tool, "inputSchema", None)
-                        tools.append(ToolInfo(
-                            name=tool_name,
-                            description=tool_description,
-                            server=server_name,
-                            input_schema=tool_schema,
-                            original_name=tool_name,
-                        ))
+                        tools.append(
+                            ToolInfo(
+                                name=tool_name,
+                                description=tool_description,
+                                server=server_name,
+                                input_schema=tool_schema,
+                                original_name=tool_name,
+                            )
+                        )
             return tools
 
         if view_name not in self.views:
@@ -574,92 +606,121 @@ class MCPProxy:
                     # Use actual tools from upstream server
                     for upstream_tool in upstream_tools:
                         tool_name = upstream_tool.name
-                        tool_description = getattr(upstream_tool, "description", "") or ""
+                        tool_description = (
+                            getattr(upstream_tool, "description", "") or ""
+                        )
                         tool_schema = getattr(upstream_tool, "inputSchema", None)
 
                         # Check if view has override for this tool
                         view_override = None
                         if server_name in view_config.tools:
-                            view_override = view_config.tools[server_name].get(tool_name)
+                            view_override = view_config.tools[server_name].get(
+                                tool_name
+                            )
 
                         # Get effective tool_config for parameter transformation
                         effective_config = view_override or (
-                            server_config.tools.get(tool_name) if server_config.tools else None
+                            server_config.tools.get(tool_name)
+                            if server_config.tools
+                            else None
                         )
-                        transformed_schema = _transform_schema(tool_schema, effective_config)
+                        transformed_schema = _transform_schema(
+                            tool_schema, effective_config
+                        )
                         param_config = (
-                            {k: v.model_dump() for k, v in effective_config.parameters.items()}
-                            if effective_config and effective_config.parameters else None
+                            {
+                                k: v.model_dump()
+                                for k, v in effective_config.parameters.items()
+                            }
+                            if effective_config and effective_config.parameters
+                            else None
                         )
 
                         if view_override and view_override.aliases:
                             # Handle aliases from view override
                             for alias in view_override.aliases:
-                                tools.append(ToolInfo(
-                                    name=alias.name,
-                                    description=alias.description or tool_description,
+                                tools.append(
+                                    ToolInfo(
+                                        name=alias.name,
+                                        description=alias.description
+                                        or tool_description,
+                                        server=server_name,
+                                        input_schema=transformed_schema,
+                                        original_name=tool_name,
+                                        parameter_config=param_config,
+                                    )
+                                )
+                        elif view_override:
+                            exposed_name = view_override.name or tool_name
+                            description = view_override.description or tool_description
+                            tools.append(
+                                ToolInfo(
+                                    name=exposed_name,
+                                    description=description,
                                     server=server_name,
                                     input_schema=transformed_schema,
                                     original_name=tool_name,
                                     parameter_config=param_config,
-                                ))
-                        elif view_override:
-                            exposed_name = view_override.name or tool_name
-                            description = view_override.description or tool_description
-                            tools.append(ToolInfo(
-                                name=exposed_name,
-                                description=description,
-                                server=server_name,
-                                input_schema=transformed_schema,
-                                original_name=tool_name,
-                                parameter_config=param_config,
-                            ))
+                                )
+                            )
                         else:
-                            tools.append(ToolInfo(
-                                name=tool_name,
-                                description=tool_description,
-                                server=server_name,
-                                input_schema=transformed_schema,
-                                original_name=tool_name,
-                                parameter_config=param_config,
-                            ))
+                            tools.append(
+                                ToolInfo(
+                                    name=tool_name,
+                                    description=tool_description,
+                                    server=server_name,
+                                    input_schema=transformed_schema,
+                                    original_name=tool_name,
+                                    parameter_config=param_config,
+                                )
+                            )
                 elif server_config.tools:
                     # Fall back to config-defined tools if upstream not fetched
                     for tool_name, tool_config in server_config.tools.items():
                         view_override = None
                         if server_name in view_config.tools:
-                            view_override = view_config.tools[server_name].get(tool_name)
+                            view_override = view_config.tools[server_name].get(
+                                tool_name
+                            )
 
                         # Determine effective config (view override takes precedence)
                         effective_config = view_override or tool_config
                         transformed_schema = _transform_schema(None, effective_config)
                         param_config = (
-                            {k: v.model_dump() for k, v in effective_config.parameters.items()}
-                            if effective_config.parameters else None
+                            {
+                                k: v.model_dump()
+                                for k, v in effective_config.parameters.items()
+                            }
+                            if effective_config.parameters
+                            else None
                         )
 
                         # Handle aliases
                         if effective_config.aliases:
                             for alias in effective_config.aliases:
-                                tools.append(ToolInfo(
-                                    name=alias.name,
-                                    description=alias.description or "",
+                                tools.append(
+                                    ToolInfo(
+                                        name=alias.name,
+                                        description=alias.description or "",
+                                        server=server_name,
+                                        original_name=tool_name,
+                                        input_schema=transformed_schema,
+                                        parameter_config=param_config,
+                                    )
+                                )
+                        else:
+                            exposed_name = effective_config.name or tool_name
+                            description = effective_config.description or ""
+                            tools.append(
+                                ToolInfo(
+                                    name=exposed_name,
+                                    description=description,
                                     server=server_name,
                                     original_name=tool_name,
                                     input_schema=transformed_schema,
                                     parameter_config=param_config,
-                                ))
-                        else:
-                            exposed_name = effective_config.name or tool_name
-                            description = effective_config.description or ""
-                            tools.append(ToolInfo(
-                                name=exposed_name,
-                                description=description,
-                                server=server_name,
-                                original_name=tool_name,
-                                input_schema=transformed_schema,
-                                parameter_config=param_config,
-                            ))
+                                )
+                            )
         else:
             # Only include explicitly listed tools
             for server_name, server_tools in view_config.tools.items():
@@ -681,49 +742,60 @@ class MCPProxy:
                     transformed_schema = _transform_schema(tool_schema, tool_config)
                     param_config = (
                         {k: v.model_dump() for k, v in tool_config.parameters.items()}
-                        if tool_config.parameters else None
+                        if tool_config.parameters
+                        else None
                     )
 
                     # Handle aliases
                     if tool_config.aliases:
                         for alias in tool_config.aliases:
-                            tools.append(ToolInfo(
-                                name=alias.name,
-                                description=alias.description or upstream_desc,
+                            tools.append(
+                                ToolInfo(
+                                    name=alias.name,
+                                    description=alias.description or upstream_desc,
+                                    server=server_name,
+                                    input_schema=transformed_schema,
+                                    original_name=tool_name,
+                                    parameter_config=param_config,
+                                )
+                            )
+                    else:
+                        exposed_name = (
+                            tool_config.name if tool_config.name else tool_name
+                        )
+                        description = tool_config.description or upstream_desc
+                        tools.append(
+                            ToolInfo(
+                                name=exposed_name,
+                                description=description,
                                 server=server_name,
                                 input_schema=transformed_schema,
                                 original_name=tool_name,
                                 parameter_config=param_config,
-                            ))
-                    else:
-                        exposed_name = tool_config.name if tool_config.name else tool_name
-                        description = tool_config.description or upstream_desc
-                        tools.append(ToolInfo(
-                            name=exposed_name,
-                            description=description,
-                            server=server_name,
-                            input_schema=transformed_schema,
-                            original_name=tool_name,
-                            parameter_config=param_config,
-                        ))
+                            )
+                        )
 
         # Add composite tools
         for comp_name, comp_tool in view.composite_tools.items():
-            tools.append(ToolInfo(
-                name=comp_name,
-                description=comp_tool.description,
-                server="",  # Composite tools don't have a single server
-                input_schema=comp_tool.input_schema,
-            ))
+            tools.append(
+                ToolInfo(
+                    name=comp_name,
+                    description=comp_tool.description,
+                    server="",  # Composite tools don't have a single server
+                    input_schema=comp_tool.input_schema,
+                )
+            )
 
         # Add custom tools
         for custom_name, custom_fn in view.custom_tools.items():
             description = getattr(custom_fn, "_tool_description", "")
-            tools.append(ToolInfo(
-                name=custom_name,
-                description=description,
-                server="",  # Custom tools don't have an upstream server
-            ))
+            tools.append(
+                ToolInfo(
+                    name=custom_name,
+                    description=description,
+                    server="",  # Custom tools don't have an upstream server
+                )
+            )
 
         return tools
 
@@ -760,8 +832,7 @@ class MCPProxy:
         view = self.views[view_name]
         view_tools = self.get_view_tools(view_name)
         tools_data = [
-            {"name": t.name, "description": t.description}
-            for t in view_tools
+            {"name": t.name, "description": t.description} for t in view_tools
         ]
         searcher = ToolSearcher(view_name=view_name, tools=tools_data)
         search_tool = searcher.create_search_tool()
@@ -775,16 +846,20 @@ class MCPProxy:
         search_tools_wrapper.__name__ = search_name
         search_tools_wrapper.__doc__ = f"Search for tools in the {view_name} view"
 
-        mcp.tool(name=search_name, description=f"Search for tools in the {view_name} view")(
-            search_tools_wrapper
-        )
+        mcp.tool(
+            name=search_name, description=f"Search for tools in the {view_name} view"
+        )(search_tools_wrapper)
 
         # Register the call_tool meta-tool to execute found tools
         call_name = f"{view_name}_call_tool"
         tool_names_list = [t.name for t in view_tools]
 
-        def make_call_tool_wrapper(v: ToolView, valid_tools: list[str]) -> Callable[..., Any]:
-            async def call_tool_wrapper(tool_name: str, arguments: dict | None = None) -> Any:
+        def make_call_tool_wrapper(
+            v: ToolView, valid_tools: list[str]
+        ) -> Callable[..., Any]:
+            async def call_tool_wrapper(
+                tool_name: str, arguments: dict | None = None
+            ) -> Any:
                 """Call a tool by name with the given arguments."""
                 if tool_name not in valid_tools:
                     raise ValueError(
@@ -807,7 +882,7 @@ class MCPProxy:
             description=(
                 f"Call a tool in the {view_name} view by name. "
                 f"Use {view_name}_search_tools first to find available tools."
-            )
+            ),
         )(call_wrapper)
 
     def _register_tools_on_mcp(
@@ -868,7 +943,9 @@ class MCPProxy:
 
                         return upstream_wrapper
 
-                    wrapper = make_upstream_wrapper_kwargs(view, _tool_name, _param_config)
+                    wrapper = make_upstream_wrapper_kwargs(
+                        view, _tool_name, _param_config
+                    )
                     tool = _create_tool_with_schema(
                         name=_tool_name,
                         description=_tool_desc,
@@ -882,14 +959,18 @@ class MCPProxy:
                     def make_upstream_wrapper_dict(
                         v: ToolView, name: str, param_cfg: dict[str, Any] | None
                     ) -> Callable[..., Any]:
-                        async def upstream_wrapper(arguments: dict | None = None) -> Any:
+                        async def upstream_wrapper(
+                            arguments: dict | None = None,
+                        ) -> Any:
                             """Call upstream tool with arguments."""
                             transformed = _transform_args(arguments or {}, param_cfg)
                             return await v.call_tool(name, transformed)
 
                         return upstream_wrapper
 
-                    wrapper = make_upstream_wrapper_dict(view, _tool_name, _param_config)
+                    wrapper = make_upstream_wrapper_dict(
+                        view, _tool_name, _param_config
+                    )
                     wrapper.__name__ = _tool_name
                     wrapper.__doc__ = _tool_desc
                     mcp.tool(name=_tool_name, description=_tool_desc)(wrapper)
@@ -920,7 +1001,9 @@ class MCPProxy:
                                 proxy.config.mcp_servers[server]
                             )
                             async with client:
-                                return await client.call_tool(original_name, transformed)
+                                return await client.call_tool(
+                                    original_name, transformed
+                                )
 
                         return direct_wrapper
 
@@ -959,7 +1042,9 @@ class MCPProxy:
                                 proxy.config.mcp_servers[server]
                             )
                             async with client:
-                                return await client.call_tool(original_name, transformed)
+                                return await client.call_tool(
+                                    original_name, transformed
+                                )
 
                         return direct_wrapper
 
@@ -1044,8 +1129,7 @@ class MCPProxy:
             view_name = request.path_params["view_name"]
             if view_name not in self.views:
                 return JSONResponse(
-                    {"error": f"View '{view_name}' not found"},
-                    status_code=404
+                    {"error": f"View '{view_name}' not found"}, status_code=404
                 )
             view = self.views[view_name]
 
@@ -1056,16 +1140,16 @@ class MCPProxy:
                 tools = self.get_view_tools(view_name)
                 tools_list = [{"name": t.name} for t in tools] if tools else []
 
-            return JSONResponse({
-                "name": view_name,
-                "description": view.config.description,
-                "exposure_mode": view.config.exposure_mode,
-                "tools": tools_list
-            })
+            return JSONResponse(
+                {
+                    "name": view_name,
+                    "description": view.config.description,
+                    "exposure_mode": view.config.exposure_mode,
+                    "tools": tools_list,
+                }
+            )
 
-        routes.append(
-            Route(f"{path}/views/{{view_name}}", view_info, methods=["GET"])
-        )
+        routes.append(Route(f"{path}/views/{{view_name}}", view_info, methods=["GET"]))
 
         # List views endpoint
         async def list_views(request: Request) -> JSONResponse:
@@ -1082,9 +1166,7 @@ class MCPProxy:
 
         # Mount view-specific MCP apps BEFORE default (more specific first)
         for view_name, view_mcp_app in view_mcp_apps.items():
-            routes.append(
-                Mount(f"{path}{view_prefix}/{view_name}", app=view_mcp_app)
-            )
+            routes.append(Mount(f"{path}{view_prefix}/{view_name}", app=view_mcp_app))
 
         # Mount default MCP app last (catches remaining /mcp requests)
         if path:

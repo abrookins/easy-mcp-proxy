@@ -14,10 +14,7 @@ class TestCustomToolDecorator:
     def test_custom_tool_decorator_registers_function(self):
         """@custom_tool should mark a function as a custom tool."""
 
-        @custom_tool(
-            name="my_custom_tool",
-            description="A custom tool"
-        )
+        @custom_tool(name="my_custom_tool", description="A custom tool")
         async def my_tool(query: str) -> dict:
             return {"result": query}
 
@@ -69,14 +66,13 @@ class TestProxyContext:
 
         ctx = ProxyContext(call_tool_fn=mock_call)
         result = await ctx.call_tool(
-            "redis-memory-server.search_long_term_memory",
-            text="query"
+            "redis-memory-server.search_long_term_memory", text="query"
         )
 
         assert result == {"result": "mocked"}
         assert call_log[0] == (
             "redis-memory-server.search_long_term_memory",
-            {"text": "query"}
+            {"text": "query"},
         )
 
     async def test_proxy_context_available_tools(self):
@@ -86,10 +82,7 @@ class TestProxyContext:
             "server.tool_b",
         ]
 
-        ctx = ProxyContext(
-            call_tool_fn=lambda *a, **k: None,
-            available_tools=available
-        )
+        ctx = ProxyContext(call_tool_fn=lambda *a, **k: None, available_tools=available)
 
         assert ctx.available_tools == available
 
@@ -166,13 +159,13 @@ class TestCustomToolRegistration:
         module_dir = tmp_path / "test_module"
         module_dir.mkdir()
         (module_dir / "__init__.py").write_text("")
-        (module_dir / "tools.py").write_text('''
+        (module_dir / "tools.py").write_text("""
 from mcp_proxy.custom_tools import custom_tool
 
 @custom_tool(name="test_tool", description="A test tool")
 async def my_test_tool(query: str) -> dict:
     return {"result": query}
-''')
+""")
 
         # Add to sys.path so we can import it
         monkeypatch.syspath_prepend(str(tmp_path))
@@ -190,10 +183,10 @@ async def my_test_tool(query: str) -> dict:
         module_dir = tmp_path / "regular_module"
         module_dir.mkdir()
         (module_dir / "__init__.py").write_text("")
-        (module_dir / "funcs.py").write_text('''
+        (module_dir / "funcs.py").write_text("""
 async def regular_function(x: int) -> int:
     return x * 2
-''')
+""")
 
         monkeypatch.syspath_prepend(str(tmp_path))
 
@@ -209,20 +202,16 @@ async def regular_function(x: int) -> int:
         module_dir = tmp_path / "hooks"
         module_dir.mkdir()
         (module_dir / "__init__.py").write_text("")
-        (module_dir / "custom.py").write_text('''
+        (module_dir / "custom.py").write_text("""
 from mcp_proxy.custom_tools import custom_tool
 
 @custom_tool(name="my_tool", description="My custom tool")
 async def my_tool(x: str) -> dict:
     return {"result": x}
-''')
+""")
         monkeypatch.syspath_prepend(str(tmp_path))
 
-        config = ToolViewConfig(
-            custom_tools=[
-                {"module": "hooks.custom.my_tool"}
-            ]
-        )
+        config = ToolViewConfig(custom_tools=[{"module": "hooks.custom.my_tool"}])
         view = ToolView("test", config)
 
         # Verify the config was stored
@@ -231,3 +220,136 @@ async def my_tool(x: str) -> dict:
 
         # Verify the tool was loaded into the view
         assert "my_tool" in view.custom_tools
+
+
+class TestMFCQITool:
+    """Tests for the MFCQI code quality analysis tool."""
+
+    def test_mfcqi_tool_is_registered(self):
+        """The analyze_code_quality tool should be properly decorated."""
+        from mcp_proxy.tools.mfcqi import analyze_code_quality
+
+        assert analyze_code_quality._is_custom_tool is True
+        assert analyze_code_quality._tool_name == "analyze_code_quality"
+        assert "MFCQI" in analyze_code_quality._tool_description
+
+    def test_mfcqi_tool_schema(self):
+        """The tool should have correct input schema."""
+        from mcp_proxy.tools.mfcqi import analyze_code_quality
+
+        schema = analyze_code_quality._input_schema
+
+        # Required parameters
+        assert "project_path" in schema["properties"]
+        assert "project_path" in schema.get("required", [])
+
+        # Optional parameters with defaults
+        assert "min_score" in schema["properties"]
+        assert "skip_llm" in schema["properties"]
+        assert "output_format" in schema["properties"]
+        assert "quality_gate" in schema["properties"]
+        assert "recommendations" in schema["properties"]
+
+        # These should not be required (have defaults)
+        assert "min_score" not in schema.get("required", [])
+        assert "skip_llm" not in schema.get("required", [])
+
+    @pytest.mark.asyncio
+    async def test_mfcqi_tool_builds_command(self, monkeypatch):
+        """The tool should build the correct uvx command."""
+        from mcp_proxy.tools.mfcqi import analyze_code_quality
+
+        captured_cmd = None
+        captured_cwd = None
+
+        async def mock_subprocess(*args, stdout=None, stderr=None, cwd=None):
+            nonlocal captured_cmd, captured_cwd
+            captured_cmd = args
+            captured_cwd = cwd
+
+            class MockProc:
+                returncode = 0
+
+                async def communicate(self):
+                    return (b"mock output", b"")
+
+            return MockProc()
+
+        monkeypatch.setattr(
+            "mcp_proxy.tools.mfcqi.asyncio.create_subprocess_exec", mock_subprocess
+        )
+
+        result = await analyze_code_quality(
+            project_path="/some/project",
+            min_score=0.8,
+            skip_llm=True,
+        )
+
+        assert captured_cmd == (
+            "uvx",
+            "mfcqi",
+            "analyze",
+            "/some/project",
+            "--min-score",
+            "0.8",
+            "--skip-llm",
+        )
+        assert result["success"] is True
+        assert result["output"] == "mock output"
+
+    @pytest.mark.asyncio
+    async def test_mfcqi_tool_with_llm_enabled(self, monkeypatch):
+        """The tool should include recommendations when LLM is enabled."""
+        from mcp_proxy.tools.mfcqi import analyze_code_quality
+
+        captured_cmd = None
+
+        async def mock_subprocess(*args, stdout=None, stderr=None, cwd=None):
+            nonlocal captured_cmd
+            captured_cmd = args
+
+            class MockProc:
+                returncode = 0
+
+                async def communicate(self):
+                    return (b"", b"")
+
+            return MockProc()
+
+        monkeypatch.setattr(
+            "mcp_proxy.tools.mfcqi.asyncio.create_subprocess_exec", mock_subprocess
+        )
+
+        await analyze_code_quality(
+            project_path="/project",
+            skip_llm=False,
+            recommendations=10,
+        )
+
+        assert "--skip-llm" not in captured_cmd
+        assert "--recommendations" in captured_cmd
+        assert "10" in captured_cmd
+
+    @pytest.mark.asyncio
+    async def test_mfcqi_tool_handles_failure(self, monkeypatch):
+        """The tool should report failure when command fails."""
+        from mcp_proxy.tools.mfcqi import analyze_code_quality
+
+        async def mock_subprocess(*args, stdout=None, stderr=None, cwd=None):
+            class MockProc:
+                returncode = 1
+
+                async def communicate(self):
+                    return (b"", b"Error: invalid path")
+
+            return MockProc()
+
+        monkeypatch.setattr(
+            "mcp_proxy.tools.mfcqi.asyncio.create_subprocess_exec", mock_subprocess
+        )
+
+        result = await analyze_code_quality(project_path="/nonexistent")
+
+        assert result["success"] is False
+        assert result["return_code"] == 1
+        assert result["stderr"] == "Error: invalid path"

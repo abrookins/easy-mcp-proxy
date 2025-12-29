@@ -51,8 +51,7 @@ class TestHooksConfig:
     def test_hooks_config_with_paths(self):
         """HooksConfig should accept dotted paths to hook functions."""
         config = HooksConfig(
-            pre_call="hooks.auth.pre_call",
-            post_call="hooks.logging.post_call"
+            pre_call="hooks.auth.pre_call", post_call="hooks.logging.post_call"
         )
         assert config.pre_call == "hooks.auth.pre_call"
         assert config.post_call == "hooks.logging.post_call"
@@ -80,7 +79,7 @@ class TestToolViewConfig:
             tools={
                 "server1": {
                     "tool_a": ToolConfig(name="renamed_a"),
-                    "tool_b": ToolConfig()
+                    "tool_b": ToolConfig(),
                 }
             }
         )
@@ -99,10 +98,12 @@ class TestServerToolsConfig:
     def test_server_tools_config_structure(self):
         """ServerToolsConfig maps tool names to ToolConfig."""
         # ServerToolsConfig is essentially dict[str, ToolConfig]
-        config = ServerToolsConfig(root={
-            "tool_a": ToolConfig(name="renamed"),
-            "tool_b": ToolConfig(description="Custom desc")
-        })
+        config = ServerToolsConfig(
+            root={
+                "tool_a": ToolConfig(name="renamed"),
+                "tool_b": ToolConfig(description="Custom desc"),
+            }
+        )
         assert "tool_a" in config.root
         assert config.root["tool_a"].name == "renamed"
 
@@ -127,16 +128,26 @@ class TestUpstreamServerConfig:
         """UpstreamServerConfig can include environment variables."""
         config = UpstreamServerConfig(
             command="server",
-            env={"REDIS_URL": "redis://localhost:6379", "DEBUG": "true"}
+            env={"REDIS_URL": "redis://localhost:6379", "DEBUG": "true"},
         )
         assert config.env["REDIS_URL"] == "redis://localhost:6379"
         assert config.env["DEBUG"] == "true"
+
+    def test_command_server_with_cwd(self):
+        """UpstreamServerConfig can include working directory."""
+        config = UpstreamServerConfig(
+            command="npx",
+            args=["-y", "@modelcontextprotocol/server-filesystem", "/data"],
+            cwd="/data",
+        )
+        assert config.cwd == "/data"
+        assert config.command == "npx"
 
     def test_url_server_with_headers(self):
         """UpstreamServerConfig can include HTTP headers."""
         config = UpstreamServerConfig(
             url="https://api.example.com/mcp",
-            headers={"Authorization": "Bearer token123"}
+            headers={"Authorization": "Bearer token123"},
         )
         assert config.headers["Authorization"] == "Bearer token123"
 
@@ -148,7 +159,7 @@ class TestProxyConfig:
         """ProxyConfig should contain servers and views."""
         config = ProxyConfig(
             mcp_servers={"server1": {"command": "echo"}},
-            tool_views={"view1": {"description": "Test"}}
+            tool_views={"view1": {"description": "Test"}},
         )
         assert "server1" in config.mcp_servers
         assert "view1" in config.tool_views
@@ -158,4 +169,3 @@ class TestProxyConfig:
         config = load_config(sample_config_yaml)
         assert "test-server" in config.mcp_servers
         assert "test-view" in config.tool_views
-
