@@ -151,4 +151,3 @@ class ClientManager:
         client = self.create_client_from_config(self.config.mcp_servers[server_name])
         async with client:
             return await client.call_tool(tool_name, args)
-

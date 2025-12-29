@@ -58,4 +58,3 @@ class TestToolViewActiveClient:
         active_client.call_tool.assert_called_once_with("my_tool", {"query": "test"})
         stored_client.call_tool.assert_not_called()
         assert result == {"active": True}
-

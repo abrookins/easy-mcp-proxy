@@ -5,7 +5,6 @@ from typing import Any, Callable
 from mcp_proxy.custom_tools import ProxyContext, load_custom_tool
 from mcp_proxy.exceptions import ToolCallAborted
 from mcp_proxy.hooks import (
-    HookResult,
     ToolCallContext,
     execute_post_call,
     execute_pre_call,
@@ -67,10 +66,12 @@ class ToolView:
         """Initialize the view with upstream clients.
 
         Args:
-            upstream_clients: Dict mapping server names to existing clients (for compatibility)
-            get_client: Optional function to get an active (connected) client for a server name.
-                       If provided and returns a client, that client will be used directly.
-                       Otherwise falls back to stored clients.
+            upstream_clients: Dict mapping server names to existing clients
+                (for compatibility)
+            get_client: Optional function to get an active (connected) client
+                for a server name. If provided and returns a client, that
+                client will be used directly. Otherwise falls back to stored
+                clients.
         """
         self._upstream_clients = upstream_clients
         self._get_client = get_client

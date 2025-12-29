@@ -1,8 +1,8 @@
 """Tests for running the proxy server and tool execution."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastmcp import Client
 
 from mcp_proxy.models import ProxyConfig, UpstreamServerConfig
@@ -157,10 +157,7 @@ class TestDefaultMCPUpstreamCalls:
             # Call through the proxy's default server
             # Tools use "arguments" dict parameter per FastMCP convention
             async with Client(proxy.server) as client:
-                result = await client.call_tool(
-                    "my_tool", {"arguments": {"arg": "value"}}
-                )
+                await client.call_tool("my_tool", {"arguments": {"arg": "value"}})
 
             # Verify upstream was called with the arguments dict
             mock_upstream.call_tool.assert_called_once_with("my_tool", {"arg": "value"})
-

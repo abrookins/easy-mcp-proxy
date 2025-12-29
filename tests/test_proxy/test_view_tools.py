@@ -1,10 +1,10 @@
 """Tests for get_view_tools method and upstream tool fetching."""
 
-import pytest
-import yaml
 from unittest.mock import AsyncMock, MagicMock
 
-from mcp_proxy.models import ProxyConfig, UpstreamServerConfig, ToolConfig, ToolViewConfig
+import yaml
+
+from mcp_proxy.models import ProxyConfig
 from mcp_proxy.proxy import MCPProxy
 
 
@@ -13,7 +13,6 @@ class TestMCPProxyGetViewTools:
 
     def test_get_view_tools_with_dict_config(self):
         """get_view_tools should handle raw dict tool configs from YAML."""
-        from mcp_proxy.config import load_config
 
         # Simulate raw YAML parsing - tool configs are dicts, not ToolConfig objects
         raw_yaml = """
@@ -135,4 +134,3 @@ class TestDefaultViewIncludesAllUpstreamTools:
         assert "tool_a" in tool_names
         assert "tool_b" not in tool_names
         assert len(tools) == 1
-

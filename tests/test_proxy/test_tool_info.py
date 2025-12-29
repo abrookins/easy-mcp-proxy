@@ -1,7 +1,5 @@
 """Tests for ToolInfo dataclass."""
 
-import pytest
-
 from mcp_proxy.proxy import ToolInfo
 
 
@@ -71,4 +69,3 @@ class TestToolInfo:
         )
 
         assert tool.parameter_config == param_config
-

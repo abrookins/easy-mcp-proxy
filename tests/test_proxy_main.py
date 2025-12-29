@@ -113,7 +113,6 @@ class TestMCPProxyGetViewTools:
     def test_get_view_tools_with_dict_config(self):
         """get_view_tools should handle raw dict tool configs from YAML."""
         import yaml
-        from mcp_proxy.config import load_config
 
         # Simulate raw YAML parsing - tool configs are dicts, not ToolConfig objects
         raw_yaml = """
@@ -160,7 +159,7 @@ class TestMCPProxyToolRegistration:
                 "view": {"exposure_mode": "direct", "tools": {"server": {"tool_a": {}}}}
             },
         )
-        proxy = MCPProxy(config)
+        MCPProxy(config)
 
         # After initialization, tools should be registered
         # Can't test without mocked FastMCP server
@@ -176,7 +175,7 @@ class TestMCPProxyToolRegistration:
                 }
             },
         )
-        proxy = MCPProxy(config)
+        MCPProxy(config)
 
         # In search mode, only one tool should be registered: view_search_tools
 
@@ -496,7 +495,8 @@ class TestMCPProxyErrorHandling:
 
     def test_create_client_from_config_with_cwd(self):
         """_create_client_from_config should pass cwd to StdioTransport."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from fastmcp.client.transports import StdioTransport
 
         config = ProxyConfig(
@@ -515,7 +515,8 @@ class TestMCPProxyErrorHandling:
         mock_transport_instance = MagicMock(spec=StdioTransport)
 
         with patch(
-            "mcp_proxy.proxy.client.StdioTransport", return_value=mock_transport_instance
+            "mcp_proxy.proxy.client.StdioTransport",
+            return_value=mock_transport_instance,
         ) as mock_transport_class:
             proxy._create_client_from_config(config.mcp_servers["fs"])
 
@@ -526,9 +527,10 @@ class TestMCPProxyErrorHandling:
 
     def test_create_client_from_config_cwd_with_env_expansion(self):
         """_create_client_from_config should expand env vars in cwd."""
-        from unittest.mock import patch, MagicMock
-        from fastmcp.client.transports import StdioTransport
         import os
+        from unittest.mock import MagicMock, patch
+
+        from fastmcp.client.transports import StdioTransport
 
         os.environ["TEST_CWD_PATH"] = "/expanded/path"
 
@@ -543,7 +545,8 @@ class TestMCPProxyErrorHandling:
         mock_transport_instance = MagicMock(spec=StdioTransport)
 
         with patch(
-            "mcp_proxy.proxy.client.StdioTransport", return_value=mock_transport_instance
+            "mcp_proxy.proxy.client.StdioTransport",
+            return_value=mock_transport_instance,
         ) as mock_transport_class:
             proxy._create_client_from_config(config.mcp_servers["fs"])
 
@@ -860,9 +863,7 @@ class TestDefaultMCPUpstreamCalls:
             # Call through the proxy's default server
             # Tools use "arguments" dict parameter per FastMCP convention
             async with Client(proxy.server) as client:
-                result = await client.call_tool(
-                    "my_tool", {"arguments": {"arg": "value"}}
-                )
+                await client.call_tool("my_tool", {"arguments": {"arg": "value"}})
 
             # Verify upstream was called with the arguments dict
             mock_upstream.call_tool.assert_called_once_with("my_tool", {"arg": "value"})
@@ -1006,7 +1007,7 @@ class TestToolNameAliasing:
             # Call using the aliased name
             async with Client(proxy.server) as client:
                 # The tool is exposed as "aliased_tool_name"
-                result = await client.call_tool(
+                await client.call_tool(
                     "aliased_tool_name", {"arguments": {"key": "value"}}
                 )
 
@@ -1128,7 +1129,8 @@ class TestInputSchemaPreservation:
     async def test_input_schema_passed_to_view_tools(self):
         """Input schema should be included in get_view_tools output."""
         from unittest.mock import AsyncMock, MagicMock
-        from mcp_proxy.models import ToolConfig, ToolViewConfig
+
+        from mcp_proxy.models import ToolViewConfig
 
         config = ProxyConfig(
             mcp_servers={"server": UpstreamServerConfig(command="echo")},
@@ -1165,7 +1167,9 @@ class TestInputSchemaPreservation:
     async def test_input_schema_exposed_via_mcp_list_tools(self):
         """Input schema should be exposed when listing tools via MCP client."""
         from unittest.mock import AsyncMock, MagicMock
+
         from fastmcp import Client
+
         from mcp_proxy.models import ToolViewConfig
 
         config = ProxyConfig(
@@ -1381,7 +1385,7 @@ class TestAliasesInIncludeAllMode:
     """Tests for aliases in include_all views with view overrides."""
 
     def test_aliases_in_include_all_with_view_override(self):
-        """include_all view with aliases in view override should create multiple tools."""
+        """include_all view with aliases in view override creates multiple tools."""
         from mcp_proxy.models import AliasConfig, ToolConfig, ToolViewConfig
 
         config = ProxyConfig(
@@ -1604,6 +1608,7 @@ class TestToolExecutionWithInputSchema:
     async def test_direct_routing_with_input_schema(self):
         """Direct routing (no view) with input_schema should work."""
         from unittest.mock import AsyncMock, patch
+
         from fastmcp import FastMCP
 
         config = ProxyConfig(
@@ -1689,6 +1694,7 @@ class TestToolExecutionWithInputSchema:
     async def test_direct_routing_uses_active_client(self):
         """Direct routing should use active client when available."""
         from unittest.mock import AsyncMock
+
         from fastmcp import FastMCP
 
         config = ProxyConfig(
@@ -1728,6 +1734,7 @@ class TestToolExecutionWithInputSchema:
     async def test_direct_routing_dict_wrapper_uses_active_client(self):
         """Direct routing with dict wrapper should use active client."""
         from unittest.mock import AsyncMock
+
         from fastmcp import FastMCP
 
         config = ProxyConfig(
@@ -1767,8 +1774,8 @@ class TestParameterBinding:
 
     def test_transform_schema_hides_parameter(self):
         """_transform_schema should remove hidden parameters from schema."""
+        from mcp_proxy.models import ParameterConfig, ToolConfig
         from mcp_proxy.proxy import _transform_schema
-        from mcp_proxy.models import ToolConfig, ParameterConfig
 
         schema = {
             "type": "object",
@@ -1791,8 +1798,8 @@ class TestParameterBinding:
 
     def test_transform_schema_renames_parameter(self):
         """_transform_schema should rename parameters."""
+        from mcp_proxy.models import ParameterConfig, ToolConfig
         from mcp_proxy.proxy import _transform_schema
-        from mcp_proxy.models import ToolConfig, ParameterConfig
 
         schema = {
             "type": "object",
@@ -1814,8 +1821,8 @@ class TestParameterBinding:
 
     def test_transform_schema_updates_description(self):
         """_transform_schema should update parameter description."""
+        from mcp_proxy.models import ParameterConfig, ToolConfig
         from mcp_proxy.proxy import _transform_schema
-        from mcp_proxy.models import ToolConfig, ParameterConfig
 
         schema = {
             "type": "object",
@@ -1834,8 +1841,8 @@ class TestParameterBinding:
 
     def test_transform_schema_rename_with_description(self):
         """_transform_schema should rename and update description together."""
+        from mcp_proxy.models import ParameterConfig, ToolConfig
         from mcp_proxy.proxy import _transform_schema
-        from mcp_proxy.models import ToolConfig, ParameterConfig
 
         schema = {
             "type": "object",
@@ -1858,8 +1865,8 @@ class TestParameterBinding:
 
     def test_transform_schema_none_returns_none(self):
         """_transform_schema should return None for None schema."""
+        from mcp_proxy.models import ParameterConfig, ToolConfig
         from mcp_proxy.proxy import _transform_schema
-        from mcp_proxy.models import ToolConfig, ParameterConfig
 
         tool_config = ToolConfig(parameters={"path": ParameterConfig(hidden=True)})
 
@@ -1930,7 +1937,8 @@ class TestParameterBinding:
     def test_get_view_tools_includes_transformed_schema(self):
         """get_view_tools should return tools with transformed schemas."""
         from unittest.mock import MagicMock
-        from mcp_proxy.models import ToolConfig, ParameterConfig, ToolViewConfig
+
+        from mcp_proxy.models import ParameterConfig, ToolConfig
 
         config = ProxyConfig(
             mcp_servers={
@@ -1977,7 +1985,8 @@ class TestParameterBinding:
     def test_get_view_tools_renames_param_in_schema(self):
         """get_view_tools should rename parameters in the exposed schema."""
         from unittest.mock import MagicMock
-        from mcp_proxy.models import ToolConfig, ParameterConfig
+
+        from mcp_proxy.models import ParameterConfig, ToolConfig
 
         config = ProxyConfig(
             mcp_servers={
@@ -2026,8 +2035,8 @@ class TestParameterBinding:
 
     def test_transform_schema_default_makes_optional(self):
         """_transform_schema should remove param from required when default is set."""
+        from mcp_proxy.models import ParameterConfig, ToolConfig
         from mcp_proxy.proxy import _transform_schema
-        from mcp_proxy.models import ToolConfig, ParameterConfig
 
         schema = {
             "type": "object",
@@ -2046,8 +2055,8 @@ class TestParameterBinding:
 
     def test_transform_schema_rename_with_default(self):
         """_transform_schema should handle rename + default together."""
+        from mcp_proxy.models import ParameterConfig, ToolConfig
         from mcp_proxy.proxy import _transform_schema
-        from mcp_proxy.models import ToolConfig, ParameterConfig
 
         schema = {
             "type": "object",
@@ -2099,8 +2108,8 @@ class TestParameterBinding:
 
     def test_transform_schema_skips_unknown_param(self):
         """_transform_schema should skip params not in schema properties."""
+        from mcp_proxy.models import ParameterConfig, ToolConfig
         from mcp_proxy.proxy import _transform_schema
-        from mcp_proxy.models import ToolConfig, ParameterConfig
 
         schema = {
             "type": "object",
@@ -2121,8 +2130,8 @@ class TestParameterBinding:
 
     def test_transform_schema_hidden_not_in_required(self):
         """_transform_schema should handle hidden param not in required list."""
+        from mcp_proxy.models import ParameterConfig, ToolConfig
         from mcp_proxy.proxy import _transform_schema
-        from mcp_proxy.models import ToolConfig, ParameterConfig
 
         schema = {
             "type": "object",
@@ -2142,8 +2151,8 @@ class TestParameterBinding:
 
     def test_transform_schema_rename_not_in_required(self):
         """_transform_schema should handle renamed param not in required list."""
+        from mcp_proxy.models import ParameterConfig, ToolConfig
         from mcp_proxy.proxy import _transform_schema
-        from mcp_proxy.models import ToolConfig, ParameterConfig
 
         schema = {
             "type": "object",
@@ -2161,8 +2170,8 @@ class TestParameterBinding:
 
     def test_transform_schema_default_not_in_required(self):
         """_transform_schema should handle default for param not in required."""
+        from mcp_proxy.models import ParameterConfig, ToolConfig
         from mcp_proxy.proxy import _transform_schema
-        from mcp_proxy.models import ToolConfig, ParameterConfig
 
         schema = {
             "type": "object",
@@ -2222,7 +2231,7 @@ class TestParameterBinding:
         assert result["path"] == "explicit"
 
     def test_transform_args_renamed_no_default_not_provided(self):
-        """_transform_args should not inject anything for renamed without default when not provided."""
+        """_transform_args should not inject for renamed without default."""
         from mcp_proxy.proxy import _transform_args
 
         args = {"other": "value"}  # renamed param 'category' not provided
@@ -2237,7 +2246,7 @@ class TestParameterBinding:
         assert result["other"] == "value"
 
     def test_transform_args_renamed_original_already_present(self):
-        """_transform_args should not inject default if original param already present."""
+        """_transform_args should not inject default if original param present."""
         from mcp_proxy.proxy import _transform_args
 
         args = {"path": "already_here"}  # Original name somehow present
@@ -2256,7 +2265,7 @@ class TestProxyConnectionManagement:
 
     async def test_connect_clients_creates_connections(self):
         """connect_clients should create active connections."""
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, patch
 
         config = ProxyConfig(
             mcp_servers={"server": UpstreamServerConfig(command="echo")},
@@ -2334,7 +2343,9 @@ class TestProxyConnectionManagement:
             return mock_good_client
 
         with patch.object(
-            proxy._client_manager, "create_client_from_config", side_effect=create_client_side_effect
+            proxy._client_manager,
+            "create_client_from_config",
+            side_effect=create_client_side_effect,
         ):
             await proxy.connect_clients()
 
@@ -2381,7 +2392,7 @@ class TestProxyConnectionManagement:
 
     async def test_call_upstream_tool_with_active_client(self):
         """call_upstream_tool should use active client when available."""
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import AsyncMock
 
         config = ProxyConfig(
             mcp_servers={"server": UpstreamServerConfig(command="echo")},

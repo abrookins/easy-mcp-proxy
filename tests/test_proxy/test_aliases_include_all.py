@@ -1,14 +1,13 @@
 """Tests for aliases in include_all views with view overrides."""
 
-import pytest
 from unittest.mock import MagicMock
 
 from mcp_proxy.models import (
+    AliasConfig,
     ProxyConfig,
-    UpstreamServerConfig,
     ToolConfig,
     ToolViewConfig,
-    AliasConfig,
+    UpstreamServerConfig,
 )
 from mcp_proxy.proxy import MCPProxy
 
@@ -17,7 +16,7 @@ class TestAliasesInIncludeAllMode:
     """Tests for aliases in include_all views with view overrides."""
 
     def test_aliases_in_include_all_with_view_override(self):
-        """include_all view with aliases in view override should create multiple tools."""
+        """include_all view with aliases in view override creates multiple tools."""
         config = ProxyConfig(
             mcp_servers={
                 "server": UpstreamServerConfig(
@@ -169,4 +168,3 @@ class TestAliasesInExplicitToolMode:
         # Original name should be preserved
         assert by_name["search_by_name"].original_name == "search_tool"
         assert by_name["search_by_id"].original_name == "search_tool"
-

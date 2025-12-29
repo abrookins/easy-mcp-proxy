@@ -6,7 +6,7 @@ smaller focused functions for better maintainability.
 
 from typing import Any
 
-from mcp_proxy.models import ProxyConfig, ToolConfig, ToolViewConfig
+from mcp_proxy.models import ToolConfig, ToolViewConfig
 from mcp_proxy.proxy.schema import transform_schema
 from mcp_proxy.proxy.tool_info import ToolInfo
 
@@ -165,9 +165,7 @@ def _process_upstream_tool_with_override(
     # Get effective config (view override takes precedence)
     effective_config = view_override or server_tool_config
     transformed_schema = transform_schema(tool_schema, effective_config)
-    param_config = (
-        _get_param_config(effective_config) if effective_config else None
-    )
+    param_config = _get_param_config(effective_config) if effective_config else None
 
     if view_override and view_override.aliases:
         # Handle aliases from view override
@@ -307,9 +305,7 @@ def _process_view_explicit_tools(
         upstream_by_name = {t.name: t for t in upstream_tools}
 
         # Get server config for parameter defaults
-        server_config = (
-            server_configs.get(server_name) if server_configs else None
-        )
+        server_config = server_configs.get(server_name) if server_configs else None
         server_tool_configs = (
             server_config.tools if server_config and server_config.tools else {}
         )
@@ -385,11 +381,15 @@ def _merge_tool_configs(
         for param_name, param_config in view_config.parameters.items():
             merged_params[param_name] = param_config
 
+    enabled = (
+        view_config.enabled
+        if view_config.enabled is not None
+        else server_config.enabled
+    )
     return ToolConfig(
         name=view_config.name or server_config.name,
         description=view_config.description or server_config.description,
-        enabled=view_config.enabled if view_config.enabled is not None else server_config.enabled,
+        enabled=enabled,
         aliases=view_config.aliases or server_config.aliases,
         parameters=merged_params if merged_params else None,
     )
-

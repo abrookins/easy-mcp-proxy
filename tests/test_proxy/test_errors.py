@@ -1,9 +1,9 @@
 """Tests for MCPProxy error handling."""
 
 import os
-import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastmcp.client.transports import StdioTransport
 
 from mcp_proxy.models import ProxyConfig, UpstreamServerConfig
@@ -54,7 +54,8 @@ class TestMCPProxyErrorHandling:
         mock_transport_instance = MagicMock(spec=StdioTransport)
 
         with patch(
-            "mcp_proxy.proxy.client.StdioTransport", return_value=mock_transport_instance
+            "mcp_proxy.proxy.client.StdioTransport",
+            return_value=mock_transport_instance,
         ) as mock_transport_class:
             proxy._create_client_from_config(config.mcp_servers["fs"])
 
@@ -78,7 +79,8 @@ class TestMCPProxyErrorHandling:
         mock_transport_instance = MagicMock(spec=StdioTransport)
 
         with patch(
-            "mcp_proxy.proxy.client.StdioTransport", return_value=mock_transport_instance
+            "mcp_proxy.proxy.client.StdioTransport",
+            return_value=mock_transport_instance,
         ) as mock_transport_class:
             proxy._create_client_from_config(config.mcp_servers["fs"])
 
@@ -147,4 +149,3 @@ class TestMCPProxyErrorHandling:
         await proxy.refresh_upstream_tools()
 
         mock_client.list_tools.assert_called()
-

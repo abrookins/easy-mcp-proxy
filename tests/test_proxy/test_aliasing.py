@@ -1,16 +1,15 @@
 """Tests for tool name aliasing at the mcp_servers and view levels."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastmcp import Client
 
 from mcp_proxy.models import (
     ProxyConfig,
-    UpstreamServerConfig,
     ToolConfig,
     ToolViewConfig,
-    AliasConfig,
+    UpstreamServerConfig,
 )
 from mcp_proxy.proxy import MCPProxy
 
@@ -122,7 +121,7 @@ class TestToolNameAliasing:
             # Call using the aliased name
             async with Client(proxy.server) as client:
                 # The tool is exposed as "aliased_tool_name"
-                result = await client.call_tool(
+                await client.call_tool(
                     "aliased_tool_name", {"arguments": {"key": "value"}}
                 )
 
@@ -195,4 +194,3 @@ class TestToolNameAliasingInViews:
         assert len(tools) == 1
         assert tools[0].name == "renamed_in_view"
         assert tools[0].original_name == "tool_a"
-

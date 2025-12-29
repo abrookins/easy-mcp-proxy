@@ -1,7 +1,5 @@
 """Tests for hook wrapping of tools."""
 
-import pytest
-
 from mcp_proxy.hooks import HookResult
 from mcp_proxy.models import ProxyConfig
 from mcp_proxy.proxy import MCPProxy
@@ -168,4 +166,3 @@ class TestMCPProxyHookWrapping:
 
         # Result should pass through unchanged
         assert result["original"] is True
-

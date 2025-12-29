@@ -61,4 +61,3 @@ class TestToolTransformation:
 
         assert transformed.name == "original"
         assert transformed.description == "Original desc"
-

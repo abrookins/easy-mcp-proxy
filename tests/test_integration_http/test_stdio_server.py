@@ -117,4 +117,3 @@ class TestStdioServerIntegration:
         async with Client(test_mcp) as client:
             with pytest.raises(ToolError, match="not configured"):
                 await client.call_tool("my_tool", {})
-

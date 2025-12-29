@@ -248,7 +248,10 @@ def view_set_tool_description(
     description: str,
     config: str | None,
 ):
-    """Set custom description for a tool in a view. Use {original} to include original."""
+    """Set custom description for a tool in a view.
+
+    Use {original} to include original.
+    """
     config_path = get_config_path(config)
     data = load_config_raw(config_path)
 
@@ -416,15 +419,16 @@ def view_set_tool_param(
 
         if not param_config:
             click.echo(
-                "Error: At least one of --hidden, --default, --rename, or --description required",
+                "Error: At least one of --hidden, --default, --rename, "
+                "or --description required",
                 err=True,
             )
             raise SystemExit(1)
 
         tool_config["parameters"][param_name] = param_config
         click.echo(
-            f"Updated parameter '{param_name}' for '{view_name}/{server_name}.{tool_name}'"
+            f"Updated parameter '{param_name}' for "
+            f"'{view_name}/{server_name}.{tool_name}'"
         )
 
     save_config_raw(config_path, data)
-

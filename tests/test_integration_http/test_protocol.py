@@ -161,4 +161,3 @@ class TestMCPProtocolIntegration:
         research_tools = proxy.get_view_tools("research")
         research_search = next(t for t in research_tools if t.name == "search_code")
         assert research_search.description == "Research-specific description"
-

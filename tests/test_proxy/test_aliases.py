@@ -1,14 +1,10 @@
 """Tests for multiple aliases from a single upstream tool."""
 
-import pytest
-from unittest.mock import MagicMock
-
 from mcp_proxy.models import (
-    ProxyConfig,
-    UpstreamServerConfig,
-    ToolConfig,
-    ToolViewConfig,
     AliasConfig,
+    ProxyConfig,
+    ToolConfig,
+    UpstreamServerConfig,
 )
 from mcp_proxy.proxy import MCPProxy
 
@@ -168,4 +164,3 @@ class TestToolAliases:
         # Plain tool keeps original name
         assert "plain_tool" in by_name
         assert by_name["plain_tool"].original_name == "plain_tool"
-

@@ -96,7 +96,9 @@ class MCPProxy:
     async def call_upstream_tool(
         self, server_name: str, tool_name: str, args: dict[str, Any]
     ) -> Any:
-        return await self._client_manager.call_upstream_tool(server_name, tool_name, args)
+        return await self._client_manager.call_upstream_tool(
+            server_name, tool_name, args
+        )
 
     def _create_lifespan(self) -> Callable:
         """Create a lifespan context manager that initializes upstream connections."""
@@ -219,9 +221,7 @@ class MCPProxy:
                         )
                     )
                 else:
-                    tools.extend(
-                        _process_server_all_tools(server_name, upstream_tools)
-                    )
+                    tools.extend(_process_server_all_tools(server_name, upstream_tools))
             return tools
 
         if view_name not in self.views:
@@ -512,7 +512,9 @@ class MCPProxy:
 
                 return direct_wrapper
 
-            wrapper = make_direct_wrapper_dict(self, original_name, server, param_config)
+            wrapper = make_direct_wrapper_dict(
+                self, original_name, server, param_config
+            )
             wrapper.__name__ = tool_name
             wrapper.__doc__ = tool_desc
             mcp.tool(name=tool_name, description=tool_desc)(wrapper)
@@ -607,4 +609,3 @@ class MCPProxy:
         app = Starlette(routes=routes, lifespan=combined_lifespan)
 
         return app
-

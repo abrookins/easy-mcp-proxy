@@ -35,4 +35,3 @@ class TestHTTPServerIntegration:
                 tool_names = [t.name for t in tools]
                 assert "tool_one" in tool_names
                 assert "tool_two" in tool_names
-

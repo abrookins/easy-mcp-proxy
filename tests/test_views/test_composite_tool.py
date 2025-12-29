@@ -172,4 +172,3 @@ class TestToolViewCompositeTool:
         assert "search" in result
         # Verify the upstream was actually called
         mock_client.call_tool.assert_called()
-

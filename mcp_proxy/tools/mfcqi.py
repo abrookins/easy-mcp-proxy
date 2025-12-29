@@ -24,7 +24,8 @@ Returns comprehensive metrics including:
 Use this to assess code quality, identify areas for improvement, or validate
 that code meets quality thresholds before merging.
 
-By default runs in metrics-only mode (no LLM). Set skip_llm=False to get AI recommendations.""",
+By default runs in metrics-only mode (no LLM).
+Set skip_llm=False to get AI recommendations.""",
 )
 async def analyze_code_quality(
     project_path: str,

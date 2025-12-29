@@ -1,13 +1,14 @@
 """Tests for include_all fetching actual tools from upstream servers."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from mcp_proxy.models import (
     ProxyConfig,
-    UpstreamServerConfig,
     ToolConfig,
     ToolViewConfig,
+    UpstreamServerConfig,
 )
 from mcp_proxy.proxy import MCPProxy
 
@@ -120,4 +121,3 @@ class TestIncludeAllFetchesFromUpstream:
         assert "renamed_tool_a" in tool_names
         assert "tool_a" not in tool_names
         assert tool_descs["renamed_tool_a"] == "Custom description"
-

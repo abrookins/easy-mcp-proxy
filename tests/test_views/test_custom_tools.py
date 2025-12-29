@@ -100,4 +100,3 @@ async def call_valid(ctx: ProxyContext, query: str) -> dict:
 
         assert "wrapped" in result
         mock_client.call_tool.assert_called_with("search", {"query": "test"})
-

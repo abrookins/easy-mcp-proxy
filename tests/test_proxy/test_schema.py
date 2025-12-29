@@ -1,9 +1,8 @@
 """Tests for input schema preservation and tool execution with schemas."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from mcp_proxy.models import ProxyConfig, UpstreamServerConfig, ToolConfig
+from mcp_proxy.models import ProxyConfig, ToolConfig, UpstreamServerConfig
 from mcp_proxy.proxy import MCPProxy
 
 
@@ -47,7 +46,8 @@ class TestInputSchemaPreservation:
         config = ProxyConfig(
             mcp_servers={
                 "server": UpstreamServerConfig(
-                    command="echo", tools={"search_code": ToolConfig(description="Search")}
+                    command="echo",
+                    tools={"search_code": ToolConfig(description="Search")},
                 )
             },
             tool_views={},
@@ -159,4 +159,3 @@ class TestToolExecutionWithInputSchema:
         mock_client.call_tool.assert_called_once_with(
             "my_tool", {"query": "test", "limit": 5}
         )
-

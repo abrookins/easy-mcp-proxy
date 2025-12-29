@@ -1,7 +1,6 @@
 """Tests for custom tools (Python-defined composite tools)."""
 
 import inspect
-import sys
 
 import pytest
 

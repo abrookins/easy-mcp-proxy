@@ -1,14 +1,13 @@
 """Tests for parameter binding (hidden params, defaults, etc.)."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 from mcp_proxy.models import (
+    ParameterConfig,
     ProxyConfig,
-    UpstreamServerConfig,
     ToolConfig,
     ToolViewConfig,
-    ParameterConfig,
+    UpstreamServerConfig,
 )
 from mcp_proxy.proxy import MCPProxy
 
@@ -209,4 +208,3 @@ class TestParameterBinding:
         assert call_args[0][0] == "list_files"
         assert call_args[0][1]["path"] == "/data"
         assert call_args[0][1]["pattern"] == "*.txt"
-

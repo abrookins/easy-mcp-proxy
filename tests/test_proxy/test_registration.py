@@ -1,7 +1,5 @@
 """Tests for tool registration in direct/search modes."""
 
-import pytest
-
 from mcp_proxy.models import ProxyConfig
 from mcp_proxy.proxy import MCPProxy
 
@@ -17,7 +15,7 @@ class TestMCPProxyToolRegistration:
                 "view": {"exposure_mode": "direct", "tools": {"server": {"tool_a": {}}}}
             },
         )
-        proxy = MCPProxy(config)
+        MCPProxy(config)
 
         # After initialization, tools should be registered
         # Can't test without mocked FastMCP server
@@ -33,7 +31,6 @@ class TestMCPProxyToolRegistration:
                 }
             },
         )
-        proxy = MCPProxy(config)
+        MCPProxy(config)
 
         # In search mode, only one tool should be registered: view_search_tools
-

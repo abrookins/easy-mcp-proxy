@@ -112,4 +112,3 @@ class TestMCPClientIntegration:
             # These should NOT be present
             assert "create_branch" not in tool_names
             assert "merge_pr" not in tool_names
-

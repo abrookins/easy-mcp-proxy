@@ -14,13 +14,12 @@ Features covered:
 9. Validate CLI command with upstream connections
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from mcp_proxy.models import ProxyConfig, ToolViewConfig, UpstreamServerConfig
 from mcp_proxy.proxy import MCPProxy
-from mcp_proxy.views import ToolView
-
 
 # =============================================================================
 # 1. Actual Upstream MCP Connections
@@ -117,7 +116,6 @@ class TestUpstreamConnections:
     @pytest.mark.asyncio
     async def test_tool_call_routes_to_upstream(self):
         """Tool calls should route to the actual upstream server."""
-        from unittest.mock import patch
 
         config = ProxyConfig(
             mcp_servers={
@@ -147,8 +145,9 @@ class TestUpstreamConnections:
 
     @pytest.mark.asyncio
     async def test_env_vars_expanded_in_server_config(self):
-        """Environment variables in server config should be expanded when creating client."""
+        """Env vars in server config should be expanded when creating client."""
         import os
+
         from mcp_proxy.proxy import expand_env_vars
 
         os.environ["TEST_API_KEY"] = "secret123"
@@ -188,6 +187,7 @@ class TestCLISchemaFetching:
     def test_cli_schema_attempts_connection(self, tmp_path):
         """mcp-proxy schema should attempt to connect to upstream (no longer stub)."""
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -209,9 +209,11 @@ mcp_servers:
 
     def test_cli_schema_json_output(self, tmp_path):
         """mcp-proxy schema --json should output JSON."""
-        from click.testing import CliRunner
-        from mcp_proxy.cli import main
         import json
+
+        from click.testing import CliRunner
+
+        from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text("""
@@ -230,6 +232,7 @@ mcp_servers:
     def test_cli_schema_server_lists_tools(self, tmp_path):
         """mcp-proxy schema --server should attempt to list tools."""
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -261,6 +264,7 @@ class TestCLIToolCallExecution:
     def test_cli_call_attempts_execution(self, tmp_path):
         """mcp-proxy call should attempt to execute (no longer stub)."""
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -283,6 +287,7 @@ mcp_servers:
     def test_cli_call_with_multiple_args(self, tmp_path):
         """mcp-proxy call should handle multiple arguments."""
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -615,7 +620,7 @@ class TestToolRenamingIntegration:
         # Should be callable by new name
         async with Client(proxy.server) as client:
             tools = await client.list_tools()
-            tool_names = [t.name for t in tools]
+            [t.name for t in tools]
             # Note: This tests the default view, not the "view" view
             # The renaming should apply to the view
 
@@ -839,8 +844,9 @@ class TestSearchModeIntegration:
         # Call the search tool
         view_mcp = proxy.get_view_mcp("github")
 
-        from fastmcp import Client
         import json
+
+        from fastmcp import Client
 
         async with Client(view_mcp) as client:
             result = await client.call_tool("github_search_tools", {"query": "search"})
@@ -930,6 +936,7 @@ class TestValidateCLIWithUpstream:
     def test_validate_checks_upstream_connection_flag(self, tmp_path):
         """mcp-proxy validate --check-connections should check connections."""
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -950,6 +957,7 @@ mcp_servers:
     def test_validate_reports_tool_counts_with_flag(self, tmp_path):
         """mcp-proxy validate --check-connections should report tool counts."""
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"

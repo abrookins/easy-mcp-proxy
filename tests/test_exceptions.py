@@ -1,7 +1,5 @@
 """Tests for exception classes."""
 
-import pytest
-
 from mcp_proxy.exceptions import ToolCallAborted
 
 

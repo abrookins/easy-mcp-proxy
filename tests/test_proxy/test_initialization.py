@@ -1,7 +1,5 @@
 """Tests for MCPProxy initialization and client creation."""
 
-import pytest
-
 from mcp_proxy.models import ProxyConfig, UpstreamServerConfig
 from mcp_proxy.proxy import MCPProxy
 
@@ -67,4 +65,3 @@ class TestMCPProxyClientCreation:
         assert client is not None
         assert hasattr(client, "list_tools")
         assert hasattr(client, "call_tool")
-

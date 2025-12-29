@@ -2,7 +2,6 @@
 
 import pytest
 
-from mcp_proxy.hooks import HookResult
 from mcp_proxy.models import HooksConfig, ToolConfig, ToolViewConfig
 from mcp_proxy.views import ToolView
 
@@ -147,4 +146,3 @@ class TestToolViewInitialization:
         # After initialization, should map tools to their servers
         assert view._get_server_for_tool("tool_1") == "server-a"
         assert view._get_server_for_tool("tool_2") == "server-b"
-

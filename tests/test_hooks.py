@@ -1,7 +1,5 @@
 """Tests for the hook system."""
 
-import sys
-
 import pytest
 
 from mcp_proxy.hooks import (

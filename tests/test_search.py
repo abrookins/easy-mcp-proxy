@@ -140,6 +140,7 @@ class TestSearchModeCallThrough:
     async def test_search_mode_call_tool_executes_upstream(self):
         """The call_tool meta-tool should execute the specified tool."""
         from unittest.mock import AsyncMock
+
         from mcp_proxy.models import ProxyConfig
         from mcp_proxy.proxy import MCPProxy
 

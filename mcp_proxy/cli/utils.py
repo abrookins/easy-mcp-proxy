@@ -74,4 +74,3 @@ def config_option(required: bool = False):
         type=click.Path(exists=False),
         help=f"Config file path (default: {DEFAULT_CONFIG_FILE})",
     )
-

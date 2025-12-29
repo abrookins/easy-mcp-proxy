@@ -147,4 +147,3 @@ class TestToolViewCallTool:
 
         # Result should pass through unchanged
         assert result["original"] is True
-

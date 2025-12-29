@@ -5,7 +5,6 @@ The proxy should expose different tool views at different URL paths:
 - /view/<name>/mcp → Tools from specific view
 """
 
-import pytest
 from starlette.testclient import TestClient
 
 from mcp_proxy.models import ProxyConfig, ToolViewConfig, UpstreamServerConfig
@@ -160,7 +159,7 @@ class TestHTTPViewToolIsolation:
             },
             tool_views={},
         )
-        proxy = MCPProxy(config)
+        MCPProxy(config)
 
 
 class TestHTTPViewToolDescriptions:
@@ -328,7 +327,7 @@ class TestHTTPViewServerSubset:
         proxy = MCPProxy(config)
 
         tools = proxy.get_view_tools("project-mgmt")
-        tool_names = [t.name for t in tools]
+        [t.name for t in tools]
 
         # Should have tools from both servers
         # Note: might need namespacing to avoid collisions
@@ -351,7 +350,7 @@ class TestHTTPViewServerSubset:
         proxy = MCPProxy(config)
 
         # Should include all tools from github server
-        tools = proxy.get_view_tools("all-github")
+        proxy.get_view_tools("all-github")
         # With mocked upstream, can't verify exact count
         # but the view should be properly configured
         assert proxy.views["all-github"].config.include_all is True

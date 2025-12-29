@@ -1,7 +1,5 @@
 """Tests for configuration models (Pydantic)."""
 
-import pytest
-
 from mcp_proxy.config import load_config
 from mcp_proxy.models import (
     HooksConfig,

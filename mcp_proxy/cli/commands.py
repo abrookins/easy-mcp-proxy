@@ -5,7 +5,6 @@ import click
 from mcp_proxy.cli.utils import (
     config_option,
     get_config_path,
-    load_config_raw,
     run_async,
 )
 from mcp_proxy.config import load_config
@@ -130,9 +129,8 @@ def schema(
             if tool_schema:
                 click.echo(f"Tool: {tool_name}")
                 click.echo(f"Description: {tool_schema.get('description', 'N/A')}")
-                click.echo(
-                    f"Parameters: {json_module.dumps(tool_schema.get('inputSchema', {}), indent=2)}"
-                )
+                params = json_module.dumps(tool_schema.get("inputSchema", {}), indent=2)
+                click.echo(f"Parameters: {params}")
             else:
                 click.echo(f"Tool '{tool}' not found on server '{server_name}'")
 
@@ -379,4 +377,3 @@ tool_views:
 """,
     }
     click.echo(examples[what])
-

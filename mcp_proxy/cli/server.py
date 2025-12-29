@@ -129,8 +129,9 @@ def server_remove(name: str, config: str | None, force: bool):
             referencing_views.append(view_name)
 
     if referencing_views and not force:
+        views_str = ", ".join(referencing_views)
         click.echo(
-            f"Error: Server '{name}' is referenced by views: {', '.join(referencing_views)}. "
+            f"Error: Server '{name}' is referenced by views: {views_str}. "
             f"Use --force to remove anyway.",
             err=True,
         )
@@ -235,7 +236,10 @@ def server_clear_tools(name: str, config: str | None):
 def server_set_tool_description(
     server_name: str, tool_name: str, description: str, config: str | None
 ):
-    """Set custom description for a tool. Use {original} to include original description."""
+    """Set custom description for a tool.
+
+    Use {original} to include original description.
+    """
     config_path = get_config_path(config)
     data = load_config_raw(config_path)
 
@@ -393,7 +397,8 @@ def server_set_tool_param(
 
         if not param_config:
             click.echo(
-                "Error: At least one of --hidden, --default, --rename, or --description required",
+                "Error: At least one of --hidden, --default, --rename, "
+                "or --description required",
                 err=True,
             )
             raise SystemExit(1)
@@ -402,4 +407,3 @@ def server_set_tool_param(
         click.echo(f"Updated parameter '{param_name}' for '{server_name}.{tool_name}'")
 
     save_config_raw(config_path, data)
-

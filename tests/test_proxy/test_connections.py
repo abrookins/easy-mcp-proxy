@@ -1,6 +1,5 @@
 """Tests for proxy connection management."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from mcp_proxy.models import ProxyConfig, UpstreamServerConfig
@@ -84,7 +83,9 @@ class TestProxyConnectionManagement:
             return mock_good_client
 
         with patch.object(
-            proxy._client_manager, "create_client_from_config", side_effect=create_client_side_effect
+            proxy._client_manager,
+            "create_client_from_config",
+            side_effect=create_client_side_effect,
         ):
             await proxy.connect_clients()
 
@@ -217,4 +218,3 @@ class TestProxyConnectionManagement:
 
         # Should NOT have called _create_client since client already exists
         mock_create.assert_not_called()
-

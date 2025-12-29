@@ -21,9 +21,9 @@ class ToolInfo:
         self.input_schema = input_schema
         # original_name is the upstream tool name if this tool was aliased
         self.original_name = original_name if original_name else name
-        # parameter_config stores the ParameterConfig for each param (for arg transformation)
+        # parameter_config stores the ParameterConfig for each param
+        # (for arg transformation)
         self.parameter_config = parameter_config
 
     def __repr__(self) -> str:
         return f"ToolInfo(name={self.name!r}, server={self.server!r})"
-

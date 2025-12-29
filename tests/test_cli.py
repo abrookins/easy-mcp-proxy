@@ -1,6 +1,5 @@
 """Tests for the CLI commands."""
 
-import pytest
 from click.testing import CliRunner
 
 
@@ -227,8 +226,9 @@ class TestCLISchema:
 
     def test_schema_tool_with_json(self, sample_config_yaml):
         """'schema <tool> --json' should output JSON."""
-        from mcp_proxy.cli import main
         import json
+
+        from mcp_proxy.cli import main
 
         runner = CliRunner()
         result = runner.invoke(
@@ -249,8 +249,9 @@ class TestCLISchema:
 
     def test_schema_server_with_json(self, sample_config_yaml):
         """'schema --server X --json' should output JSON."""
-        from mcp_proxy.cli import main
         import json
+
+        from mcp_proxy.cli import main
 
         runner = CliRunner()
         result = runner.invoke(
@@ -295,8 +296,9 @@ class TestCLISchema:
 
     def test_schema_all_servers_json(self, sample_config_yaml):
         """'schema --json' without args should output JSON for all servers."""
-        from mcp_proxy.cli import main
         import json
+
+        from mcp_proxy.cli import main
 
         runner = CliRunner()
         result = runner.invoke(
@@ -362,7 +364,7 @@ tool_views:
         from mcp_proxy.cli import main
 
         runner = CliRunner()
-        result = runner.invoke(main, ["validate", "--config", str(sample_config_yaml)])
+        runner.invoke(main, ["validate", "--config", str(sample_config_yaml)])
 
         # Without real upstreams, may report connection failures
         # Just verify command runs
@@ -467,8 +469,6 @@ class TestCLIServe:
     def test_serve_loads_env_file(self, tmp_path, monkeypatch):
         """'serve' should load environment variables from .env file."""
         import os
-
-        from mcp_proxy.cli import main
 
         # Create a .env file with a test variable
         env_file = tmp_path / ".env"
@@ -1157,7 +1157,7 @@ class TestCLIServerSetToolDescription:
         assert "Old description" not in content
 
     def test_set_tool_description_empty_when_no_description(self, tmp_path):
-        """'server set-tool-description' with empty string when no description exists."""
+        """Test set-tool-description with empty string when no description."""
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -1914,7 +1914,7 @@ class TestCLIServerSetToolsEdgeCases:
         assert "old_tool" not in content
 
     def test_server_set_tools_empty_list_clears(self, tmp_path):
-        """'server set-tools' with empty string should clear tools (like clear-tools)."""
+        """Test set-tools with empty string clears tools (like clear-tools)."""
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -2259,8 +2259,9 @@ class TestCLIServerListEdgeCases:
 
     def test_server_list_json_output(self, tmp_path):
         """'server list --json' should output JSON format."""
-        from mcp_proxy.cli import main
         import json
+
+        from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
@@ -2363,8 +2364,9 @@ class TestCLIViewListEdgeCases:
 
     def test_view_list_json_output(self, tmp_path):
         """'view list --json' should output JSON format."""
-        from mcp_proxy.cli import main
         import json
+
+        from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
@@ -2458,7 +2460,7 @@ class TestCLIConfigFileEdgeCases:
 
     def test_creates_config_dir_if_missing(self, tmp_path, monkeypatch):
         """CLI should create config directory if it doesn't exist."""
-        from mcp_proxy.cli import main, DEFAULT_CONFIG_DIR
+        from mcp_proxy.cli import main
 
         # Use a temp directory that doesn't exist
         fake_config_dir = tmp_path / "nonexistent" / ".config" / "mcp-proxy"
@@ -2744,7 +2746,7 @@ class TestCLIViewSetToolDescription:
     """Tests for setting tool descriptions within views."""
 
     def test_view_set_tool_description(self, tmp_path):
-        """'view set-tool-description' should set custom description for tool in view."""
+        """Test set-tool-description sets custom description for tool in view."""
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -2914,7 +2916,9 @@ class TestCLIWithMockedUpstream:
     def test_schema_with_successful_connection(self, tmp_path, monkeypatch):
         """schema command should show schemas when connection succeeds."""
         from unittest.mock import AsyncMock, MagicMock
+
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -2955,7 +2959,9 @@ mcp_servers:
     def test_schema_server_with_successful_connection(self, tmp_path, monkeypatch):
         """schema --server should list tools from server."""
         from unittest.mock import AsyncMock, MagicMock
+
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -3000,7 +3006,9 @@ mcp_servers:
     def test_schema_all_with_successful_connection(self, tmp_path, monkeypatch):
         """schema (all) should list all servers and tools."""
         from unittest.mock import AsyncMock, MagicMock
+
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -3039,7 +3047,9 @@ mcp_servers:
     def test_schema_respects_tool_constraints(self, tmp_path, monkeypatch):
         """schema should only show tools listed in server's tools config."""
         from unittest.mock import AsyncMock, MagicMock
+
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         # Config with tool constraints - only tool_a and tool_b are allowed
@@ -3101,7 +3111,9 @@ mcp_servers:
     def test_schema_server_respects_tool_constraints(self, tmp_path, monkeypatch):
         """schema --server should respect tool constraints for that server."""
         from unittest.mock import AsyncMock, MagicMock
+
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -3157,7 +3169,9 @@ mcp_servers:
     def test_call_with_successful_execution(self, tmp_path, monkeypatch):
         """call command should show result when tool executes successfully."""
         from unittest.mock import AsyncMock, MagicMock
+
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -3206,7 +3220,9 @@ mcp_servers:
     def test_validate_with_successful_connections(self, tmp_path, monkeypatch):
         """validate --check-connections should report success."""
         from unittest.mock import AsyncMock, MagicMock
+
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -3246,7 +3262,9 @@ mcp_servers:
     def test_schema_tool_not_found(self, tmp_path, monkeypatch):
         """schema should report when tool is not found on server."""
         from unittest.mock import AsyncMock, MagicMock
+
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -3283,10 +3301,12 @@ mcp_servers:
 
     def test_schema_tool_not_found_json(self, tmp_path, monkeypatch):
         """schema --json should return error when tool not found."""
-        from unittest.mock import AsyncMock, MagicMock
-        from click.testing import CliRunner
-        from mcp_proxy.cli import main
         import json
+        from unittest.mock import AsyncMock, MagicMock
+
+        from click.testing import CliRunner
+
+        from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text("""
@@ -3323,10 +3343,12 @@ mcp_servers:
 
     def test_schema_tool_found_json(self, tmp_path, monkeypatch):
         """schema --json should return schema when tool is found."""
-        from unittest.mock import AsyncMock, MagicMock
-        from click.testing import CliRunner
-        from mcp_proxy.cli import main
         import json
+        from unittest.mock import AsyncMock, MagicMock
+
+        from click.testing import CliRunner
+
+        from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text("""
@@ -3367,10 +3389,12 @@ mcp_servers:
 
     def test_schema_server_json_output_success(self, tmp_path, monkeypatch):
         """schema --server --json should return tools as JSON."""
-        from unittest.mock import AsyncMock, MagicMock
-        from click.testing import CliRunner
-        from mcp_proxy.cli import main
         import json
+        from unittest.mock import AsyncMock, MagicMock
+
+        from click.testing import CliRunner
+
+        from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text("""
@@ -3409,6 +3433,7 @@ mcp_servers:
     def test_schema_all_exception_text(self, tmp_path, monkeypatch):
         """schema (all) should handle exceptions in text mode."""
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -3432,9 +3457,11 @@ mcp_servers:
 
     def test_schema_all_exception_json(self, tmp_path, monkeypatch):
         """schema --json (all) should return JSON on exception."""
-        from click.testing import CliRunner
-        from mcp_proxy.cli import main
         import json
+
+        from click.testing import CliRunner
+
+        from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text("""
@@ -3459,9 +3486,11 @@ mcp_servers:
 
     def test_schema_server_exception_json(self, tmp_path, monkeypatch):
         """schema --server --json should return JSON on exception."""
-        from click.testing import CliRunner
-        from mcp_proxy.cli import main
         import json
+
+        from click.testing import CliRunner
+
+        from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text("""
@@ -3490,6 +3519,7 @@ mcp_servers:
     def test_schema_tool_exception_text(self, tmp_path, monkeypatch):
         """schema <tool> should handle exceptions in text mode."""
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -3515,6 +3545,7 @@ mcp_servers:
     def test_call_exception_handling(self, tmp_path, monkeypatch):
         """call should handle exceptions gracefully."""
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -3540,6 +3571,7 @@ mcp_servers:
     def test_call_invalid_tool_format(self, tmp_path):
         """call with invalid tool format should error."""
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -3558,6 +3590,7 @@ mcp_servers:
     def test_call_unknown_server(self, tmp_path):
         """call with unknown server should error."""
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -3578,7 +3611,9 @@ mcp_servers:
     def test_call_with_invalid_arg_format(self, tmp_path, monkeypatch):
         """call with argument missing = should skip it."""
         from unittest.mock import AsyncMock, MagicMock
+
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -3630,7 +3665,9 @@ mcp_servers:
     def test_call_with_content_no_text(self, tmp_path, monkeypatch):
         """call result with content but no text attribute."""
         from unittest.mock import AsyncMock, MagicMock
+
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -3668,7 +3705,9 @@ mcp_servers:
     def test_call_result_no_content(self, tmp_path, monkeypatch):
         """call result without content attribute."""
         from unittest.mock import AsyncMock, MagicMock
+
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
@@ -3702,8 +3741,8 @@ mcp_servers:
 
     def test_validate_connection_failure_report(self, tmp_path, monkeypatch):
         """validate -C should report connection failures."""
-        from unittest.mock import AsyncMock, MagicMock
         from click.testing import CliRunner
+
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
