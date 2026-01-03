@@ -11,9 +11,11 @@ class TestMemoryServer:
     """Tests for the MCP Memory server."""
 
     @pytest.fixture
-    def server(self, tmp_path):
+    def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path))
+        return create_memory_server(
+            base_path=str(tmp_path), embedding_model=embedding_model
+        )
 
     def test_server_has_tools(self, server):
         """Test that server has all expected tools."""
@@ -55,10 +57,10 @@ class TestMemoryServer:
         for tool_name in expected_tools:
             assert tool_name in tools, f"Missing tool: {tool_name}"
 
-    def test_server_with_explicit_config(self, tmp_path):
+    def test_server_with_explicit_config(self, tmp_path, embedding_model):
         """Test creating server with explicit MemoryConfig."""
         config = MemoryConfig(base_path=str(tmp_path))
-        server = create_memory_server(config=config)
+        server = create_memory_server(config=config, embedding_model=embedding_model)
         tools = server._tool_manager._tools
         assert "create_thread" in tools
 
@@ -73,9 +75,9 @@ class TestThreadTools:
     """Tests for thread-related tools."""
 
     @pytest.fixture
-    def server(self, tmp_path):
+    def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path))
+        return create_memory_server(base_path=str(tmp_path), embedding_model=embedding_model)
 
     def test_create_thread(self, server):
         """Test creating a thread."""
@@ -225,9 +227,9 @@ class TestConceptTools:
     """Tests for concept-related tools."""
 
     @pytest.fixture
-    def server(self, tmp_path):
+    def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path))
+        return create_memory_server(base_path=str(tmp_path), embedding_model=embedding_model)
 
     def test_create_concept(self, server):
         """Test creating a concept."""
@@ -257,9 +259,9 @@ class TestSkillTools:
     """Tests for skill-related tools."""
 
     @pytest.fixture
-    def server(self, tmp_path):
+    def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path))
+        return create_memory_server(base_path=str(tmp_path), embedding_model=embedding_model)
 
     def test_list_skills_returns_summary_without_instructions(self, server):
         """Test that list_skills returns a compact summary without full instructions."""
@@ -383,7 +385,7 @@ class TestSkillTools:
         assert "results" in result
         assert result["results"] == []
 
-    def test_search_skills_stale_index(self, tmp_path):
+    def test_search_skills_stale_index(self, tmp_path, embedding_model):
         """Test search_skills when index has stale data (skill deleted)."""
         from unittest.mock import patch
 
@@ -404,7 +406,9 @@ class TestSkillTools:
             mock_load_skill.return_value = None
 
             # Create server
-            server = create_memory_server(config=config)
+            server = create_memory_server(
+                config=config, embedding_model=embedding_model
+            )
 
             # Search should handle missing skill gracefully (skip it)
             search_tool = server._tool_manager._tools["search_skills"]
@@ -418,9 +422,9 @@ class TestProjectTools:
     """Tests for project-related tools."""
 
     @pytest.fixture
-    def server(self, tmp_path):
+    def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path))
+        return create_memory_server(base_path=str(tmp_path), embedding_model=embedding_model)
 
     def test_update_project(self, server):
         """Test updating a project."""
@@ -465,9 +469,9 @@ class TestReflectionTools:
     """Tests for reflection-related tools."""
 
     @pytest.fixture
-    def server(self, tmp_path):
+    def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path))
+        return create_memory_server(base_path=str(tmp_path), embedding_model=embedding_model)
 
     def test_update_reflection(self, server):
         """Test updating a reflection."""
@@ -514,9 +518,9 @@ class TestArtifactTools:
     """Tests for artifact-related tools."""
 
     @pytest.fixture
-    def server(self, tmp_path):
+    def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path))
+        return create_memory_server(base_path=str(tmp_path), embedding_model=embedding_model)
 
     def test_create_artifact(self, server):
         """Test creating an artifact."""
@@ -786,9 +790,9 @@ class TestServerCoverageGaps:
     """Tests for server code coverage gaps."""
 
     @pytest.fixture
-    def server(self, tmp_path):
+    def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path))
+        return create_memory_server(base_path=str(tmp_path), embedding_model=embedding_model)
 
     def test_read_thread_with_messages_from_filter(self, server):
         """Test read_thread with messages_from timestamp filter."""

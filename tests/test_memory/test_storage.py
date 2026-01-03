@@ -344,13 +344,13 @@ class TestIndexAutoUpdate:
         config = MemoryConfig(base_path=str(tmp_path))
         return MemoryStorage(config)
 
-    def test_search_finds_updated_content(self, tmp_path):
+    def test_search_finds_updated_content(self, tmp_path, embedding_model):
         """When a concept is updated, search should find the new content."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create initial concept
         concept = Concept(name="Lane Harker", text="A journalist in New York")
@@ -380,13 +380,13 @@ class TestIndexAutoUpdate:
             new_results = searcher.search_concepts("marine biologist dolphins")
             assert new_results[0]["score"] < old_results[0]["score"]
 
-    def test_search_finds_new_files(self, tmp_path):
+    def test_search_finds_new_files(self, tmp_path, embedding_model):
         """When new files are added externally, search should find them."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Build empty index
         searcher.build_index()
@@ -403,13 +403,13 @@ class TestIndexAutoUpdate:
         assert len(results) > 0, "Index should detect and index new files"
         assert results[0]["name"] == "New Character"
 
-    def test_search_handles_deleted_files(self, tmp_path):
+    def test_search_handles_deleted_files(self, tmp_path, embedding_model):
         """When files are deleted, search should not return them."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create and index a concept
         concept = Concept(name="To Delete", text="This will be removed")
@@ -505,13 +505,13 @@ John Doe is a character.
 class TestSearchDeduplication:
     """Tests for ensuring search results don't contain duplicates."""
 
-    def test_search_concepts_returns_no_duplicates(self, tmp_path):
+    def test_search_concepts_returns_no_duplicates(self, tmp_path, embedding_model):
         """Search should never return the same concept twice."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create a single concept
         concept = Concept(
@@ -529,13 +529,13 @@ class TestSearchDeduplication:
         assert len(results) == 1, f"Expected 1 result, got {len(results)}: {results}"
         assert results[0]["name"] == "Ahsoka Tano"
 
-    def test_search_after_create_no_duplicates(self, tmp_path):
+    def test_search_after_create_no_duplicates(self, tmp_path, embedding_model):
         """Creating a concept then searching should not produce duplicates."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create concept (this may trigger add_to_index)
         concept = Concept(
@@ -559,13 +559,13 @@ class TestSearchDeduplication:
             f"Index contains duplicate entries: {concept_ids_in_index}"
         )
 
-    def test_add_to_index_duplicate_detection(self, tmp_path):
+    def test_add_to_index_duplicate_detection(self, tmp_path, embedding_model):
         """Test that add_to_index skips items already in the index."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Build empty index first
         searcher.build_index()
@@ -588,13 +588,13 @@ class TestSearchDeduplication:
         # Should not have added a duplicate
         assert len(searcher._id_map) == initial_count
 
-    def test_add_to_index_different_types(self, tmp_path):
+    def test_add_to_index_different_types(self, tmp_path, embedding_model):
         """Test add_to_index with different item types in the index."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Build empty index first
         searcher.build_index()
@@ -628,13 +628,13 @@ class TestSearchDeduplication:
         # Should have 3 items now
         assert len(searcher._id_map) == 3
 
-    def test_multiple_searches_no_duplicates(self, tmp_path):
+    def test_multiple_searches_no_duplicates(self, tmp_path, embedding_model):
         """Multiple searches should not accumulate duplicates in the index."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create concepts
         for name in ["Luke Skywalker", "Leia Organa", "Han Solo"]:
@@ -654,13 +654,13 @@ class TestSearchDeduplication:
 class TestArtifactSearch:
     """Tests for artifact search functionality."""
 
-    def test_search_artifacts(self, tmp_path):
+    def test_search_artifacts(self, tmp_path, embedding_model):
         """Artifacts should be searchable by their content."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create an artifact
         artifact = Artifact(
@@ -679,13 +679,13 @@ class TestArtifactSearch:
         assert results[0]["name"] == "API Design Doc"
         assert results[0]["id"] == artifact.artifact_id
 
-    def test_search_artifacts_filter_by_project(self, tmp_path):
+    def test_search_artifacts_filter_by_project(self, tmp_path, embedding_model):
         """Artifact search should filter by project_id."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create artifacts in different projects
         a1 = Artifact(name="Doc A", content="Database schema design", project_id="p_1")
@@ -704,19 +704,19 @@ class TestArtifactSearch:
 class TestSearchEdgeCases:
     """Tests for search edge cases and error handling."""
 
-    def test_get_embeddings_empty_texts(self, tmp_path):
+    def test_get_embeddings_empty_texts(self, tmp_path, embedding_model):
         """Test _get_embeddings with empty texts list."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Call _get_embeddings with empty list
         result = searcher._get_embeddings([])
         assert len(result) == 0
 
-    def test_extra_concept_dirs_in_index(self, tmp_path):
+    def test_extra_concept_dirs_in_index(self, tmp_path, embedding_model):
         """Test that extra_concept_dirs are included in content files."""
         from mcp_memory.search import MemorySearcher
 
@@ -733,7 +733,7 @@ class TestSearchEdgeCases:
             extra_concept_dirs=["People", "Characters"],
         )
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Get content files - should include extra dirs
         files = searcher._get_content_files()
@@ -741,7 +741,7 @@ class TestSearchEdgeCases:
         assert "Alice.md" in file_names
         assert "Bob.md" in file_names
 
-    def test_extra_concept_dirs_nonexistent(self, tmp_path):
+    def test_extra_concept_dirs_nonexistent(self, tmp_path, embedding_model):
         """Test that nonexistent extra_concept_dirs are skipped."""
         from mcp_memory.search import MemorySearcher
 
@@ -755,14 +755,14 @@ class TestSearchEdgeCases:
             extra_concept_dirs=["Existing", "NonExistent"],
         )
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Should include Existing but not fail on NonExistent
         files = searcher._get_content_files()
         file_names = [f.name for f in files]
         assert "Test.md" in file_names
 
-    def test_get_file_mtimes_handles_oserror(self, tmp_path):
+    def test_get_file_mtimes_handles_oserror(self, tmp_path, embedding_model):
         """Test _get_current_mtimes handles OSError (deleted files)."""
         from unittest.mock import patch
 
@@ -770,7 +770,7 @@ class TestSearchEdgeCases:
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create a concept to ensure there's a file
         concept = Concept(name="Test", text="Content")
@@ -795,13 +795,13 @@ class TestSearchEdgeCases:
             # Should succeed without exception, skipping the problematic file
             assert isinstance(mtimes, dict)
 
-    def test_thread_message_indexing(self, tmp_path):
+    def test_thread_message_indexing(self, tmp_path, embedding_model):
         """Test that thread messages are indexed."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create a thread with messages
         thread = Thread(project_id="p_test")
@@ -818,13 +818,13 @@ class TestSearchEdgeCases:
         assert len(results) > 0
         assert results[0]["thread_id"] == thread.thread_id
 
-    def test_index_loading_from_disk(self, tmp_path):
+    def test_index_loading_from_disk(self, tmp_path, embedding_model):
         """Test loading index from disk."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create content and build index
         concept = Concept(name="Persistent", text="This should be loaded from disk")
@@ -832,7 +832,7 @@ class TestSearchEdgeCases:
         searcher.build_index()
 
         # Create a new searcher instance (simulating restart)
-        searcher2 = MemorySearcher(storage, config)
+        searcher2 = MemorySearcher(storage, config, model=embedding_model)
 
         # Ensure index is loaded from disk (not rebuilt)
         loaded = searcher2._load_index()
@@ -840,13 +840,13 @@ class TestSearchEdgeCases:
         assert len(searcher2._id_map) > 0
         assert searcher2._index is not None
 
-    def test_load_index_without_mtimes_file(self, tmp_path):
+    def test_load_index_without_mtimes_file(self, tmp_path, embedding_model):
         """Test _load_index when mtimes file doesn't exist."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create content and build index
         concept = Concept(name="Test", text="Test content")
@@ -859,13 +859,13 @@ class TestSearchEdgeCases:
             mtimes_file.unlink()
 
         # Create new searcher and load index (should work without mtimes)
-        searcher2 = MemorySearcher(storage, config)
+        searcher2 = MemorySearcher(storage, config, model=embedding_model)
         loaded = searcher2._load_index()
         assert loaded is True
         # mtimes should be empty since file was deleted
         assert searcher2._file_mtimes == {}
 
-    def test_ensure_index_loads_existing(self, tmp_path):
+    def test_ensure_index_loads_existing(self, tmp_path, embedding_model):
         """Test ensure_index loads existing index without rebuilding."""
         from mcp_memory.search import MemorySearcher
 
@@ -875,22 +875,22 @@ class TestSearchEdgeCases:
         # Create content and build index
         concept = Concept(name="Test", text="Test content")
         storage.save(concept)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
         searcher.build_index()
 
         # Create new searcher and call ensure_index
-        searcher2 = MemorySearcher(storage, config)
+        searcher2 = MemorySearcher(storage, config, model=embedding_model)
         searcher2.ensure_index()  # Should load from disk, not rebuild
         assert searcher2._index is not None
         assert len(searcher2._id_map) > 0
 
-    def test_search_messages_with_filters(self, tmp_path):
+    def test_search_messages_with_filters(self, tmp_path, embedding_model):
         """Test search_messages with thread_id and project_id filters."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create threads with messages in different projects
         t1 = Thread(project_id="p_1")
@@ -911,13 +911,13 @@ class TestSearchEdgeCases:
         results = searcher.search_messages("Python", thread_id=t1.thread_id)
         assert all(r["thread_id"] == t1.thread_id for r in results)
 
-    def test_search_threads(self, tmp_path):
+    def test_search_threads(self, tmp_path, embedding_model):
         """Test search_threads method returns deduplicated thread IDs."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create a thread with multiple messages
         thread = Thread(project_id="p_test")
@@ -936,13 +936,13 @@ class TestSearchEdgeCases:
         assert len(thread_ids) == len(set(thread_ids))
         assert thread.thread_id in thread_ids
 
-    def test_search_with_invalid_index_position(self, tmp_path):
+    def test_search_with_invalid_index_position(self, tmp_path, embedding_model):
         """Test search handles invalid index positions gracefully."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create content
         concept = Concept(name="Test", text="Test content")
@@ -953,13 +953,13 @@ class TestSearchEdgeCases:
         results = searcher.search_concepts("test content")
         assert len(results) > 0
 
-    def test_search_reaches_limit(self, tmp_path):
+    def test_search_reaches_limit(self, tmp_path, embedding_model):
         """Test that search respects the limit parameter."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create many concepts
         for i in range(10):
@@ -973,13 +973,13 @@ class TestSearchEdgeCases:
         results = searcher.search_concepts("similar content", limit=3)
         assert len(results) <= 3
 
-    def test_search_empty_index(self, tmp_path):
+    def test_search_empty_index(self, tmp_path, embedding_model):
         """Test searching with an empty index."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Build empty index
         searcher.build_index()
@@ -988,13 +988,13 @@ class TestSearchEdgeCases:
         results = searcher.search_concepts("anything")
         assert results == []
 
-    def test_index_stale_detection_new_files(self, tmp_path):
+    def test_index_stale_detection_new_files(self, tmp_path, embedding_model):
         """Test that new files are detected as index being stale."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Build initial index
         concept = Concept(name="Initial", text="Initial content")
@@ -1008,7 +1008,7 @@ class TestSearchEdgeCases:
         # Index should be stale
         assert searcher._is_index_stale() is True
 
-    def test_index_stale_detection_modified_files(self, tmp_path):
+    def test_index_stale_detection_modified_files(self, tmp_path, embedding_model):
         """Test that modified files are detected as index being stale."""
         import time
 
@@ -1016,7 +1016,7 @@ class TestSearchEdgeCases:
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Build initial index
         concept = Concept(name="Original", text="Original content")
@@ -1031,13 +1031,13 @@ class TestSearchEdgeCases:
         # Index should be stale
         assert searcher._is_index_stale() is True
 
-    def test_search_skill_type_filtering(self, tmp_path):
+    def test_search_skill_type_filtering(self, tmp_path, embedding_model):
         """Test _search filters correctly by skill type."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create a skill
         skill = Skill(
@@ -1052,13 +1052,13 @@ class TestSearchEdgeCases:
         assert len(results) > 0
         assert results[0]["type"] == "skill"
 
-    def test_search_threads_reaches_limit(self, tmp_path):
+    def test_search_threads_reaches_limit(self, tmp_path, embedding_model):
         """Test search_threads respects limit and breaks early."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create multiple threads with similar content
         for i in range(5):
@@ -1073,7 +1073,7 @@ class TestSearchEdgeCases:
         results = searcher.search_threads("databases", limit=2)
         assert len(results) <= 2
 
-    def test_search_invalid_index_position(self, tmp_path):
+    def test_search_invalid_index_position(self, tmp_path, embedding_model):
         """Test _search handles invalid index positions (idx < 0 or out of range)."""
         from unittest.mock import patch
 
@@ -1081,7 +1081,7 @@ class TestSearchEdgeCases:
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create content and build index
         concept = Concept(name="Test", text="Test content")
@@ -1102,13 +1102,13 @@ class TestSearchEdgeCases:
             # Should only return valid results (index 0)
             assert len(results) <= 1
 
-    def test_search_type_mismatch(self, tmp_path):
+    def test_search_type_mismatch(self, tmp_path, embedding_model):
         """Test _search skips items with wrong type."""
         from mcp_memory.search import MemorySearcher
 
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
-        searcher = MemorySearcher(storage, config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
 
         # Create both concept and skill with similar content
         concept = Concept(name="Database Concept", text="Database information")

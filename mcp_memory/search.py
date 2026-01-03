@@ -19,10 +19,11 @@ class MemorySearcher:
         self,
         storage: MemoryStorage,
         config: MemoryConfig | None = None,
+        model=None,
     ):
         self.storage = storage
         self.config = config or storage.config
-        self._model = None
+        self._model = model  # Allow pre-loaded model injection for testing
         self._index = None
         self._id_map: list[dict] = []  # Maps index position to object info
         self._index_path = Path(self.config.base_path) / self.config.index_path

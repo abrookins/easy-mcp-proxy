@@ -214,6 +214,7 @@ def create_memory_server(
     base_path: str = ".",
     name: str = "MCP Memory",
     config: MemoryConfig | None = None,
+    embedding_model=None,
 ) -> FastMCP:
     """Create an MCP server with memory tools.
 
@@ -221,11 +222,12 @@ def create_memory_server(
         base_path: Base path for storage (ignored if config provided)
         name: Name for the MCP server
         config: Optional MemoryConfig (if not provided, uses base_path)
+        embedding_model: Optional pre-loaded sentence transformer model (for testing)
     """
     if config is None:
         config = MemoryConfig(base_path=base_path)
     storage = MemoryStorage(config)
-    searcher = MemorySearcher(storage, config)
+    searcher = MemorySearcher(storage, config, model=embedding_model)
 
     mcp = FastMCP(name, instructions=SERVER_INSTRUCTIONS)
 
