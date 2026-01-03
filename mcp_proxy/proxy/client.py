@@ -61,6 +61,10 @@ class ClientManager:
     async def fetch_upstream_tools(self, server_name: str) -> list[Any]:
         """Fetch tools from an upstream server.
 
+        This opens a temporary connection to fetch tool metadata.
+        For fetching from an already-connected client, use
+        fetch_tools_from_active_client.
+
         Args:
             server_name: Name of the server to fetch tools from
 
@@ -76,6 +80,26 @@ class ClientManager:
             self._upstream_tools[server_name] = tools
             return tools
 
+    async def fetch_tools_from_active_client(self, server_name: str) -> list[Any]:
+        """Fetch tools from an already-connected client.
+
+        Unlike fetch_upstream_tools, this does not open a new connection.
+        The client must already be connected via connect_clients().
+
+        Args:
+            server_name: Name of the server to fetch tools from
+
+        Returns:
+            List of tool objects from the upstream server
+        """
+        client = self._active_clients.get(server_name)
+        if client is None:
+            raise ValueError(f"No active client for server '{server_name}'")
+
+        tools = await client.list_tools()
+        self._upstream_tools[server_name] = tools
+        return tools
+
     async def refresh_upstream_tools(self) -> None:
         """Refresh tool lists from all upstream servers.
 
@@ -90,12 +114,40 @@ class ClientManager:
                 # Log error but continue - tool will work without schema
                 pass
 
-    async def connect_clients(self) -> None:
+    async def refresh_tools_from_active_clients(
+        self, instruction_callback: Any | None = None
+    ) -> None:
+        """Refresh tool lists from all active (connected) clients.
+
+        This is more efficient than refresh_upstream_tools as it uses
+        existing connections rather than opening new ones.
+
+        Args:
+            instruction_callback: Optional async callback(server_name, client) to
+                                 fetch instructions from each client.
+        """
+        for server_name in self._active_clients:
+            try:
+                await self.fetch_tools_from_active_client(server_name)
+                if instruction_callback:
+                    await instruction_callback(
+                        server_name, self._active_clients[server_name]
+                    )
+            except Exception:
+                # Log error but continue - tool will work without schema
+                pass
+
+    async def connect_clients(self, fetch_tools: bool = False) -> None:
         """Establish persistent connections to all upstream servers.
 
         This enters the async context for each client, keeping the connections
         (and stdio subprocesses) alive until disconnect_clients() is called.
         Should be called during server lifespan startup.
+
+        Args:
+            fetch_tools: If True, also fetch tool metadata from connected clients.
+                        This is useful for HTTP transport where tools are fetched
+                        lazily after connections are established.
         """
         if self._exit_stack is not None:
             return  # Already connected
@@ -115,6 +167,9 @@ class ClientManager:
             except Exception:
                 # Log but continue - some servers may be unavailable
                 pass
+
+        if fetch_tools:
+            await self.refresh_tools_from_active_clients()
 
     async def disconnect_clients(self) -> None:
         """Close all persistent client connections.

@@ -99,11 +99,17 @@ class MCPProxy:
                 # Log error but continue - tool will work without schema
                 pass
 
-    async def connect_clients(self) -> None:
-        return await self._client_manager.connect_clients()
+    async def connect_clients(self, fetch_tools: bool = False) -> None:
+        return await self._client_manager.connect_clients(fetch_tools=fetch_tools)
 
     async def disconnect_clients(self) -> None:
         return await self._client_manager.disconnect_clients()
+
+    async def fetch_tools_from_active_clients(self) -> None:
+        """Fetch tool metadata and instructions from all active (connected) clients."""
+        await self._client_manager.refresh_tools_from_active_clients(
+            instruction_callback=self.fetch_upstream_instructions
+        )
 
     def get_active_client(self, server_name: str) -> Client | None:
         return self._client_manager.get_active_client(server_name)
@@ -162,8 +168,18 @@ class MCPProxy:
         return proxy_lifespan
 
     def sync_fetch_tools(self) -> None:
-        """Synchronously fetch tools from all upstream servers."""
+        """Synchronously fetch tools from all upstream servers.
+
+        This fetches tool metadata (names, descriptions, schemas) from upstream
+        servers so they can be registered before the proxy starts. The actual
+        persistent connections for tool execution are established later by
+        connect_clients() during the server lifespan.
+        """
         import asyncio
+
+        # Skip if tools are already fetched
+        if self._upstream_tools:
+            return
 
         async def _fetch_all():
             for server_name in self.config.mcp_servers:
@@ -241,9 +257,9 @@ class MCPProxy:
         self, transport: str = "stdio", port: int | None = None
     ) -> None:  # pragma: no cover
         """Run the proxy server."""
-        self.sync_fetch_tools()
-
         if transport == "stdio":
+            # For stdio, fetch tools synchronously before starting
+            self.sync_fetch_tools()
             aggregated_instructions = self.get_aggregated_instructions()
             stdio_server = FastMCP(
                 "MCP Tool View Proxy",
@@ -257,6 +273,7 @@ class MCPProxy:
         else:
             import uvicorn
 
+            # http_app() handles its own tool fetching
             app = self.http_app()
             uvicorn.run(app, host="0.0.0.0", port=port or 8000, ws="wsproto")
 
