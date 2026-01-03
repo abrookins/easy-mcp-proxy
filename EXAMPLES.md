@@ -9,6 +9,7 @@ powerful, customized tool configurations.
 - [GitHub Read-Only Tools](#github-read-only-tools)
 - [Tool Views for Different Contexts](#tool-views-for-different-contexts)
 - [Custom Python Tools with MFCQI](#custom-python-tools-with-mfcqi)
+- [Portable LLM Memory with MCP Memory](#portable-llm-memory-with-mcp-memory)
 
 ---
 
@@ -636,6 +637,190 @@ async def smart_analysis(path: str, ctx: ProxyContext) -> dict:
 4. **ProxyContext**: Optional parameter that gives access to upstream tools
 
 5. **Return values**: Return a dict that will be serialized as the tool result
+
+---
+
+## Portable LLM Memory with MCP Memory
+
+This example shows how to use **MCP Memory** - a portable memory system that
+stores threads, concepts, projects, skills, and reflections as markdown files
+with YAML frontmatter.
+
+### The Concept
+
+MCP Memory provides portable memory that works across any AI agent:
+- **Threads**: Conversation history with messages
+- **Concepts**: Knowledge entities (people, places, ideas)
+- **Projects**: Group related work together
+- **Skills**: Reusable procedures and instructions
+- **Reflections**: Agent learnings and observations
+
+Files are stored as markdown (with YAML frontmatter) making them:
+- Human-readable and editable
+- Synced via Obsidian, Dropbox, or Git
+- Searchable via semantic vector search (FAISS)
+
+### Running MCP Memory Standalone
+
+```bash
+# Initialize a memory directory
+mcp-memory init --path ~/Documents/AI-Memory
+
+# Start the server (stdio mode for Claude, Augment, etc.)
+mcp-memory serve --path ~/Documents/AI-Memory
+
+# Start with HTTP transport
+mcp-memory serve --path ~/Documents/AI-Memory --transport http --port 8000
+```
+
+### Using with MCP Proxy
+
+You can aggregate MCP Memory with other servers:
+
+```yaml
+mcp_servers:
+  # Memory server for persistent context
+  memory:
+    command: mcp-memory
+    args: [serve, --path, /Users/you/Documents/AI-Memory]
+
+  # Other servers
+  github:
+    command: npx
+    args: [-y, "@modelcontextprotocol/server-github"]
+
+tool_views:
+  # Development view with memory + code tools
+  development:
+    description: "Development with persistent memory"
+    tools:
+      memory:
+        # Thread management
+        create_thread: {}
+        read_thread: {}
+        add_messages: {}
+        list_threads: {}
+        search_threads: {}
+        compact_thread: {}
+        # Concept management
+        create_concept: {}
+        read_concept_by_name: {}
+        update_concept: {}
+        search_concepts: {}
+        list_concepts: {}
+        # Reflections for learning
+        add_reflection: {}
+        read_reflections: {}
+        # Projects and skills
+        list_projects: {}
+        list_skills: {}
+      github:
+        search_repositories: {}
+        get_file_contents: {}
+```
+
+### Example Workflow
+
+1. **Start a session**: Create or resume a thread
+   ```
+   create_thread(project_id="p_star_wars_campaign")
+   # or
+   read_thread(thread_id="t_abc123", messages_from="2024-01-01T00:00:00")
+   ```
+
+2. **Add conversation history**: As the conversation progresses
+   ```
+   add_messages(thread_id="t_abc123", messages=[
+       {"role": "user", "text": "Update Ahsoka Tano's bio..."},
+       {"role": "assistant", "text": "I'll update the concept..."}
+   ])
+   ```
+
+3. **Look up concepts**: Find and read knowledge
+   ```
+   search_concepts(query="Ahsoka Tano")
+   read_concept_by_name(name="Ahsoka Tano")
+   ```
+
+4. **Update knowledge**: Save new information
+   ```
+   update_concept(concept_id="c_123", text="Ahsoka Tano trained under Anakin...")
+   ```
+
+5. **Record learnings**: Add reflections for future reference
+   ```
+   add_reflection(
+       text="User prefers Old Republic era lore",
+       project_id="p_star_wars_campaign",
+       skill_id="s_worldbuilding"
+   )
+   ```
+
+6. **Compact old threads**: Summarize and archive
+   ```
+   compact_thread(thread_id="t_old123", summary="Discussed Mandalorian storyline...")
+   ```
+
+### File Format Examples
+
+**Thread** (`Threads/t_abc123.yaml`):
+```yaml
+thread_id: t_abc123
+project_id: p_star_wars_campaign
+created_at: '2024-01-15T10:30:00'
+messages:
+  - role: user
+    text: Tell me about Ahsoka Tano
+    timestamp: '2024-01-15T10:30:05'
+  - role: assistant
+    text: Ahsoka Tano is a Togruta Force user...
+    timestamp: '2024-01-15T10:30:10'
+```
+
+**Concept** (`Concepts/Ahsoka Tano.md`):
+```markdown
+---
+concept_id: c_563d2a6f39f2
+name: Ahsoka Tano
+project_id: p_star_wars_campaign
+tags: [character, jedi, togruta]
+---
+
+Ahsoka Tano is a former Jedi Padawan who trained under Anakin
+Skywalker during the Clone Wars.
+
+## Background
+
+- Born on Shili
+- Became Anakin's Padawan at age 14
+- Left the Jedi Order after being falsely accused
+```
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `create_thread` | Create a new conversation thread |
+| `read_thread` | Read thread with optional timestamp filter |
+| `add_messages` | Add messages to a thread |
+| `list_threads` | List threads (optionally by project) |
+| `search_threads` | Semantic search over thread content |
+| `compact_thread` | Summarize and archive a thread |
+| `create_concept` | Create a knowledge concept |
+| `read_concept` | Read concept by ID |
+| `read_concept_by_name` | Read concept by name |
+| `update_concept` | Update concept content |
+| `list_concepts` | List all concepts |
+| `search_concepts` | Semantic search over concepts |
+| `add_reflection` | Add an agent reflection |
+| `read_reflections` | Read reflections (filter by project/skill) |
+| `create_project` | Create a project |
+| `read_project` | Read project details |
+| `list_projects` | List all projects |
+| `create_skill` | Create a skill |
+| `read_skill` | Read skill details |
+| `list_skills` | List all skills |
+| `rebuild_index` | Rebuild the search index |
 
 ---
 
