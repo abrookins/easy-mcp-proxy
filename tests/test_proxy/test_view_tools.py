@@ -199,6 +199,8 @@ class TestProcessViewIncludeAllFallback:
         server_config = UpstreamServerConfig(command="echo")
         view_config = ToolViewConfig(include_all=True, tools={})
 
-        result = _process_view_include_all_fallback("server", server_config, view_config)
+        result = _process_view_include_all_fallback(
+            "server", server_config, view_config
+        )
 
         assert result == []

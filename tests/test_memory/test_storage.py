@@ -559,6 +559,75 @@ class TestSearchDeduplication:
             f"Index contains duplicate entries: {concept_ids_in_index}"
         )
 
+    def test_add_to_index_duplicate_detection(self, tmp_path):
+        """Test that add_to_index skips items already in the index."""
+        from mcp_memory.search import MemorySearcher
+
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+        searcher = MemorySearcher(storage, config)
+
+        # Build empty index first
+        searcher.build_index()
+
+        # Add a concept to the index
+        searcher.add_to_index(
+            "concept",
+            "Test content",
+            {"id": "c_test", "name": "Test", "project_id": None},
+        )
+        initial_count = len(searcher._id_map)
+
+        # Try to add the same concept again
+        searcher.add_to_index(
+            "concept",
+            "Test content",
+            {"id": "c_test", "name": "Test", "project_id": None},
+        )
+
+        # Should not have added a duplicate
+        assert len(searcher._id_map) == initial_count
+
+    def test_add_to_index_different_types(self, tmp_path):
+        """Test add_to_index with different item types in the index."""
+        from mcp_memory.search import MemorySearcher
+
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+        searcher = MemorySearcher(storage, config)
+
+        # Build empty index first
+        searcher.build_index()
+
+        # Add a concept
+        searcher.add_to_index(
+            "concept",
+            "Concept content",
+            {"id": "c_1", "name": "Concept1", "project_id": None},
+        )
+
+        # Add a skill (different type, should not be detected as duplicate)
+        searcher.add_to_index(
+            "skill",
+            "Skill content",
+            {"id": "s_1", "name": "Skill1"},
+        )
+
+        # Both should be in the index
+        types_in_index = [item["type"] for item in searcher._id_map]
+        assert "concept" in types_in_index
+        assert "skill" in types_in_index
+
+        # Now add another concept - the loop should iterate past the skill
+        searcher.add_to_index(
+            "concept",
+            "Another concept",
+            {"id": "c_2", "name": "Concept2", "project_id": None},
+        )
+
+        # Should have 3 items now
+        assert len(searcher._id_map) == 3
+
     def test_multiple_searches_no_duplicates(self, tmp_path):
         """Multiple searches should not accumulate duplicates in the index."""
         from mcp_memory.search import MemorySearcher
@@ -654,8 +723,10 @@ class TestSearchEdgeCases:
         # Create extra directories
         (tmp_path / "People").mkdir()
         (tmp_path / "Characters").mkdir()
-        (tmp_path / "People" / "Alice.md").write_text("---\ntags: [person]\n---\nAlice info")
-        (tmp_path / "Characters" / "Bob.md").write_text("---\ntags: [char]\n---\nBob info")
+        alice_content = "---\ntags: [person]\n---\nAlice info"
+        bob_content = "---\ntags: [char]\n---\nBob info"
+        (tmp_path / "People" / "Alice.md").write_text(alice_content)
+        (tmp_path / "Characters" / "Bob.md").write_text(bob_content)
 
         config = MemoryConfig(
             base_path=str(tmp_path),
@@ -669,6 +740,27 @@ class TestSearchEdgeCases:
         file_names = [f.name for f in files]
         assert "Alice.md" in file_names
         assert "Bob.md" in file_names
+
+    def test_extra_concept_dirs_nonexistent(self, tmp_path):
+        """Test that nonexistent extra_concept_dirs are skipped."""
+        from mcp_memory.search import MemorySearcher
+
+        # Only create one of the two extra dirs
+        (tmp_path / "Existing").mkdir()
+        (tmp_path / "Existing" / "Test.md").write_text("---\ntags: []\n---\nContent")
+        # Don't create "NonExistent" directory
+
+        config = MemoryConfig(
+            base_path=str(tmp_path),
+            extra_concept_dirs=["Existing", "NonExistent"],
+        )
+        storage = MemoryStorage(config)
+        searcher = MemorySearcher(storage, config)
+
+        # Should include Existing but not fail on NonExistent
+        files = searcher._get_content_files()
+        file_names = [f.name for f in files]
+        assert "Test.md" in file_names
 
     def test_get_file_mtimes_handles_oserror(self, tmp_path):
         """Test _get_current_mtimes handles OSError (deleted files)."""
@@ -688,8 +780,6 @@ class TestSearchEdgeCases:
         original_get_content_files = searcher._get_content_files
 
         def mock_get_content_files():
-            from pathlib import Path
-
             # Return a file that will raise OSError when stat() is called
             class FakeFile:
                 def stat(self):
@@ -716,7 +806,8 @@ class TestSearchEdgeCases:
         # Create a thread with messages
         thread = Thread(project_id="p_test")
         thread.messages.append(Message(role="user", text="Hello, how are you?"))
-        thread.messages.append(Message(role="assistant", text="I am doing well, thank you!"))
+        assistant_msg = "I am doing well, thank you!"
+        thread.messages.append(Message(role="assistant", text=assistant_msg))
         storage.save(thread)
 
         # Build index
@@ -748,6 +839,50 @@ class TestSearchEdgeCases:
         assert loaded is True
         assert len(searcher2._id_map) > 0
         assert searcher2._index is not None
+
+    def test_load_index_without_mtimes_file(self, tmp_path):
+        """Test _load_index when mtimes file doesn't exist."""
+        from mcp_memory.search import MemorySearcher
+
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+        searcher = MemorySearcher(storage, config)
+
+        # Create content and build index
+        concept = Concept(name="Test", text="Test content")
+        storage.save(concept)
+        searcher.build_index()
+
+        # Delete the mtimes file
+        mtimes_file = tmp_path / ".memory_index" / "mtimes.json"
+        if mtimes_file.exists():
+            mtimes_file.unlink()
+
+        # Create new searcher and load index (should work without mtimes)
+        searcher2 = MemorySearcher(storage, config)
+        loaded = searcher2._load_index()
+        assert loaded is True
+        # mtimes should be empty since file was deleted
+        assert searcher2._file_mtimes == {}
+
+    def test_ensure_index_loads_existing(self, tmp_path):
+        """Test ensure_index loads existing index without rebuilding."""
+        from mcp_memory.search import MemorySearcher
+
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+
+        # Create content and build index
+        concept = Concept(name="Test", text="Test content")
+        storage.save(concept)
+        searcher = MemorySearcher(storage, config)
+        searcher.build_index()
+
+        # Create new searcher and call ensure_index
+        searcher2 = MemorySearcher(storage, config)
+        searcher2.ensure_index()  # Should load from disk, not rebuild
+        assert searcher2._index is not None
+        assert len(searcher2._id_map) > 0
 
     def test_search_messages_with_filters(self, tmp_path):
         """Test search_messages with thread_id and project_id filters."""
@@ -828,7 +963,8 @@ class TestSearchEdgeCases:
 
         # Create many concepts
         for i in range(10):
-            concept = Concept(name=f"Concept {i}", text=f"Similar content about item {i}")
+            text = f"Similar content about item {i}"
+            concept = Concept(name=f"Concept {i}", text=text)
             storage.save(concept)
 
         searcher.build_index()
@@ -904,7 +1040,9 @@ class TestSearchEdgeCases:
         searcher = MemorySearcher(storage, config)
 
         # Create a skill
-        skill = Skill(name="Python Testing", description="Test", instructions="pytest steps")
+        skill = Skill(
+            name="Python Testing", description="Test", instructions="pytest steps"
+        )
         storage.save(skill)
 
         searcher.build_index()
@@ -925,7 +1063,8 @@ class TestSearchEdgeCases:
         # Create multiple threads with similar content
         for i in range(5):
             thread = Thread(project_id="p_test")
-            thread.messages.append(Message(role="user", text=f"Question about databases {i}"))
+            msg_text = f"Question about databases {i}"
+            thread.messages.append(Message(role="user", text=msg_text))
             storage.save(thread)
 
         searcher.build_index()
@@ -936,7 +1075,7 @@ class TestSearchEdgeCases:
 
     def test_search_invalid_index_position(self, tmp_path):
         """Test _search handles invalid index positions (idx < 0 or out of range)."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
 
         from mcp_memory.search import MemorySearcher
 
@@ -950,8 +1089,6 @@ class TestSearchEdgeCases:
         searcher.build_index()
 
         # Mock the index search to return invalid indices
-        original_search = searcher._index.search
-
         def mock_search(query, k):
             import numpy as np
 
@@ -975,7 +1112,9 @@ class TestSearchEdgeCases:
 
         # Create both concept and skill with similar content
         concept = Concept(name="Database Concept", text="Database information")
-        skill = Skill(name="Database Skill", description="DB", instructions="Database steps")
+        skill = Skill(
+            name="Database Skill", description="DB", instructions="Database steps"
+        )
         storage.save(concept)
         storage.save(skill)
 
@@ -1052,7 +1191,9 @@ class TestStorageCoverageGaps:
         concepts_dir = tmp_path / "concepts"
         concepts_dir.mkdir()
         file_path = concepts_dir / "main_name.md"
-        file_path.write_text("---\nname: MainName\naliases:\n  - AliasOne\n  - AliasTwo\n---\nContent")
+        content = "---\nname: MainName\naliases:\n  - AliasOne\n  - AliasTwo\n---\n"
+        content += "Content"
+        file_path.write_text(content)
 
         # Load by alias
         loaded = storage.load_concept_by_name("aliasone")
@@ -1104,7 +1245,8 @@ class TestStorageCoverageGaps:
         skills_dir = tmp_path / "skills"
         skills_dir.mkdir()
         file_path = skills_dir / "MySkillName.md"
-        file_path.write_text("---\nskill_id: s_123\ndescription: Test\n---\nInstructions")
+        content = "---\nskill_id: s_123\ndescription: Test\n---\nInstructions"
+        file_path.write_text(content)
 
         # Load by ID - should derive name from filename
         loaded = storage.load_skill("s_123")
@@ -1120,7 +1262,8 @@ class TestStorageCoverageGaps:
         skills_dir = tmp_path / "skills"
         skills_dir.mkdir()
         file_path = skills_dir / "MySkillID.md"
-        file_path.write_text("---\nname: Test Skill\ndescription: Test\n---\nInstructions")
+        content = "---\nname: Test Skill\ndescription: Test\n---\nInstructions"
+        file_path.write_text(content)
 
         # Load by filename as ID - should work
         loaded = storage.load_skill("MySkillID")
@@ -1205,16 +1348,26 @@ class TestStorageCoverageGaps:
         config = MemoryConfig(base_path=str(tmp_path))
         storage = MemoryStorage(config)
 
-        # Create a file with a name that doesn't match sanitized version
+        # To hit line 181, we need:
+        # 1. Exact filename lookup fails (line 168)
+        # 2. Sanitized filename lookup fails (line 174)
+        # 3. Stem match succeeds (line 180)
+
+        # Create a file with a simple name
         concepts_dir = tmp_path / "concepts"
         concepts_dir.mkdir()
-        # File with name that won't match sanitized lookup but will match stem
-        file_path = concepts_dir / "My Concept Name.md"
-        file_path.write_text("---\nname: Different Name\n---\nContent")
+        file_path = concepts_dir / "TestConcept.md"
+        file_path.write_text("---\nname: DifferentName\n---\nContent")
 
-        # Load by filename stem (case-insensitive)
-        loaded = storage.load_concept_by_name("my concept name")
+        # Search for "TESTCONCEPT" (all caps)
+        # - Exact lookup: "TESTCONCEPT.md" doesn't exist
+        # - Sanitized lookup: "TESTCONCEPT.md" doesn't exist
+        # - Stem match: "TestConcept".lower() == "testconcept" == "TESTCONCEPT".lower()
+        # This should hit line 181
+        loaded = storage.load_concept_by_name("TESTCONCEPT")
         assert loaded is not None
+        # The name should be derived from frontmatter or filename
+        assert loaded.name in ["DifferentName", "TestConcept"]
 
     def test_load_by_id_no_match(self, tmp_path):
         """Test _load_by_id returns None when no file matches the ID."""
@@ -1225,25 +1378,27 @@ class TestStorageCoverageGaps:
         skills_dir = tmp_path / "skills"
         skills_dir.mkdir()
         file_path = skills_dir / "SomeSkill.md"
-        file_path.write_text("---\nskill_id: s_different\nname: Some Skill\n---\nInstructions")
+        content = "---\nskill_id: s_different\nname: Some Skill\n---\nInstructions"
+        file_path.write_text(content)
 
         # Try to load by non-existent ID
         loaded = storage.load_skill("s_nonexistent")
         assert loaded is None
 
     def test_list_concepts_extra_dirs_exception_handling(self, tmp_path):
-        """Test list_concepts handles exceptions when parsing extra dir files."""
+        """Test list_concepts handles exceptions in extra dir files."""
         config = MemoryConfig(
             base_path=str(tmp_path),
             extra_concept_dirs=["People"],
         )
         storage = MemoryStorage(config)
 
-        # Create extra dir with a file that will cause an exception during model validation
+        # Create extra dir with a file that causes exception during validation
         people_dir = tmp_path / "People"
         people_dir.mkdir()
         # Create a file with invalid YAML that will cause parse error
-        (people_dir / "BadFile.md").write_text("---\n  invalid: yaml: here:\n---\nContent")
+        bad_yaml = "---\n  invalid: yaml: here:\n---\nContent"
+        (people_dir / "BadFile.md").write_text(bad_yaml)
 
         # Should not raise, should skip the bad file
         concepts = storage.list_concepts()

@@ -50,7 +50,8 @@ class TestCLIInstructions:
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("mcp_servers:\n  test:\n    command: echo\ntool_views: {}\n")
+        yaml_content = "mcp_servers:\n  test:\n    command: echo\ntool_views: {}\n"
+        config_file.write_text(yaml_content)
 
         # Mock the client
         mock_client = MagicMock()
@@ -76,7 +77,8 @@ class TestCLIInstructions:
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("mcp_servers:\n  test:\n    command: echo\ntool_views: {}\n")
+        yaml_content = "mcp_servers:\n  test:\n    command: echo\ntool_views: {}\n"
+        config_file.write_text(yaml_content)
 
         # Mock the client with no instructions
         mock_client = MagicMock()
@@ -102,12 +104,14 @@ class TestCLIInstructions:
         from mcp_proxy.cli import main
 
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("mcp_servers:\n  test:\n    command: echo\ntool_views: {}\n")
+        yaml_content = "mcp_servers:\n  test:\n    command: echo\ntool_views: {}\n"
+        config_file.write_text(yaml_content)
 
         # Mock the client to raise an exception
         async def raise_error(*args, **kwargs):
             mock = AsyncMock()
-            mock.__aenter__ = AsyncMock(side_effect=ConnectionError("Connection failed"))
+            err = ConnectionError("Connection failed")
+            mock.__aenter__ = AsyncMock(side_effect=err)
             return mock
 
         with patch("mcp_proxy.proxy.MCPProxy._create_client", side_effect=raise_error):
@@ -143,9 +147,7 @@ class TestCLIInstructions:
 
         with patch("mcp_proxy.proxy.MCPProxy._create_client", return_value=mock_client):
             runner = CliRunner()
-            result = runner.invoke(
-                main, ["instructions", "--config", str(config_file)]
-            )
+            result = runner.invoke(main, ["instructions", "--config", str(config_file)])
 
         assert result.exit_code == 0
         # Should have section headers for multiple servers

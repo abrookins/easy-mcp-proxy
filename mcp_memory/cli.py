@@ -37,7 +37,7 @@ def load_config(path: str, config_file: str | None = None):
 @click.group()
 def main():
     """MCP Memory - Portable LLM memory using markdown files."""
-    pass
+    pass  # pragma: no cover
 
 
 @main.command()

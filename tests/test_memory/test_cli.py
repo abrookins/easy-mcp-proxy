@@ -1,14 +1,12 @@
 """Tests for mcp_memory CLI."""
 
-import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 import yaml
 from click.testing import CliRunner
 
-from mcp_memory.cli import build_index, init, load_config, main, serve
+from mcp_memory.cli import build_index, init, load_config, serve
 from mcp_memory.models import MemoryConfig
 
 
@@ -24,9 +22,11 @@ class TestLoadConfig:
     def test_load_config_explicit_config_file(self, tmp_path):
         """Test loading config from explicit config file."""
         config_file = tmp_path / "custom-config.yaml"
-        config_file.write_text(
-            yaml.dump({"threads_dir": "custom_threads", "concepts_dir": "custom_concepts"})
-        )
+        config_data = {
+            "threads_dir": "custom_threads",
+            "concepts_dir": "custom_concepts",
+        }
+        config_file.write_text(yaml.dump(config_data))
 
         config = load_config(str(tmp_path), config_file=str(config_file))
         assert config.threads_dir == "custom_threads"
@@ -179,4 +179,3 @@ class TestServeCommand:
         # Verify config was loaded with custom settings
         call_args = mock_create_server.call_args
         assert call_args.kwargs["config"].threads_dir == "custom_threads"
-
