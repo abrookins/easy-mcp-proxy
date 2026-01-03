@@ -1,6 +1,7 @@
-"""MCP Memory - Portable LLM memory system using markdown files with YAML frontmatter."""
+"""MCP Memory - Portable LLM memory system with markdown files."""
 
 from mcp_memory.models import (
+    Artifact,
     Concept,
     MemoryConfig,
     Message,
@@ -14,6 +15,7 @@ from mcp_memory.server import create_memory_server
 from mcp_memory.storage import MemoryStorage
 
 __all__ = [
+    "Artifact",
     "Concept",
     "MemoryConfig",
     "MemorySearcher",
@@ -25,4 +27,3 @@ __all__ = [
     "Thread",
     "create_memory_server",
 ]
-

@@ -377,3 +377,58 @@ tool_views:
 """,
     }
     click.echo(examples[what])
+
+
+@click.command()
+@config_option()
+@click.argument("server_name", required=False)
+def instructions(config: str | None, server_name: str | None):
+    """Show server instructions from upstream MCP servers.
+
+    If SERVER_NAME is provided, show instructions for that server only.
+    Otherwise, show instructions for all configured servers.
+    """
+    from mcp_proxy.proxy import MCPProxy
+
+    cfg = load_config(str(get_config_path(config)))
+
+    if server_name and server_name not in cfg.mcp_servers:
+        click.echo(f"Error: server '{server_name}' not found", err=True)
+        raise SystemExit(1)
+
+    servers_to_check = [server_name] if server_name else list(cfg.mcp_servers.keys())
+
+    async def fetch_instructions():
+        """Fetch instructions from upstream servers."""
+        results = {}
+        proxy = MCPProxy(cfg)
+
+        for name in servers_to_check:
+            try:
+                client = await proxy._create_client(name)
+                async with client:
+                    init_result = client.initialize_result
+                    if init_result and init_result.instructions:
+                        results[name] = init_result.instructions
+                    else:
+                        results[name] = None
+            except Exception as e:
+                results[name] = {"error": str(e)}
+
+        return results
+
+    results = run_async(fetch_instructions())
+
+    for name, result in results.items():
+        if len(servers_to_check) > 1:
+            click.echo(f"=== {name} ===")
+
+        if isinstance(result, dict) and "error" in result:
+            click.echo(f"Error: {result['error']}", err=True)
+        elif result is None:
+            click.echo("(no instructions provided)")
+        else:
+            click.echo(result)
+
+        if len(servers_to_check) > 1:
+            click.echo()

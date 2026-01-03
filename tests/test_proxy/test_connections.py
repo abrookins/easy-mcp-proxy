@@ -218,3 +218,110 @@ class TestProxyConnectionManagement:
 
         # Should NOT have called _create_client since client already exists
         mock_create.assert_not_called()
+
+
+class TestProxyClientFetchUpstreamTools:
+    """Tests for fetch_upstream_tools in client.py."""
+
+    async def test_fetch_upstream_tools_server_not_found(self):
+        """fetch_upstream_tools should raise error for unknown server."""
+        import pytest
+
+        from mcp_proxy.proxy.client import ClientManager
+
+        config = ProxyConfig(mcp_servers={}, tool_views={})
+        manager = ClientManager(config)
+
+        with pytest.raises(ValueError, match="No client for server"):
+            await manager.fetch_upstream_tools("nonexistent")
+
+    async def test_fetch_upstream_tools_success(self):
+        """fetch_upstream_tools should fetch and cache tools."""
+        from mcp_proxy.proxy.client import ClientManager
+
+        mock_tool = MagicMock()
+        mock_tool.name = "test_tool"
+        mock_tool.description = "A test tool"
+
+        mock_client = AsyncMock()
+        mock_client.list_tools.return_value = [mock_tool]
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        manager = ClientManager(config)
+        manager.upstream_clients["server"] = mock_client
+
+        tools = await manager.fetch_upstream_tools("server")
+
+        assert len(tools) == 1
+        assert tools[0].name == "test_tool"
+        assert "server" in manager._upstream_tools
+
+    async def test_refresh_upstream_tools_handles_errors(self):
+        """refresh_upstream_tools should continue on errors."""
+        from mcp_proxy.proxy.client import ClientManager
+
+        mock_client = AsyncMock()
+        mock_client.list_tools = AsyncMock(side_effect=ConnectionError("Failed"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        manager = ClientManager(config)
+        manager.upstream_clients["server"] = mock_client
+
+        # Should not raise - errors are caught
+        await manager.refresh_upstream_tools()
+
+
+class TestProxyPropertySetters:
+    """Tests for proxy property setters."""
+
+    def test_upstream_tools_setter(self):
+        """Setting _upstream_tools should update client manager."""
+        config = ProxyConfig(mcp_servers={}, tool_views={})
+        proxy = MCPProxy(config)
+
+        test_tools = {"server": [MagicMock()]}
+        proxy._upstream_tools = test_tools
+
+        assert proxy._upstream_tools == test_tools
+
+    def test_active_clients_setter(self):
+        """Setting _active_clients should update client manager."""
+        config = ProxyConfig(mcp_servers={}, tool_views={})
+        proxy = MCPProxy(config)
+
+        test_clients = {"server": MagicMock()}
+        proxy._active_clients = test_clients
+
+        assert proxy._active_clients == test_clients
+
+
+class TestProxyGetServerInstructions:
+    """Tests for get_server_instructions default message."""
+
+    async def test_get_server_instructions_returns_default_when_no_instructions(self):
+        """get_server_instructions tool returns default message when none available."""
+        from fastmcp import Client
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={"myview": {"description": "Test view"}},
+        )
+        proxy = MCPProxy(config)
+        # Don't set any upstream_instructions - should return default message
+
+        view_mcp = proxy.get_view_mcp("myview")
+
+        async with Client(view_mcp) as client:
+            result = await client.call_tool("get_server_instructions", {})
+            text_content = result.content[0].text
+            assert "No server instructions available" in text_content

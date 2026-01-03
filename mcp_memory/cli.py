@@ -133,4 +133,3 @@ def build_index(path: str):
 
 if __name__ == "__main__":
     main()
-

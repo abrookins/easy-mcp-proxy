@@ -1,9 +1,10 @@
 """Tests for mcp_memory models."""
 
-import pytest
+import re
 from datetime import datetime
 
 from mcp_memory.models import (
+    Artifact,
     Concept,
     MemoryConfig,
     Message,
@@ -18,11 +19,17 @@ from mcp_memory.models import (
 class TestGenerateId:
     """Tests for ID generation."""
 
+    # ULID format: 26 chars, Crockford Base32 (0-9, A-Z excluding I, L, O, U)
+    ULID_PATTERN = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
+
     def test_generate_id_with_prefix(self):
-        """Test that IDs are generated with the correct prefix."""
+        """Test that IDs are generated with the correct prefix and ULID format."""
         id1 = generate_id("t")
         assert id1.startswith("t_")
-        assert len(id1) == 14  # prefix + underscore + 12 hex chars
+        # prefix (1) + underscore (1) + ULID (26) = 28 chars
+        assert len(id1) == 28
+        ulid_part = id1[2:]
+        assert self.ULID_PATTERN.match(ulid_part), f"'{ulid_part}' is not a valid ULID"
 
     def test_generate_id_unique(self):
         """Test that generated IDs are unique."""
@@ -143,6 +150,87 @@ class TestReflection:
         assert reflection.thread_id == "t_789"
 
 
+class TestArtifact:
+    """Tests for Artifact model."""
+
+    def test_artifact_creation(self):
+        """Test creating an artifact with minimal fields."""
+        artifact = Artifact(name="API Design Doc")
+        assert artifact.artifact_id.startswith("a_")
+        assert artifact.name == "API Design Doc"
+        assert artifact.description == ""
+        assert artifact.content_type == "markdown"
+        assert artifact.project_id is None
+        assert artifact.originating_thread_id is None
+        assert artifact.content == ""
+        assert artifact.tags == []
+
+    def test_artifact_with_full_content(self):
+        """Test artifact with all fields populated."""
+        artifact = Artifact(
+            name="System Architecture",
+            description="High-level system design document",
+            content_type="markdown",
+            project_id="p_123",
+            originating_thread_id="t_456",
+            tags=["architecture", "design"],
+            content="# Architecture\n\nThis is the system architecture.",
+        )
+        assert artifact.name == "System Architecture"
+        assert artifact.description == "High-level system design document"
+        assert artifact.content_type == "markdown"
+        assert artifact.project_id == "p_123"
+        assert artifact.originating_thread_id == "t_456"
+        assert "architecture" in artifact.tags
+        assert "# Architecture" in artifact.content
+
+    def test_artifact_content_types(self):
+        """Test artifact with different content types."""
+        code_artifact = Artifact(
+            name="utils.py",
+            content_type="code",
+            content="def hello():\n    print('Hello')",
+        )
+        assert code_artifact.content_type == "code"
+
+        json_artifact = Artifact(
+            name="config.json",
+            content_type="json",
+            content='{"key": "value"}',
+        )
+        assert json_artifact.content_type == "json"
+
+    def test_artifact_with_path(self):
+        """Test artifact with path field for file-based artifacts."""
+        artifact = Artifact(
+            name="Migration Helper",
+            content_type="code",
+            path="database-migration/migration_helper.py",
+            content="def migrate():\n    pass",
+        )
+        assert artifact.path == "database-migration/migration_helper.py"
+
+    def test_artifact_path_defaults_to_none(self):
+        """Test that path is optional and defaults to None."""
+        artifact = Artifact(name="Some Doc")
+        assert artifact.path is None
+
+    def test_artifact_with_skill_id(self):
+        """Test artifact linked to a skill."""
+        artifact = Artifact(
+            name="Helper Script",
+            skill_id="s_abc123",
+            path="scripts/helper.py",
+            content="# helper code",
+        )
+        assert artifact.skill_id == "s_abc123"
+
+    def test_artifact_skill_id_defaults_to_none(self):
+        """Test that skill_id is optional and defaults to None."""
+        artifact = Artifact(name="Standalone Doc")
+        assert artifact.skill_id is None
+
+
 class TestMemoryConfig:
     """Tests for MemoryConfig model."""
 
@@ -155,10 +243,10 @@ class TestMemoryConfig:
         assert config.projects_dir == "Projects"
         assert config.skills_dir == "Skills"
         assert config.reflections_dir == "Reflections"
+        assert config.artifacts_dir == "Artifacts"
 
     def test_custom_config(self):
         """Test custom configuration."""
         config = MemoryConfig(base_path="/data/memory", threads_dir="Conversations")
         assert config.base_path == "/data/memory"
         assert config.threads_dir == "Conversations"
-

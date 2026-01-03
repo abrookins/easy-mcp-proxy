@@ -33,6 +33,7 @@ class MCPProxy:
         self.views: dict[str, ToolView] = {}
         self._client_manager = ClientManager(config)
         self._initialized = False
+        self.upstream_instructions: dict[str, str] = {}
 
         self.server = FastMCP("MCP Tool View Proxy")
 
@@ -76,10 +77,27 @@ class MCPProxy:
         return await self._client_manager.create_client(server_name)
 
     async def fetch_upstream_tools(self, server_name: str) -> list[Any]:
-        return await self._client_manager.fetch_upstream_tools(server_name)
+        """Fetch tools and instructions from an upstream server."""
+        if server_name not in self.upstream_clients:
+            raise ValueError(f"No client for server '{server_name}'")
+
+        client = self.upstream_clients[server_name]
+        async with client:
+            # Fetch instructions while client is connected
+            await self.fetch_upstream_instructions(server_name, client)
+            # Fetch tools
+            tools = await client.list_tools()
+            self._upstream_tools[server_name] = tools
+            return tools
 
     async def refresh_upstream_tools(self) -> None:
-        return await self._client_manager.refresh_upstream_tools()
+        """Refresh tools and instructions from all upstream servers."""
+        for server_name in self.upstream_clients:
+            try:
+                await self.fetch_upstream_tools(server_name)
+            except Exception:
+                # Log error but continue - tool will work without schema
+                pass
 
     async def connect_clients(self) -> None:
         return await self._client_manager.connect_clients()
@@ -99,6 +117,38 @@ class MCPProxy:
         return await self._client_manager.call_upstream_tool(
             server_name, tool_name, args
         )
+
+    def get_aggregated_instructions(self) -> str | None:
+        """Get aggregated instructions from all upstream servers.
+
+        Returns a combined string with instructions from each server,
+        or None if no instructions are available.
+        """
+        if not self.upstream_instructions:
+            return None
+
+        parts = []
+        for server_name, instructions in self.upstream_instructions.items():
+            if instructions:
+                parts.append(f"## {server_name}\n\n{instructions}")
+
+        if not parts:
+            return None
+
+        return "\n\n".join(parts)
+
+    async def fetch_upstream_instructions(
+        self, server_name: str, client: Client
+    ) -> None:
+        """Fetch and store instructions from an upstream server.
+
+        Args:
+            server_name: Name of the server
+            client: Connected client to fetch instructions from
+        """
+        init_result = client.initialize_result
+        if init_result and init_result.instructions:
+            self.upstream_instructions[server_name] = init_result.instructions
 
     def _create_lifespan(self) -> Callable:
         """Create a lifespan context manager that initializes upstream connections."""
@@ -194,11 +244,15 @@ class MCPProxy:
         self.sync_fetch_tools()
 
         if transport == "stdio":
+            aggregated_instructions = self.get_aggregated_instructions()
             stdio_server = FastMCP(
-                "MCP Tool View Proxy", lifespan=self._create_lifespan()
+                "MCP Tool View Proxy",
+                instructions=aggregated_instructions,
+                lifespan=self._create_lifespan(),
             )
             default_tools = self.get_view_tools(None)
             self._register_tools_on_mcp(stdio_server, default_tools)
+            self._register_instructions_tool(stdio_server)
             stdio_server.run(transport="stdio")
         else:
             import uvicorn
@@ -283,7 +337,8 @@ class MCPProxy:
 
         view = self.views[view_name]
         view_config = view.config
-        mcp = FastMCP(f"MCP Proxy - {view_name}")
+        aggregated_instructions = self.get_aggregated_instructions()
+        mcp = FastMCP(f"MCP Proxy - {view_name}", instructions=aggregated_instructions)
 
         if view_config.exposure_mode == "search":
             self._register_search_tool(mcp, view_name)
@@ -291,7 +346,34 @@ class MCPProxy:
             view_tools = self.get_view_tools(view_name)
             self._register_tools_on_mcp(mcp, view_tools, view=view)
 
+        # Register the get_server_instructions tool
+        self._register_instructions_tool(mcp)
+
         return mcp
+
+    def _register_instructions_tool(self, mcp: FastMCP) -> None:
+        """Register the get_server_instructions tool on an MCP instance."""
+        proxy = self  # Capture reference for closure
+
+        def get_server_instructions() -> str:
+            """Get aggregated instructions from all upstream MCP servers.
+
+            Call this at the start of every session to understand how to use
+            the memory tools and other available capabilities effectively.
+            """
+            instructions = proxy.get_aggregated_instructions()
+            if instructions:
+                return instructions
+            return "No server instructions available."
+
+        mcp.tool(
+            name="get_server_instructions",
+            description=(
+                "Get instructions for using the available tools. "
+                "Call this at the start of every session to understand "
+                "how to use the memory tools and other capabilities effectively."
+            ),
+        )(get_server_instructions)
 
     def _register_search_tool(self, mcp: FastMCP, view_name: str) -> None:
         """Register the search and call meta-tools for a view."""
@@ -529,9 +611,13 @@ class MCPProxy:
 
         self.sync_fetch_tools()
 
-        default_mcp = FastMCP("MCP Proxy - Default")
+        aggregated_instructions = self.get_aggregated_instructions()
+        default_mcp = FastMCP(
+            "MCP Proxy - Default", instructions=aggregated_instructions
+        )
         default_tools = self.get_view_tools(None)
         self._register_tools_on_mcp(default_mcp, default_tools)
+        self._register_instructions_tool(default_mcp)
 
         view_mcps: dict[str, FastMCP] = {}
         for view_name in self.views:

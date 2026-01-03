@@ -3,8 +3,6 @@
 Handles reading/writing markdown files with YAML frontmatter.
 """
 
-import os
-from datetime import datetime
 from pathlib import Path
 from typing import TypeVar
 
@@ -12,6 +10,7 @@ import yaml
 from pydantic import BaseModel
 
 from mcp_memory.models import (
+    Artifact,
     Concept,
     MemoryConfig,
     Project,
@@ -29,6 +28,7 @@ BODY_FIELDS = {
     "Project": {"instructions"},
     "Skill": {"instructions"},
     "Reflection": {"text"},
+    "Artifact": {"content"},
 }
 
 
@@ -69,6 +69,7 @@ class MemoryStorage:
             "Project": self.config.projects_dir,
             "Skill": self.config.skills_dir,
             "Reflection": self.config.reflections_dir,
+            "Artifact": self.config.artifacts_dir,
         }
         return self.base_path / dirs[model_type]
 
@@ -78,6 +79,10 @@ class MemoryStorage:
         dir_path.mkdir(parents=True, exist_ok=True)
         return dir_path
 
+    def _sanitize_name(self, name: str) -> str:
+        """Sanitize a name for use as a filename."""
+        return "".join(c if c.isalnum() or c in " -_" else "_" for c in name)
+
     def _get_filename(self, obj: BaseModel) -> str:
         """Get filename for an object."""
         model_type = type(obj).__name__
@@ -85,13 +90,17 @@ class MemoryStorage:
             return f"{obj.thread_id}.yaml"
         elif model_type == "Concept":
             # Use name for concepts (sanitized)
-            safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in obj.name)
+            safe_name = self._sanitize_name(obj.name)
             return f"{safe_name}.md"
         elif model_type == "Project":
-            safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in obj.name)
+            safe_name = self._sanitize_name(obj.name)
             return f"{safe_name}.md"
         elif model_type == "Skill":
-            safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in obj.name)
+            safe_name = self._sanitize_name(obj.name)
+            return f"{safe_name}.md"
+        elif model_type == "Artifact":
+            # Use name for artifacts (sanitized)
+            safe_name = self._sanitize_name(obj.name)
             return f"{safe_name}.md"
         else:  # Reflection
             return f"{obj.reflection_id}.md"
@@ -234,6 +243,7 @@ class MemoryStorage:
             "Project": "project_id",
             "Skill": "skill_id",
             "Reflection": "reflection_id",
+            "Artifact": "artifact_id",
         }
         model_name = model_class.__name__
         if model_name in id_field_map:
@@ -257,9 +267,22 @@ class MemoryStorage:
         for file_path in dir_path.glob("*.md"):
             content = file_path.read_text(encoding="utf-8")
             frontmatter, body = parse_frontmatter(content)
-            if frontmatter.get(id_field) == id_value:
+
+            # Get ID from frontmatter, or derive from filename if missing
+            # (consistent with _load_markdown_file behavior)
+            file_id = frontmatter.get(id_field)
+            if not file_id:
+                file_id = file_path.stem
+
+            if file_id == id_value:
                 if body_field:
                     frontmatter[body_field] = body
+                # Ensure ID field is set for model validation
+                if id_field not in frontmatter or not frontmatter[id_field]:
+                    frontmatter[id_field] = file_path.stem
+                # Also derive name from filename if missing
+                if "name" not in frontmatter or not frontmatter["name"]:
+                    frontmatter["name"] = file_path.stem
                 return model_class.model_validate(frontmatter)
         return None
 
@@ -328,6 +351,23 @@ class MemoryStorage:
                 reflections.append(obj)
         return reflections
 
+    def load_artifact(self, artifact_id: str) -> Artifact | None:
+        """Load an artifact by ID."""
+        return self._load_by_id("Artifact", "artifact_id", artifact_id, Artifact)
+
+    def load_artifact_by_name(self, name: str) -> Artifact | None:
+        """Load an artifact by name."""
+        dir_path = self._get_dir("Artifact")
+        safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in name)
+        file_path = dir_path / f"{safe_name}.md"
+        if not file_path.exists():
+            return None
+        return self._load_markdown_file(file_path, Artifact, "content")
+
+    def list_artifacts(self, project_id: str | None = None) -> list[Artifact]:
+        """List all artifacts, optionally filtered by project."""
+        return self._list_markdown_files("Artifact", Artifact, "content", project_id)
+
     def _list_markdown_files(
         self,
         model_type: str,
@@ -348,4 +388,3 @@ class MemoryStorage:
                         continue
                 items.append(obj)
         return items
-

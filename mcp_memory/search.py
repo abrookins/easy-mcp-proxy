@@ -69,6 +69,16 @@ class MemorySearcher:
         if threads_dir.exists():
             files.extend(threads_dir.glob("*.yaml"))
 
+        # Artifact files
+        artifacts_dir = base / self.config.artifacts_dir
+        if artifacts_dir.exists():
+            files.extend(artifacts_dir.glob("*.md"))
+
+        # Skill files
+        skills_dir = base / self.config.skills_dir
+        if skills_dir.exists():
+            files.extend(skills_dir.glob("*.md"))
+
         return files
 
     def _get_current_mtimes(self) -> dict[str, float]:
@@ -113,23 +123,52 @@ class MemorySearcher:
         for concept in self.storage.list_concepts():
             text = f"{concept.name}\n{concept.text}"
             texts.append(text)
-            id_map.append({
-                "type": "concept",
-                "id": concept.concept_id,
-                "name": concept.name,
-                "project_id": concept.project_id,
-            })
+            id_map.append(
+                {
+                    "type": "concept",
+                    "id": concept.concept_id,
+                    "name": concept.name,
+                    "project_id": concept.project_id,
+                }
+            )
 
         # Index threads (by their messages)
         for thread in self.storage.list_threads():
             for i, msg in enumerate(thread.messages):
                 texts.append(msg.text)
-                id_map.append({
-                    "type": "message",
-                    "thread_id": thread.thread_id,
-                    "message_index": i,
-                    "project_id": thread.project_id,
-                })
+                id_map.append(
+                    {
+                        "type": "message",
+                        "thread_id": thread.thread_id,
+                        "message_index": i,
+                        "project_id": thread.project_id,
+                    }
+                )
+
+        # Index artifacts
+        for artifact in self.storage.list_artifacts():
+            text = f"{artifact.name}\n{artifact.description}\n{artifact.content}"
+            texts.append(text)
+            id_map.append(
+                {
+                    "type": "artifact",
+                    "id": artifact.artifact_id,
+                    "name": artifact.name,
+                    "project_id": artifact.project_id,
+                }
+            )
+
+        # Index skills
+        for skill in self.storage.list_skills():
+            text = f"{skill.name}\n{skill.description}\n{skill.instructions}"
+            texts.append(text)
+            id_map.append(
+                {
+                    "type": "skill",
+                    "id": skill.skill_id,
+                    "name": skill.name,
+                }
+            )
 
         if not texts:
             # Create empty index
@@ -241,6 +280,25 @@ class MemorySearcher:
                     break
         return threads
 
+    def search_artifacts(
+        self,
+        query: str,
+        limit: int = 10,
+        project_id: str | None = None,
+    ) -> list[dict]:
+        """Search artifacts by semantic similarity."""
+        self.ensure_index()
+        return self._search(query, "artifact", limit, project_id=project_id)
+
+    def search_skills(
+        self,
+        query: str,
+        limit: int = 10,
+    ) -> list[dict]:
+        """Search skills by semantic similarity."""
+        self.ensure_index()
+        return self._search(query, "skill", limit)
+
     def _search(
         self,
         query: str,
@@ -277,8 +335,8 @@ class MemorySearcher:
             if project_id and item.get("project_id") != project_id:
                 continue
 
-            # Deduplicate by ID (for concepts) or thread_id+message_index (for messages)
-            if item_type == "concept":
+            # Deduplicate by ID or thread_id+message_index (for messages)
+            if item_type in ("concept", "artifact"):
                 item_id = item.get("id")
             else:
                 # For messages, use composite key
@@ -317,4 +375,3 @@ class MemorySearcher:
         self._index.add(embedding)
         self._id_map.append({"type": item_type, **metadata})
         self._save_index()
-

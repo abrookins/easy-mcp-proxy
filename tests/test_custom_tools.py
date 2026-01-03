@@ -330,6 +330,37 @@ class TestMFCQITool:
         assert "10" in captured_cmd
 
     @pytest.mark.asyncio
+    async def test_mfcqi_tool_without_min_score(self, monkeypatch):
+        """The tool should not include min-score flag when min_score is 0."""
+        from mcp_proxy.tools.mfcqi import analyze_code_quality
+
+        captured_cmd = None
+
+        async def mock_subprocess(*args, stdout=None, stderr=None, cwd=None):
+            nonlocal captured_cmd
+            captured_cmd = args
+
+            class MockProc:
+                returncode = 0
+
+                async def communicate(self):
+                    return (b"output", b"")
+
+            return MockProc()
+
+        monkeypatch.setattr(
+            "mcp_proxy.tools.mfcqi.asyncio.create_subprocess_exec", mock_subprocess
+        )
+
+        await analyze_code_quality(
+            project_path="/project",
+            min_score=0,  # Falsy value - should skip --min-score flag
+            skip_llm=True,
+        )
+
+        assert "--min-score" not in captured_cmd
+
+    @pytest.mark.asyncio
     async def test_mfcqi_tool_handles_failure(self, monkeypatch):
         """The tool should report failure when command fails."""
         from mcp_proxy.tools.mfcqi import analyze_code_quality
@@ -352,3 +383,97 @@ class TestMFCQITool:
         assert result["success"] is False
         assert result["return_code"] == 1
         assert result["stderr"] == "Error: invalid path"
+
+    @pytest.mark.asyncio
+    async def test_mfcqi_tool_with_output_format(self, monkeypatch):
+        """The tool should include output format flag when not terminal."""
+        from mcp_proxy.tools.mfcqi import analyze_code_quality
+
+        captured_cmd = None
+
+        async def mock_subprocess(*args, stdout=None, stderr=None, cwd=None):
+            nonlocal captured_cmd
+            captured_cmd = args
+
+            class MockProc:
+                returncode = 0
+
+                async def communicate(self):
+                    return (b'{"score": 0.9}', b"")
+
+            return MockProc()
+
+        monkeypatch.setattr(
+            "mcp_proxy.tools.mfcqi.asyncio.create_subprocess_exec", mock_subprocess
+        )
+
+        await analyze_code_quality(
+            project_path="/project",
+            skip_llm=True,
+            output_format="json",
+        )
+
+        assert "--format" in captured_cmd
+        assert "json" in captured_cmd
+
+    @pytest.mark.asyncio
+    async def test_mfcqi_tool_with_quality_gate(self, monkeypatch):
+        """The tool should include quality gate flag when enabled."""
+        from mcp_proxy.tools.mfcqi import analyze_code_quality
+
+        captured_cmd = None
+
+        async def mock_subprocess(*args, stdout=None, stderr=None, cwd=None):
+            nonlocal captured_cmd
+            captured_cmd = args
+
+            class MockProc:
+                returncode = 0
+
+                async def communicate(self):
+                    return (b"output", b"")
+
+            return MockProc()
+
+        monkeypatch.setattr(
+            "mcp_proxy.tools.mfcqi.asyncio.create_subprocess_exec", mock_subprocess
+        )
+
+        await analyze_code_quality(
+            project_path="/project",
+            skip_llm=True,
+            quality_gate=True,
+        )
+
+        assert "--quality-gate" in captured_cmd
+
+    @pytest.mark.asyncio
+    async def test_mfcqi_tool_output_format_terminal_not_passed(self, monkeypatch):
+        """The tool should not pass format flag when output_format is terminal."""
+        from mcp_proxy.tools.mfcqi import analyze_code_quality
+
+        captured_cmd = None
+
+        async def mock_subprocess(*args, stdout=None, stderr=None, cwd=None):
+            nonlocal captured_cmd
+            captured_cmd = args
+
+            class MockProc:
+                returncode = 0
+
+                async def communicate(self):
+                    return (b"output", b"")
+
+            return MockProc()
+
+        monkeypatch.setattr(
+            "mcp_proxy.tools.mfcqi.asyncio.create_subprocess_exec", mock_subprocess
+        )
+
+        await analyze_code_quality(
+            project_path="/project",
+            skip_llm=True,
+            output_format="terminal",  # Should not add --format flag
+        )
+
+        assert "--format" not in captured_cmd

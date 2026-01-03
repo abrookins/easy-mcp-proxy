@@ -1,7 +1,6 @@
 """Tests for mcp_memory MCP server."""
 
 import pytest
-from datetime import datetime
 
 from mcp_memory.models import MemoryConfig
 from mcp_memory.server import create_memory_server
@@ -42,7 +41,16 @@ class TestMemoryServer:
             "read_skill",
             "update_skill",
             "list_skills",
+            "search_skills",
             "rebuild_index",
+            # Artifact tools
+            "create_artifact",
+            "read_artifact",
+            "update_artifact",
+            "list_artifacts",
+            "search_artifacts",
+            "write_artifact_to_disk",
+            "sync_artifact_from_disk",
         ]
         for tool_name in expected_tools:
             assert tool_name in tools, f"Missing tool: {tool_name}"
@@ -130,14 +138,80 @@ class TestThreadTools:
         messages = [{"role": "user", "text": "Hello"}]
         add_tool.fn(thread_id=thread_id, messages=messages)
 
-        compact_result = compact_tool.fn(
-            thread_id=thread_id, summary="User said hello"
-        )
+        compact_result = compact_tool.fn(thread_id=thread_id, summary="User said hello")
         assert compact_result["compacted"] is True
 
         read_result = read_tool.fn(thread_id=thread_id)
         assert read_result["summary"] == "User said hello"
         assert read_result["messages"] == []
+
+    def test_create_thread_with_title(self, server):
+        """Test creating a thread with an explicit title."""
+        tool = server._tool_manager._tools["create_thread"]
+        result = tool.fn(title="My Important Discussion")
+
+        assert result["thread_id"].startswith("t_")
+        assert result["title"] == "My Important Discussion"
+        assert result["created"] is True
+
+    def test_thread_title_auto_derived_from_first_message(self, server):
+        """Test that thread title is auto-derived from the first message."""
+        create_tool = server._tool_manager._tools["create_thread"]
+        add_tool = server._tool_manager._tools["add_messages"]
+        read_tool = server._tool_manager._tools["read_thread"]
+
+        # Create thread without title
+        create_result = create_tool.fn()
+        thread_id = create_result["thread_id"]
+        assert create_result["title"] is None
+
+        # Add first message
+        messages = [{"role": "user", "text": "Help me debug this Python error"}]
+        add_tool.fn(thread_id=thread_id, messages=messages)
+
+        # Title should be derived from first message
+        read_result = read_tool.fn(thread_id=thread_id)
+        assert read_result["title"] == "Help me debug this Python error"
+
+    def test_thread_title_truncated_for_long_message(self, server):
+        """Test that long messages are truncated when deriving title."""
+        create_tool = server._tool_manager._tools["create_thread"]
+        add_tool = server._tool_manager._tools["add_messages"]
+        read_tool = server._tool_manager._tools["read_thread"]
+
+        create_result = create_tool.fn()
+        thread_id = create_result["thread_id"]
+
+        # Long message that exceeds 60 chars
+        long_text = (
+            "This is a very long message that should be truncated "
+            "at a word boundary when used as a title"
+        )
+        messages = [{"role": "user", "text": long_text}]
+        add_tool.fn(thread_id=thread_id, messages=messages)
+
+        read_result = read_tool.fn(thread_id=thread_id)
+        assert read_result["title"] is not None
+        assert len(read_result["title"]) <= 63  # 60 + "..."
+        assert read_result["title"].endswith("...")
+
+    def test_thread_explicit_title_not_overwritten(self, server):
+        """Test that explicit title is not overwritten by first message."""
+        create_tool = server._tool_manager._tools["create_thread"]
+        add_tool = server._tool_manager._tools["add_messages"]
+        read_tool = server._tool_manager._tools["read_thread"]
+
+        # Create thread with explicit title
+        create_result = create_tool.fn(title="My Custom Title")
+        thread_id = create_result["thread_id"]
+
+        # Add message
+        messages = [{"role": "user", "text": "This should not become the title"}]
+        add_tool.fn(thread_id=thread_id, messages=messages)
+
+        # Title should remain unchanged
+        read_result = read_tool.fn(thread_id=thread_id)
+        assert read_result["title"] == "My Custom Title"
 
 
 class TestConceptTools:
@@ -195,7 +269,7 @@ class TestSkillTools:
         create_tool.fn(
             name="Git Workflow",
             description="Standard git branching and PR workflow",
-            instructions="Step 1: Create branch\nStep 2: Commit\nStep 3: Push\nStep 4: PR",
+            instructions="Step 1: Create branch\nStep 2: Commit\nStep 3: PR",
             tags=["git"],
         )
 
@@ -212,7 +286,7 @@ class TestSkillTools:
             assert "description" in skill
             assert "tags" in skill
             # Should NOT include full instructions (too verbose for listing)
-            assert "instructions" not in skill, "list_skills should not include instructions"
+            assert "instructions" not in skill, "list_skills excludes instructions"
 
         # Verify specific content
         python_skill = next(s for s in skills if s["name"] == "Python Testing")
@@ -237,14 +311,14 @@ class TestSkillTools:
         # Update the skill
         update_result = update_tool.fn(
             skill_id=skill_id,
-            instructions="Step 1: Import pytest\nStep 2: Write test functions\nStep 3: Run with pytest",
+            instructions="Step 1: Import pytest\nStep 2: Write tests\nStep 3: Run",
             description="Complete guide to Python testing",
         )
         assert update_result["updated"] is True
 
         # Verify the update
         skill = read_tool.fn(skill_id=skill_id)
-        assert "Step 3: Run with pytest" in skill["instructions"]
+        assert "Step 3: Run" in skill["instructions"]
         assert skill["description"] == "Complete guide to Python testing"
         assert skill["name"] == "Python Testing"  # Name unchanged
 
@@ -257,6 +331,50 @@ class TestSkillTools:
             instructions="New instructions",
         )
         assert result["error"] is not None
+
+    def test_search_skills(self, server):
+        """Test searching skills by semantic similarity."""
+        create_tool = server._tool_manager._tools["create_skill"]
+        search_tool = server._tool_manager._tools["search_skills"]
+
+        # Create skills with different topics
+        create_tool.fn(
+            name="Python Testing",
+            description="How to write and run pytest tests",
+            instructions="Step 1: Import pytest\nStep 2: Write test functions",
+            tags=["python", "testing"],
+        )
+        create_tool.fn(
+            name="Git Workflow",
+            description="Standard git branching and PR workflow",
+            instructions="Step 1: Create branch\nStep 2: Commit\nStep 3: Push",
+            tags=["git", "version-control"],
+        )
+        create_tool.fn(
+            name="Docker Deployment",
+            description="How to deploy applications with Docker containers",
+            instructions="Step 1: Write Dockerfile\nStep 2: Build image\nStep 3: Run",
+            tags=["docker", "deployment"],
+        )
+
+        # Search for testing-related skills
+        result = search_tool.fn(query="unit testing python")
+        assert "results" in result
+        results = result["results"]
+
+        # Should find at least the Python Testing skill
+        assert len(results) > 0
+        # First result should be the most relevant (Python Testing)
+        assert results[0]["name"] == "Python Testing"
+
+    def test_search_skills_empty_results(self, server):
+        """Test searching skills when none match."""
+        search_tool = server._tool_manager._tools["search_skills"]
+
+        # Search with no skills created
+        result = search_tool.fn(query="kubernetes helm charts")
+        assert "results" in result
+        assert result["results"] == []
 
 
 class TestProjectTools:
@@ -337,7 +455,9 @@ class TestReflectionTools:
 
         # Verify the update
         reflections = read_tool.fn()
-        matching = [r for r in reflections["reflections"] if r["reflection_id"] == reflection_id]
+        matching = [
+            r for r in reflections["reflections"] if r["reflection_id"] == reflection_id
+        ]
         assert len(matching) == 1
         assert "code examples" in matching[0]["text"]
         assert "code" in matching[0]["tags"]
@@ -351,4 +471,732 @@ class TestReflectionTools:
             text="New text",
         )
         assert result["error"] is not None
+
+
+class TestArtifactTools:
+    """Tests for artifact-related tools."""
+
+    @pytest.fixture
+    def server(self, tmp_path):
+        """Create a memory server with temp directory."""
+        return create_memory_server(base_path=str(tmp_path))
+
+    def test_create_artifact(self, server):
+        """Test creating an artifact."""
+        tool = server._tool_manager._tools["create_artifact"]
+        result = tool.fn(
+            name="API Design Doc",
+            description="Design document for the REST API",
+            content="# API Design\n\nThis document describes the API.",
+            content_type="markdown",
+            project_id="p_123",
+            tags=["design", "api"],
+        )
+
+        assert "artifact_id" in result
+        assert result["created"] is True
+        assert result["artifact_id"].startswith("a_")
+
+    def test_create_artifact_with_originating_thread(self, server):
+        """Test creating an artifact with originating thread."""
+        tool = server._tool_manager._tools["create_artifact"]
+        result = tool.fn(
+            name="Meeting Notes",
+            content="Notes from our meeting.",
+            originating_thread_id="t_123",
+        )
+
+        assert result["created"] is True
+
+        # Read it back to verify
+        read_tool = server._tool_manager._tools["read_artifact"]
+        artifact = read_tool.fn(artifact_id=result["artifact_id"])
+        assert artifact["originating_thread_id"] == "t_123"
+
+    def test_read_artifact(self, server):
+        """Test reading an artifact by ID."""
+        create_tool = server._tool_manager._tools["create_artifact"]
+        read_tool = server._tool_manager._tools["read_artifact"]
+
+        create_result = create_tool.fn(
+            name="Test Document",
+            content="Document content here.",
+        )
+        artifact_id = create_result["artifact_id"]
+
+        result = read_tool.fn(artifact_id=artifact_id)
+        assert result["name"] == "Test Document"
+        assert result["content"] == "Document content here."
+
+    def test_read_artifact_not_found(self, server):
+        """Test reading a non-existent artifact."""
+        read_tool = server._tool_manager._tools["read_artifact"]
+        result = read_tool.fn(artifact_id="a_nonexistent")
+        assert "error" in result
+
+    def test_update_artifact(self, server):
+        """Test updating an artifact."""
+        create_tool = server._tool_manager._tools["create_artifact"]
+        update_tool = server._tool_manager._tools["update_artifact"]
+        read_tool = server._tool_manager._tools["read_artifact"]
+
+        create_result = create_tool.fn(
+            name="Draft Document",
+            content="Initial content.",
+        )
+        artifact_id = create_result["artifact_id"]
+
+        update_result = update_tool.fn(
+            artifact_id=artifact_id,
+            content="Updated content with more details.",
+            description="Now has a description",
+        )
+        assert update_result["updated"] is True
+
+        # Verify the update
+        artifact = read_tool.fn(artifact_id=artifact_id)
+        assert artifact["content"] == "Updated content with more details."
+        assert artifact["description"] == "Now has a description"
+        assert artifact["name"] == "Draft Document"  # Name unchanged
+
+    def test_update_artifact_not_found(self, server):
+        """Test updating a non-existent artifact."""
+        update_tool = server._tool_manager._tools["update_artifact"]
+
+        result = update_tool.fn(
+            artifact_id="a_nonexistent",
+            content="New content",
+        )
+        assert "error" in result
+
+    def test_list_artifacts(self, server):
+        """Test listing artifacts."""
+        create_tool = server._tool_manager._tools["create_artifact"]
+        list_tool = server._tool_manager._tools["list_artifacts"]
+
+        # Create artifacts in different projects
+        create_tool.fn(name="Doc A", content="A", project_id="p_1")
+        create_tool.fn(name="Doc B", content="B", project_id="p_1")
+        create_tool.fn(name="Doc C", content="C", project_id="p_2")
+
+        # List all artifacts
+        all_result = list_tool.fn()
+        assert len(all_result["artifacts"]) == 3
+
+        # List by project
+        project_result = list_tool.fn(project_id="p_1")
+        assert len(project_result["artifacts"]) == 2
+
+    def test_list_artifacts_returns_summary(self, server):
+        """Test that list_artifacts returns summary without full content."""
+        create_tool = server._tool_manager._tools["create_artifact"]
+        list_tool = server._tool_manager._tools["list_artifacts"]
+
+        create_tool.fn(
+            name="Large Document",
+            description="A very large document",
+            content="# Lots of content here...\n" * 100,
+            tags=["large"],
+        )
+
+        result = list_tool.fn()
+        artifacts = result["artifacts"]
+
+        assert len(artifacts) == 1
+        artifact = artifacts[0]
+        assert "artifact_id" in artifact
+        assert "name" in artifact
+        assert "description" in artifact
+        assert "tags" in artifact
+        # Should NOT include full content (too verbose for listing)
+        assert "content" not in artifact, "list_artifacts should not include content"
+
+    def test_create_artifact_with_path_and_skill_id(self, server):
+        """Test creating an artifact with path and skill_id fields."""
+        create_tool = server._tool_manager._tools["create_artifact"]
+        read_tool = server._tool_manager._tools["read_artifact"]
+
+        result = create_tool.fn(
+            name="Migration Helper",
+            content="def migrate(): pass",
+            content_type="code",
+            path="database-migration/helper.py",
+            skill_id="s_abc123",
+        )
+
+        assert result["created"] is True
+
+        artifact = read_tool.fn(artifact_id=result["artifact_id"])
+        assert artifact["path"] == "database-migration/helper.py"
+        assert artifact["skill_id"] == "s_abc123"
+
+    def test_write_artifact_to_disk(self, server, tmp_path):
+        """Test writing an artifact to disk."""
+        create_tool = server._tool_manager._tools["create_artifact"]
+        write_tool = server._tool_manager._tools["write_artifact_to_disk"]
+
+        # Create an artifact with a path
+        create_result = create_tool.fn(
+            name="Helper Script",
+            content="def hello():\n    print('Hello, World!')",
+            content_type="code",
+            path="scripts/helper.py",
+        )
+        artifact_id = create_result["artifact_id"]
+
+        # Write to disk
+        target_dir = str(tmp_path / "output")
+        result = write_tool.fn(artifact_id=artifact_id, target_dir=target_dir)
+
+        assert result["written"] is True
+        assert result["path"] == f"{target_dir}/scripts/helper.py"
+
+        # Verify the file exists and has correct content
+        written_file = tmp_path / "output" / "scripts" / "helper.py"
+        assert written_file.exists()
+        # Note: storage strips trailing whitespace from body content
+        assert written_file.read_text() == "def hello():\n    print('Hello, World!')"
+
+    def test_write_artifact_to_disk_without_path(self, server, tmp_path):
+        """Test writing an artifact that has no path set."""
+        create_tool = server._tool_manager._tools["create_artifact"]
+        write_tool = server._tool_manager._tools["write_artifact_to_disk"]
+
+        # Create an artifact WITHOUT a path
+        create_result = create_tool.fn(
+            name="Some Document",
+            content="Document content",
+        )
+        artifact_id = create_result["artifact_id"]
+
+        # Should fail because no path is set
+        target_dir = str(tmp_path / "output")
+        result = write_tool.fn(artifact_id=artifact_id, target_dir=target_dir)
+
+        assert "error" in result
+        assert "path" in result["error"].lower()
+
+    def test_write_artifact_to_disk_not_found(self, server, tmp_path):
+        """Test writing a non-existent artifact."""
+        write_tool = server._tool_manager._tools["write_artifact_to_disk"]
+
+        result = write_tool.fn(artifact_id="a_nonexistent", target_dir=str(tmp_path))
+        assert "error" in result
+
+    def test_sync_artifact_from_disk(self, server, tmp_path):
+        """Test syncing an artifact from a file on disk."""
+        create_tool = server._tool_manager._tools["create_artifact"]
+        write_tool = server._tool_manager._tools["write_artifact_to_disk"]
+        sync_tool = server._tool_manager._tools["sync_artifact_from_disk"]
+        read_tool = server._tool_manager._tools["read_artifact"]
+
+        # Create an artifact with a path
+        create_result = create_tool.fn(
+            name="Helper Script",
+            content="def hello():\n    pass",
+            content_type="code",
+            path="scripts/helper.py",
+        )
+        artifact_id = create_result["artifact_id"]
+
+        # Write to disk
+        target_dir = str(tmp_path / "output")
+        write_tool.fn(artifact_id=artifact_id, target_dir=target_dir)
+
+        # Modify the file on disk (simulating user edits)
+        written_file = tmp_path / "output" / "scripts" / "helper.py"
+        written_file.write_text("def hello():\n    print('Modified!')")
+
+        # Sync back to artifact
+        result = sync_tool.fn(artifact_id=artifact_id, source_path=str(written_file))
+
+        assert result["synced"] is True
+
+        # Verify the artifact content was updated
+        artifact = read_tool.fn(artifact_id=artifact_id)
+        assert artifact["content"] == "def hello():\n    print('Modified!')"
+
+    def test_sync_artifact_from_disk_not_found(self, server, tmp_path):
+        """Test syncing a non-existent artifact."""
+        sync_tool = server._tool_manager._tools["sync_artifact_from_disk"]
+
+        result = sync_tool.fn(
+            artifact_id="a_nonexistent", source_path=str(tmp_path / "nofile.py")
+        )
+        assert "error" in result
+
+    def test_sync_artifact_from_disk_file_not_found(self, server, tmp_path):
+        """Test syncing from a non-existent file."""
+        create_tool = server._tool_manager._tools["create_artifact"]
+        sync_tool = server._tool_manager._tools["sync_artifact_from_disk"]
+
+        # Create an artifact
+        create_result = create_tool.fn(
+            name="Some Script",
+            content="original",
+            path="scripts/some.py",
+        )
+        artifact_id = create_result["artifact_id"]
+
+        # Try to sync from a file that doesn't exist
+        result = sync_tool.fn(
+            artifact_id=artifact_id, source_path=str(tmp_path / "nonexistent.py")
+        )
+        assert "error" in result
+
+
+class TestServerCoverageGaps:
+    """Tests for server code coverage gaps."""
+
+    @pytest.fixture
+    def server(self, tmp_path):
+        """Create a memory server with temp directory."""
+        return create_memory_server(base_path=str(tmp_path))
+
+    def test_read_thread_with_messages_from_filter(self, server):
+        """Test read_thread with messages_from timestamp filter."""
+        from datetime import datetime, timedelta
+
+        create_tool = server._tool_manager._tools["create_thread"]
+        add_tool = server._tool_manager._tools["add_messages"]
+        read_tool = server._tool_manager._tools["read_thread"]
+
+        # Create thread
+        create_result = create_tool.fn()
+        thread_id = create_result["thread_id"]
+
+        # Add messages at different times
+        now = datetime.now()
+        old_time = (now - timedelta(hours=1)).isoformat()
+        new_time = now.isoformat()
+
+        add_tool.fn(
+            thread_id=thread_id,
+            messages=[{"role": "user", "text": "Old message", "timestamp": old_time}],
+        )
+        add_tool.fn(
+            thread_id=thread_id,
+            messages=[{"role": "user", "text": "New message", "timestamp": new_time}],
+        )
+
+        # Read with messages_from filter
+        filter_time = (now - timedelta(minutes=30)).isoformat()
+        result = read_tool.fn(thread_id=thread_id, messages_from=filter_time)
+
+        assert "messages" in result
+        # Should only get messages after the filter time
+        assert len(result["messages"]) == 1
+        assert result["messages"][0]["text"] == "New message"
+
+    def test_add_messages_thread_not_found(self, server):
+        """Test add_messages with non-existent thread."""
+        add_tool = server._tool_manager._tools["add_messages"]
+
+        result = add_tool.fn(
+            thread_id="nonexistent_thread",
+            messages=[{"role": "user", "text": "Hello"}],
+        )
+        assert "error" in result
+
+    def test_search_messages_tool(self, server):
+        """Test search_messages tool."""
+        create_tool = server._tool_manager._tools["create_thread"]
+        add_tool = server._tool_manager._tools["add_messages"]
+        search_tool = server._tool_manager._tools["search_messages"]
+
+        # Create thread with messages
+        create_result = create_tool.fn(project_id="p_test")
+        thread_id = create_result["thread_id"]
+
+        add_tool.fn(
+            thread_id=thread_id,
+            messages=[{"role": "user", "text": "Question about databases"}],
+        )
+
+        # Search messages
+        result = search_tool.fn(query="databases")
+        assert "results" in result
+
+    def test_search_threads_tool(self, server):
+        """Test search_threads tool."""
+        create_tool = server._tool_manager._tools["create_thread"]
+        add_tool = server._tool_manager._tools["add_messages"]
+        search_tool = server._tool_manager._tools["search_threads"]
+
+        # Create thread with messages
+        create_result = create_tool.fn()
+        thread_id = create_result["thread_id"]
+
+        add_tool.fn(
+            thread_id=thread_id,
+            messages=[{"role": "user", "text": "Kubernetes deployment question"}],
+        )
+
+        # Search threads
+        result = search_tool.fn(query="kubernetes")
+        assert "results" in result
+
+    def test_compact_thread_not_found(self, server):
+        """Test compact_thread with non-existent thread."""
+        compact_tool = server._tool_manager._tools["compact_thread"]
+
+        result = compact_tool.fn(thread_id="nonexistent", summary="Summary")
+        assert "error" in result
+
+    def test_list_threads_tool(self, server):
+        """Test list_threads tool."""
+        create_tool = server._tool_manager._tools["create_thread"]
+        add_tool = server._tool_manager._tools["add_messages"]
+        list_tool = server._tool_manager._tools["list_threads"]
+
+        # Create threads
+        create_result1 = create_tool.fn(project_id="p_1")
+        create_result2 = create_tool.fn(project_id="p_2")
+
+        add_tool.fn(
+            thread_id=create_result1["thread_id"],
+            messages=[{"role": "user", "text": "Message 1"}],
+        )
+
+        # List all threads
+        result = list_tool.fn()
+        assert "threads" in result
+        assert len(result["threads"]) == 2
+
+        # List with project filter
+        result = list_tool.fn(project_id="p_1")
+        assert len(result["threads"]) == 1
+
+    def test_read_concept_not_found(self, server):
+        """Test read_concept with non-existent concept."""
+        read_tool = server._tool_manager._tools["read_concept"]
+        result = read_tool.fn(concept_id="c_nonexistent")
+        assert "error" in result
+
+    def test_read_concept_by_name_not_found(self, server):
+        """Test read_concept_by_name with non-existent concept."""
+        read_tool = server._tool_manager._tools["read_concept_by_name"]
+        result = read_tool.fn(name="NonExistent Concept")
+        assert "error" in result
+
+    def test_list_concepts_tool(self, server):
+        """Test list_concepts tool."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        list_tool = server._tool_manager._tools["list_concepts"]
+
+        # Create concepts
+        create_tool.fn(name="Concept A", project_id="p_1")
+        create_tool.fn(name="Concept B", project_id="p_2")
+
+        # List all concepts
+        result = list_tool.fn()
+        assert "concepts" in result
+        assert len(result["concepts"]) == 2
+
+        # List with project filter
+        result = list_tool.fn(project_id="p_1")
+        assert len(result["concepts"]) == 1
+
+    def test_update_concept_all_fields(self, server):
+        """Test update_concept with all optional fields."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        update_tool = server._tool_manager._tools["update_concept"]
+        read_tool = server._tool_manager._tools["read_concept"]
+
+        # Create concept
+        create_result = create_tool.fn(name="Original", text="Original text")
+        concept_id = create_result["concept_id"]
+
+        # Update all fields
+        update_result = update_tool.fn(
+            concept_id=concept_id,
+            name="Updated Name",
+            text="Updated text",
+            project_id="p_new",
+            tags=["new", "tags"],
+        )
+        assert update_result["updated"] is True
+
+        # Verify all fields updated
+        concept = read_tool.fn(concept_id=concept_id)
+        assert concept["name"] == "Updated Name"
+        assert concept["text"] == "Updated text"
+        assert concept["project_id"] == "p_new"
+        assert concept["tags"] == ["new", "tags"]
+
+    def test_update_concept_not_found(self, server):
+        """Test update_concept with non-existent concept."""
+        update_tool = server._tool_manager._tools["update_concept"]
+        result = update_tool.fn(concept_id="c_nonexistent", text="New text")
+        assert "error" in result
+
+    def test_update_reflection_all_fields(self, server):
+        """Test update_reflection with all optional fields."""
+        add_tool = server._tool_manager._tools["add_reflection"]
+        update_tool = server._tool_manager._tools["update_reflection"]
+        read_tool = server._tool_manager._tools["read_reflections"]
+
+        # Create reflection
+        add_result = add_tool.fn(text="Original reflection")
+        reflection_id = add_result["reflection_id"]
+
+        # Update all fields
+        update_result = update_tool.fn(
+            reflection_id=reflection_id,
+            text="Updated reflection",
+            project_id="p_new",
+            thread_id="t_new",
+            skill_id="s_new",
+            tags=["updated"],
+        )
+        assert update_result["updated"] is True
+
+    def test_update_reflection_not_found(self, server):
+        """Test update_reflection with non-existent reflection."""
+        update_tool = server._tool_manager._tools["update_reflection"]
+        result = update_tool.fn(reflection_id="r_nonexistent", text="New text")
+        assert "error" in result
+
+    def test_update_project_all_fields(self, server):
+        """Test update_project with all optional fields."""
+        create_tool = server._tool_manager._tools["create_project"]
+        update_tool = server._tool_manager._tools["update_project"]
+        read_tool = server._tool_manager._tools["read_project"]
+
+        # Create project
+        create_result = create_tool.fn(name="Original Project")
+        project_id = create_result["project_id"]
+
+        # Update all fields
+        update_result = update_tool.fn(
+            project_id=project_id,
+            name="Updated Project",
+            description="New description",
+            instructions="New instructions",
+            tags=["updated"],
+        )
+        assert update_result["updated"] is True
+
+        # Verify all fields updated
+        project = read_tool.fn(project_id=project_id)
+        assert project["name"] == "Updated Project"
+        assert project["description"] == "New description"
+        assert project["instructions"] == "New instructions"
+        assert project["tags"] == ["updated"]
+
+    def test_update_project_not_found(self, server):
+        """Test update_project with non-existent project."""
+        update_tool = server._tool_manager._tools["update_project"]
+        result = update_tool.fn(project_id="p_nonexistent", name="New name")
+        assert "error" in result
+
+    def test_update_skill_all_fields(self, server):
+        """Test update_skill with all optional fields."""
+        create_tool = server._tool_manager._tools["create_skill"]
+        update_tool = server._tool_manager._tools["update_skill"]
+        read_tool = server._tool_manager._tools["read_skill"]
+
+        # Create skill
+        create_result = create_tool.fn(name="Original Skill")
+        skill_id = create_result["skill_id"]
+
+        # Update all fields
+        update_result = update_tool.fn(
+            skill_id=skill_id,
+            name="Updated Skill",
+            description="New description",
+            instructions="New instructions",
+            tags=["updated"],
+        )
+        assert update_result["updated"] is True
+
+        # Verify all fields updated
+        skill = read_tool.fn(skill_id=skill_id)
+        assert skill["name"] == "Updated Skill"
+        assert skill["description"] == "New description"
+        assert skill["instructions"] == "New instructions"
+        assert skill["tags"] == ["updated"]
+
+    def test_update_skill_not_found(self, server):
+        """Test update_skill with non-existent skill."""
+        update_tool = server._tool_manager._tools["update_skill"]
+        result = update_tool.fn(skill_id="s_nonexistent", name="New name")
+        assert "error" in result
+
+    def test_update_artifact_all_fields(self, server):
+        """Test update_artifact with all optional fields."""
+        create_tool = server._tool_manager._tools["create_artifact"]
+        update_tool = server._tool_manager._tools["update_artifact"]
+        read_tool = server._tool_manager._tools["read_artifact"]
+
+        # Create artifact
+        create_result = create_tool.fn(name="Original Artifact")
+        artifact_id = create_result["artifact_id"]
+
+        # Update all fields
+        update_result = update_tool.fn(
+            artifact_id=artifact_id,
+            name="Updated Artifact",
+            content="New content",
+            description="New description",
+            content_type="code",
+            path="new/path.py",
+            skill_id="s_new",
+            project_id="p_new",
+            tags=["updated"],
+        )
+        assert update_result["updated"] is True
+
+        # Verify all fields updated
+        artifact = read_tool.fn(artifact_id=artifact_id)
+        assert artifact["name"] == "Updated Artifact"
+        assert artifact["content"] == "New content"
+        assert artifact["description"] == "New description"
+        assert artifact["content_type"] == "code"
+        assert artifact["path"] == "new/path.py"
+        assert artifact["skill_id"] == "s_new"
+        assert artifact["project_id"] == "p_new"
+        assert artifact["tags"] == ["updated"]
+
+    def test_update_artifact_not_found(self, server):
+        """Test update_artifact with non-existent artifact."""
+        update_tool = server._tool_manager._tools["update_artifact"]
+        result = update_tool.fn(artifact_id="a_nonexistent", name="New name")
+        assert "error" in result
+
+    def test_search_artifacts_tool(self, server):
+        """Test search_artifacts tool."""
+        create_tool = server._tool_manager._tools["create_artifact"]
+        search_tool = server._tool_manager._tools["search_artifacts"]
+
+        # Create artifact
+        create_tool.fn(
+            name="Database Schema",
+            content="CREATE TABLE users (id INT, name VARCHAR)",
+            project_id="p_test",
+        )
+
+        # Search artifacts
+        result = search_tool.fn(query="database schema")
+        assert "results" in result
+
+    def test_rebuild_index_tool(self, server):
+        """Test rebuild_index tool."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        rebuild_tool = server._tool_manager._tools["rebuild_index"]
+
+        # Create some content
+        create_tool.fn(name="Test Concept", text="Test content")
+
+        # Rebuild index
+        result = rebuild_tool.fn()
+        assert result["rebuilt"] is True
+
+    def test_read_project_not_found(self, server):
+        """Test read_project with non-existent project."""
+        read_tool = server._tool_manager._tools["read_project"]
+        result = read_tool.fn(project_id="p_nonexistent")
+        assert "error" in result
+
+    def test_read_skill_not_found(self, server):
+        """Test read_skill with non-existent skill."""
+        read_tool = server._tool_manager._tools["read_skill"]
+        result = read_tool.fn(skill_id="s_nonexistent")
+        assert "error" in result
+
+    def test_read_artifact_not_found(self, server):
+        """Test read_artifact with non-existent artifact."""
+        read_tool = server._tool_manager._tools["read_artifact"]
+        result = read_tool.fn(artifact_id="a_nonexistent")
+        assert "error" in result
+
+    def test_write_artifact_to_disk_not_found(self, server, tmp_path):
+        """Test write_artifact_to_disk with non-existent artifact."""
+        write_tool = server._tool_manager._tools["write_artifact_to_disk"]
+        result = write_tool.fn(artifact_id="a_nonexistent", target_dir=str(tmp_path))
+        assert "error" in result
+
+    def test_write_artifact_to_disk_no_path(self, server, tmp_path):
+        """Test write_artifact_to_disk with artifact that has no path."""
+        create_tool = server._tool_manager._tools["create_artifact"]
+        write_tool = server._tool_manager._tools["write_artifact_to_disk"]
+
+        # Create artifact without path
+        create_result = create_tool.fn(name="No Path Artifact", content="content")
+        artifact_id = create_result["artifact_id"]
+
+        result = write_tool.fn(artifact_id=artifact_id, target_dir=str(tmp_path))
+        assert "error" in result
+        assert "no path" in result["error"].lower()
+
+    def test_sync_artifact_from_disk_not_found(self, server, tmp_path):
+        """Test sync_artifact_from_disk with non-existent artifact."""
+        sync_tool = server._tool_manager._tools["sync_artifact_from_disk"]
+        result = sync_tool.fn(artifact_id="a_nonexistent", source_path=str(tmp_path / "file.py"))
+        assert "error" in result
+
+    def test_list_skills_tool(self, server):
+        """Test list_skills tool."""
+        create_tool = server._tool_manager._tools["create_skill"]
+        list_tool = server._tool_manager._tools["list_skills"]
+
+        # Create skills
+        create_tool.fn(name="Skill A", description="Description A")
+        create_tool.fn(name="Skill B", description="Description B")
+
+        # List skills
+        result = list_tool.fn()
+        assert "skills" in result
+        assert len(result["skills"]) == 2
+
+    def test_search_skills_tool(self, server):
+        """Test search_skills tool."""
+        create_tool = server._tool_manager._tools["create_skill"]
+        search_tool = server._tool_manager._tools["search_skills"]
+
+        # Create skill
+        create_tool.fn(
+            name="Python Testing",
+            description="How to test Python code",
+            instructions="Use pytest for testing",
+        )
+
+        # Search skills
+        result = search_tool.fn(query="python testing")
+        assert "results" in result
+
+    def test_list_projects_tool(self, server):
+        """Test list_projects tool."""
+        create_tool = server._tool_manager._tools["create_project"]
+        list_tool = server._tool_manager._tools["list_projects"]
+
+        # Create projects
+        create_tool.fn(name="Project A")
+        create_tool.fn(name="Project B")
+
+        # List projects
+        result = list_tool.fn()
+        assert "projects" in result
+        assert len(result["projects"]) == 2
+
+    def test_search_concepts_tool(self, server):
+        """Test search_concepts tool."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        search_tool = server._tool_manager._tools["search_concepts"]
+
+        # Create concept
+        create_tool.fn(
+            name="Database Design",
+            text="Information about database schema design",
+            project_id="p_test",
+        )
+
+        # Search concepts
+        result = search_tool.fn(query="database schema")
+        assert "results" in result
+
+        # Search with project filter
+        result = search_tool.fn(query="database", project_id="p_test")
+        assert "results" in result
+
 

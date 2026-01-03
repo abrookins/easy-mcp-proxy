@@ -156,137 +156,137 @@ mcp_servers:
 # Another skills server, this time wrapping filesystem MCP server.
 # Uses parameter binding to hide the 'path' parameter and bake in the skills root
 file-skills-server:
-command: npx
-args:
- - -y
- - "@modelcontextprotocol/server-filesystem"
- - /Users/andrew/Documents/Notes/Skills
-cwd: /Users/andrew/Documents/Notes/Skills  # Ensures relative paths resolve correctly
-tools:
-  read_text_file:
-    name: read_skill_file
-    description: |
-      Read a skill file from the skills library. Use this to retrieve
-      the full contents of a specific skill document (markdown, yaml,
-      json, etc.) by its path within the skills folder.
-    parameters:
-      path:
-        description: "Path to the skill file within the skills library (e.g., 'deployment/kubernetes.md')"
-  read_multiple_files:
-    name: read_multiple_skill_files
-    description: |
-      Read multiple skill files simultaneously. Use this to efficiently
-      retrieve the contents of several skill documents at once. Failed
-      reads won't stop the entire operation.
-    parameters:
-      paths:
-        description: "Array of paths to skill files within the skills library"
-  read_media_file:
-    name: read_skill_media
-    description: |
-      Read an image or audio file from the skills library. Use this to
-      retrieve diagrams, screenshots, or audio recordings associated
-      with skill documentation.
-    parameters:
-      path:
-        description: "Path to the media file within the skills library"
-  list_directory:
-    name: list_skill_categories
-    description: |
-      List skill categories or files in a directory. Use this to browse
-      the skills library and discover available skill documents organized
-      by category or topic. Call with no arguments to list root categories.
-    parameters:
-      path:
-        rename: category
-        default: "."
-        description: "Category folder to list (e.g., 'deployment'). Leave empty to list root categories."
-  search_files:
-    name: search_skill_files
-    description: |
-      Search for skill files by name pattern. Use this to find skill
-      documents matching keywords like "deploy", "debug", "setup",
-      "migration", etc. Returns file paths that match the pattern.
-    parameters:
-      path:
-        hidden: true
-        default: "."
-      pattern:
-        description: "Glob pattern to search for (e.g., '**/*.md' for all markdown files, '**/deploy*' for deployment-related files)"
-  directory_tree:
-    name: get_skills_structure
-    description: |
-      Get the full directory tree of the skills library. Use this to
-      understand the overall organization of skills and see all
-      available categories and documents at a glance.
-    parameters:
-      path:
-        hidden: true
-        default: "."
-  write_file:
-    name: save_skill_file
-    description: |
-      Save a new skill file to the skills library. Use this to create
-      new skill documents with step-by-step procedures, tips, and
-      examples. Use appropriate file extensions (.md for markdown,
-      .yaml for structured data).
-    parameters:
-      path:
-        rename: skill_path
-        description: "Relative path for the new skill file (e.g., 'deployment/new-guide.md')"
-      content:
-        description: "The content of the skill file (markdown recommended)"
-  edit_file:
-    name: update_skill_file
-    description: |
-      Edit an existing skill file. Use this to update procedures,
-      add new steps, fix errors, or enhance documentation in a
-      skill document.
-    parameters:
-      path:
-        description: "Path to the skill file to edit"
-  create_directory:
-    name: create_skill_category
-    description: |
-      Create a new category (subdirectory) in the skills library.
-      Use this to organize skills into logical groups. Creates
-      parent directories if needed and succeeds silently if the
-      directory already exists.
-    parameters:
-      path:
-        description: "Path for the new category folder (e.g., 'deployment/kubernetes')"
-  move_file:
-    name: move_skill_file
-    description: |
-      Move or rename a skill file or category. Use this to reorganize
-      the skills library structure or rename files for clarity.
-      Fails if the destination already exists.
-    parameters:
-      source:
-        description: "Current path of the skill file or category"
-      destination:
-        description: "New path for the skill file or category"
-  get_file_info:
-    name: get_skill_file_info
-    description: |
-      Get detailed metadata about a skill file or category. Returns
-      size, creation time, modified time, access time, type, and
-      permissions. Useful for understanding when files were last
-      updated.
-    parameters:
-      path:
-        description: "Path to the skill file or category"
-  list_directory_with_sizes:
-    name: list_skill_files_with_sizes
-    description: |
-      List skill files in a category with file sizes. Returns detailed
-      listing with sizes and summary statistics. Useful for identifying
-      large or small skill documents.
-    parameters:
-      path:
-        description: "Path to the category folder to list"
-      sortBy:
-        description: "Sort entries by 'name' or 'size' (default: 'name')"
+    command: npx
+    args:
+     - -y
+     - "@modelcontextprotocol/server-filesystem"
+     - /Users/andrew/Documents/Notes/Skills
+    cwd: /Users/andrew/Documents/Notes/Skills  # Ensures relative paths resolve correctly
+    tools:
+      read_text_file:
+        name: read_skill_file
+        description: |
+          Read a skill file from the skills library. Use this to retrieve
+          the full contents of a specific skill document (markdown, yaml,
+          json, etc.) by its path within the skills folder.
+        parameters:
+          path:
+            description: "Path to the skill file within the skills library (e.g., 'deployment/kubernetes.md')"
+      read_multiple_files:
+        name: read_multiple_skill_files
+        description: |
+          Read multiple skill files simultaneously. Use this to efficiently
+          retrieve the contents of several skill documents at once. Failed
+          reads won't stop the entire operation.
+        parameters:
+          paths:
+            description: "Array of paths to skill files within the skills library"
+      read_media_file:
+        name: read_skill_media
+        description: |
+          Read an image or audio file from the skills library. Use this to
+          retrieve diagrams, screenshots, or audio recordings associated
+          with skill documentation.
+        parameters:
+          path:
+            description: "Path to the media file within the skills library"
+      list_directory:
+        name: list_skill_categories
+        description: |
+          List skill categories or files in a directory. Use this to browse
+          the skills library and discover available skill documents organized
+          by category or topic. Call with no arguments to list root categories.
+        parameters:
+          path:
+            rename: category
+            default: "."
+            description: "Category folder to list (e.g., 'deployment'). Leave empty to list root categories."
+      search_files:
+        name: search_skill_files
+        description: |
+          Search for skill files by name pattern. Use this to find skill
+          documents matching keywords like "deploy", "debug", "setup",
+          "migration", etc. Returns file paths that match the pattern.
+        parameters:
+          path:
+            hidden: true
+            default: "."
+          pattern:
+            description: "Glob pattern to search for (e.g., '**/*.md' for all markdown files, '**/deploy*' for deployment-related files)"
+      directory_tree:
+        name: get_skills_structure
+        description: |
+          Get the full directory tree of the skills library. Use this to
+          understand the overall organization of skills and see all
+          available categories and documents at a glance.
+        parameters:
+          path:
+            hidden: true
+            default: "."
+      write_file:
+        name: save_skill_file
+        description: |
+          Save a new skill file to the skills library. Use this to create
+          new skill documents with step-by-step procedures, tips, and
+          examples. Use appropriate file extensions (.md for markdown,
+          .yaml for structured data).
+        parameters:
+          path:
+            rename: skill_path
+            description: "Relative path for the new skill file (e.g., 'deployment/new-guide.md')"
+          content:
+            description: "The content of the skill file (markdown recommended)"
+      edit_file:
+        name: update_skill_file
+        description: |
+          Edit an existing skill file. Use this to update procedures,
+          add new steps, fix errors, or enhance documentation in a
+          skill document.
+        parameters:
+          path:
+            description: "Path to the skill file to edit"
+      create_directory:
+        name: create_skill_category
+        description: |
+          Create a new category (subdirectory) in the skills library.
+          Use this to organize skills into logical groups. Creates
+          parent directories if needed and succeeds silently if the
+          directory already exists.
+        parameters:
+          path:
+            description: "Path for the new category folder (e.g., 'deployment/kubernetes')"
+      move_file:
+        name: move_skill_file
+        description: |
+          Move or rename a skill file or category. Use this to reorganize
+          the skills library structure or rename files for clarity.
+          Fails if the destination already exists.
+        parameters:
+          source:
+            description: "Current path of the skill file or category"
+          destination:
+            description: "New path for the skill file or category"
+      get_file_info:
+        name: get_skill_file_info
+        description: |
+          Get detailed metadata about a skill file or category. Returns
+          size, creation time, modified time, access time, type, and
+          permissions. Useful for understanding when files were last
+          updated.
+        parameters:
+          path:
+            description: "Path to the skill file or category"
+      list_directory_with_sizes:
+        name: list_skill_files_with_sizes
+        description: |
+          List skill files in a category with file sizes. Returns detailed
+          listing with sizes and summary statistics. Useful for identifying
+          large or small skill documents.
+        parameters:
+          path:
+            description: "Path to the category folder to list"
+          sortBy:
+            description: "Sort entries by 'name' or 'size' (default: 'name')"
 
 
 

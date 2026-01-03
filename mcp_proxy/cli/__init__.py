@@ -6,6 +6,7 @@ from mcp_proxy.cli.commands import (
     call,
     config_cmd,
     init,
+    instructions,
     schema,
     serve,
     servers,
@@ -40,6 +41,7 @@ main.add_command(serve)
 main.add_command(call)
 main.add_command(config_cmd)
 main.add_command(init)
+main.add_command(instructions)
 
 # Register command groups
 main.add_command(server)

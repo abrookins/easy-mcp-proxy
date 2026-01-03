@@ -44,6 +44,10 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 asyncio_default_fixture_loop_scope = "function"
 addopts = "--cov=mcp_proxy --cov-report=term-missing --cov-fail-under=100"
+filterwarnings = [
+    # FAISS SWIG bindings deprecation warnings (upstream issue, not fixable in our code)
+    "ignore:builtin type Swig.*has no __module__ attribute:DeprecationWarning",
+]
 
 [tool.coverage.run]
 source = ["mcp_proxy"]

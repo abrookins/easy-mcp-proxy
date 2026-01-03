@@ -10,10 +10,14 @@ from pydantic import BaseModel, Field
 
 
 def generate_id(prefix: str) -> str:
-    """Generate a unique ID with the given prefix."""
-    import uuid
+    """Generate a unique ID with the given prefix.
 
-    return f"{prefix}_{uuid.uuid4().hex[:12]}"
+    Uses ULID (Universally Unique Lexicographically Sortable Identifier)
+    for time-sortable, unique IDs.
+    """
+    from ulid import ULID
+
+    return f"{prefix}_{ULID()}"
 
 
 class Message(BaseModel):
@@ -31,6 +35,7 @@ class Thread(BaseModel):
     """
 
     thread_id: str = Field(default_factory=lambda: generate_id("t"))
+    title: str | None = None  # Human-friendly title for the thread
     project_id: str | None = None
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
@@ -104,6 +109,35 @@ class Reflection(BaseModel):
     text: str = ""  # Markdown body with the reflection content
 
 
+class Artifact(BaseModel):
+    """A collaborative document that the LLM and user work on together.
+
+    Artifacts are persistent documents that can be linked to projects and
+    accessed across different conversation threads. They represent work
+    products like specifications, designs, code, or any document that
+    evolves through collaboration.
+
+    For code artifacts linked to Skills, the `path` field specifies the
+    relative path within the artifacts directory (e.g., "my-skill/helper.py").
+    Use `skill_id` to link the artifact back to its parent Skill.
+
+    Stored as markdown with YAML frontmatter.
+    """
+
+    artifact_id: str = Field(default_factory=lambda: generate_id("a"))
+    name: str  # Human-readable title for the artifact
+    description: str = ""  # Brief description of the artifact's purpose
+    content_type: str = "markdown"  # Type: markdown, code, json, yaml, etc.
+    path: str | None = None  # Relative path for file-based artifacts
+    skill_id: str | None = None  # Optional link to parent Skill
+    project_id: str | None = None  # Optional project association
+    originating_thread_id: str | None = None  # Thread where artifact was created
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    tags: list[str] = Field(default_factory=list)
+    content: str = ""  # Markdown body with the artifact content
+
+
 class MemoryConfig(BaseModel):
     """Configuration for the memory system.
 
@@ -118,9 +152,9 @@ class MemoryConfig(BaseModel):
     projects_dir: str = "Projects"
     skills_dir: str = "Skills"  # Could be "Procedures", "How-To", etc.
     reflections_dir: str = "Reflections"
+    artifacts_dir: str = "Artifacts"  # Collaborative documents
     # Search settings
     embedding_model: str = "all-MiniLM-L6-v2"  # Sentence transformer model
     index_path: str = ".memory_index"  # Where to store FAISS index
     # Additional directories to index (for flexible vault structures)
     extra_concept_dirs: list[str] = []  # e.g., ["People", "Characters", "Entities"]
-

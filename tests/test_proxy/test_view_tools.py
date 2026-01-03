@@ -134,3 +134,71 @@ class TestDefaultViewIncludesAllUpstreamTools:
         assert "tool_a" in tool_names
         assert "tool_b" not in tool_names
         assert len(tools) == 1
+
+
+class TestCreateToolInfoFromUpstream:
+    """Tests for _create_tool_info_from_upstream function."""
+
+    def test_create_tool_info_with_tool_config(self):
+        """_create_tool_info_from_upstream should apply tool_config overrides."""
+        from mcp_proxy.models import ToolConfig
+        from mcp_proxy.proxy.tools import _create_tool_info_from_upstream
+
+        # Create a mock upstream tool
+        mock_tool = MagicMock()
+        mock_tool.name = "original_name"
+        mock_tool.description = "Original description"
+        mock_tool.inputSchema = {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+        }
+
+        # Create tool config with overrides
+        tool_config = ToolConfig(
+            name="aliased_name",
+            description="Custom description",
+        )
+
+        result = _create_tool_info_from_upstream(mock_tool, "test-server", tool_config)
+
+        assert result.name == "aliased_name"
+        assert result.description == "Custom description"
+        assert result.original_name == "original_name"
+        assert result.server == "test-server"
+
+    def test_create_tool_info_without_tool_config(self):
+        """_create_tool_info_from_upstream should use upstream values when no config."""
+        from mcp_proxy.proxy.tools import _create_tool_info_from_upstream
+
+        # Create a mock upstream tool
+        mock_tool = MagicMock()
+        mock_tool.name = "my_tool"
+        mock_tool.description = "My tool description"
+        mock_tool.inputSchema = {
+            "type": "object",
+            "properties": {"x": {"type": "number"}},
+        }
+
+        result = _create_tool_info_from_upstream(mock_tool, "server")
+
+        assert result.name == "my_tool"
+        assert result.description == "My tool description"
+        assert result.original_name == "my_tool"
+        assert result.input_schema["properties"]["x"]["type"] == "number"
+
+
+class TestProcessViewIncludeAllFallback:
+    """Tests for _process_view_include_all_fallback function."""
+
+    def test_include_all_with_no_server_tools(self):
+        """include_all should return empty list if server has no tools configured."""
+        from mcp_proxy.models import ToolViewConfig, UpstreamServerConfig
+        from mcp_proxy.proxy.tools import _process_view_include_all_fallback
+
+        # Server with no tools
+        server_config = UpstreamServerConfig(command="echo")
+        view_config = ToolViewConfig(include_all=True, tools={})
+
+        result = _process_view_include_all_fallback("server", server_config, view_config)
+
+        assert result == []

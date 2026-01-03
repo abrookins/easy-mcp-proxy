@@ -28,6 +28,130 @@ class TestGetConfigPath:
         assert fake_config_file.exists()
 
 
+class TestCLIInstructions:
+    """Tests for 'mcp-proxy instructions' command."""
+
+    def test_instructions_server_not_found(self, sample_config_yaml):
+        """'instructions' should error for unknown server."""
+        from mcp_proxy.cli import main
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["instructions", "nonexistent", "--config", str(sample_config_yaml)]
+        )
+
+        assert result.exit_code == 1
+        assert "not found" in result.output
+
+    def test_instructions_single_server_with_instructions(self, tmp_path):
+        """'instructions' should show server instructions."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("mcp_servers:\n  test:\n    command: echo\ntool_views: {}\n")
+
+        # Mock the client
+        mock_client = MagicMock()
+        mock_init_result = MagicMock()
+        mock_init_result.instructions = "Test instructions from server"
+        mock_client.initialize_result = mock_init_result
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("mcp_proxy.proxy.MCPProxy._create_client", return_value=mock_client):
+            runner = CliRunner()
+            result = runner.invoke(
+                main, ["instructions", "test", "--config", str(config_file)]
+            )
+
+        assert result.exit_code == 0
+        assert "Test instructions from server" in result.output
+
+    def test_instructions_single_server_no_instructions(self, tmp_path):
+        """'instructions' should show message when server has no instructions."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("mcp_servers:\n  test:\n    command: echo\ntool_views: {}\n")
+
+        # Mock the client with no instructions
+        mock_client = MagicMock()
+        mock_init_result = MagicMock()
+        mock_init_result.instructions = None
+        mock_client.initialize_result = mock_init_result
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("mcp_proxy.proxy.MCPProxy._create_client", return_value=mock_client):
+            runner = CliRunner()
+            result = runner.invoke(
+                main, ["instructions", "test", "--config", str(config_file)]
+            )
+
+        assert result.exit_code == 0
+        assert "no instructions provided" in result.output
+
+    def test_instructions_server_connection_error(self, tmp_path):
+        """'instructions' should show error when server connection fails."""
+        from unittest.mock import AsyncMock, patch
+
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("mcp_servers:\n  test:\n    command: echo\ntool_views: {}\n")
+
+        # Mock the client to raise an exception
+        async def raise_error(*args, **kwargs):
+            mock = AsyncMock()
+            mock.__aenter__ = AsyncMock(side_effect=ConnectionError("Connection failed"))
+            return mock
+
+        with patch("mcp_proxy.proxy.MCPProxy._create_client", side_effect=raise_error):
+            runner = CliRunner()
+            result = runner.invoke(
+                main, ["instructions", "test", "--config", str(config_file)]
+            )
+
+        # Should show error but not crash
+        assert "Error" in result.output or "error" in result.output.lower()
+
+    def test_instructions_multiple_servers(self, tmp_path):
+        """'instructions' should show all servers when no server specified."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "mcp_servers:\n"
+            "  server1:\n    command: echo\n"
+            "  server2:\n    command: echo\n"
+            "tool_views: {}\n"
+        )
+
+        # Mock the client
+        mock_client = MagicMock()
+        mock_init_result = MagicMock()
+        mock_init_result.instructions = "Instructions here"
+        mock_client.initialize_result = mock_init_result
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("mcp_proxy.proxy.MCPProxy._create_client", return_value=mock_client):
+            runner = CliRunner()
+            result = runner.invoke(
+                main, ["instructions", "--config", str(config_file)]
+            )
+
+        assert result.exit_code == 0
+        # Should have section headers for multiple servers
+        assert "=== server1 ===" in result.output or "=== server2 ===" in result.output
+
+
 class TestCLIServers:
     """Tests for 'mcp-proxy servers' command."""
 

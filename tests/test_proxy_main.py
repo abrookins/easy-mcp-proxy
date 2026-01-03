@@ -148,6 +148,209 @@ tool_views:
         assert search_tool.description == "Search code in repos"
 
 
+class TestMCPProxyInstructions:
+    """Tests for upstream server instruction forwarding."""
+
+    def test_proxy_stores_upstream_instructions(self):
+        """Proxy should store instructions fetched from upstream servers."""
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Initially no instructions
+        assert proxy.upstream_instructions == {}
+
+        # After setting instructions (simulating fetch)
+        proxy.upstream_instructions["server"] = "Test instructions"
+        assert proxy.upstream_instructions["server"] == "Test instructions"
+
+    def test_get_aggregated_instructions_single_server(self):
+        """Aggregated instructions should combine all upstream instructions."""
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+        proxy.upstream_instructions["server"] = "Instructions from server"
+
+        result = proxy.get_aggregated_instructions()
+
+        assert "server" in result
+        assert "Instructions from server" in result
+
+    def test_get_aggregated_instructions_multiple_servers(self):
+        """Aggregated instructions should include all servers."""
+        config = ProxyConfig(
+            mcp_servers={
+                "server1": {"command": "echo"},
+                "server2": {"command": "echo"},
+            },
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+        proxy.upstream_instructions["server1"] = "First server instructions"
+        proxy.upstream_instructions["server2"] = "Second server instructions"
+
+        result = proxy.get_aggregated_instructions()
+
+        assert "server1" in result
+        assert "First server instructions" in result
+        assert "server2" in result
+        assert "Second server instructions" in result
+
+    def test_get_aggregated_instructions_empty(self):
+        """Aggregated instructions should return None when no instructions."""
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        result = proxy.get_aggregated_instructions()
+
+        assert result is None
+
+    def test_get_aggregated_instructions_all_empty(self):
+        """Aggregated instructions should return None when all are empty strings."""
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+        # Set instructions to empty/falsy values
+        proxy.upstream_instructions["server1"] = ""
+        proxy.upstream_instructions["server2"] = None
+
+        result = proxy.get_aggregated_instructions()
+
+        assert result is None
+
+    def test_view_mcp_has_aggregated_instructions(self):
+        """View MCP should have aggregated instructions set."""
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={"myview": {"description": "Test view"}},
+        )
+        proxy = MCPProxy(config)
+        proxy.upstream_instructions["server"] = "Server instructions here"
+
+        view_mcp = proxy.get_view_mcp("myview")
+
+        assert view_mcp.instructions is not None
+        assert "Server instructions here" in view_mcp.instructions
+
+    @pytest.mark.asyncio
+    async def test_fetch_upstream_instructions(self):
+        """fetch_upstream_instructions should fetch and store instructions."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Mock the client with initialize_result containing instructions
+        mock_client = MagicMock()
+        mock_init_result = MagicMock()
+        mock_init_result.instructions = "Instructions from upstream"
+        mock_client.initialize_result = mock_init_result
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        await proxy.fetch_upstream_instructions("server", mock_client)
+
+        assert proxy.upstream_instructions["server"] == "Instructions from upstream"
+
+    @pytest.mark.asyncio
+    async def test_fetch_upstream_instructions_none(self):
+        """fetch_upstream_instructions should handle None instructions."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Mock the client with no instructions
+        mock_client = MagicMock()
+        mock_init_result = MagicMock()
+        mock_init_result.instructions = None
+        mock_client.initialize_result = mock_init_result
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        await proxy.fetch_upstream_instructions("server", mock_client)
+
+        # Should not store None instructions
+        assert "server" not in proxy.upstream_instructions
+
+    @pytest.mark.asyncio
+    async def test_refresh_upstream_tools_fetches_instructions(self):
+        """refresh_upstream_tools should also fetch instructions."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Mock the client with instructions
+        mock_client = MagicMock()
+        mock_init_result = MagicMock()
+        mock_init_result.instructions = "Test instructions"
+        mock_client.initialize_result = mock_init_result
+        mock_client.list_tools = AsyncMock(return_value=[])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        proxy.upstream_clients["server"] = mock_client
+
+        await proxy.refresh_upstream_tools()
+
+        assert proxy.upstream_instructions.get("server") == "Test instructions"
+
+    def test_get_server_instructions_tool_registered(self):
+        """get_server_instructions tool should be registered on view MCP."""
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={"myview": {"description": "Test view"}},
+        )
+        proxy = MCPProxy(config)
+        proxy.upstream_instructions["server"] = "Server instructions here"
+
+        view_mcp = proxy.get_view_mcp("myview")
+
+        # Check that get_server_instructions tool is registered
+        tools = view_mcp._tool_manager._tools
+        assert "get_server_instructions" in tools
+
+    @pytest.mark.asyncio
+    async def test_get_server_instructions_tool_returns_instructions(self):
+        """get_server_instructions tool should return aggregated instructions."""
+        from fastmcp import Client
+
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={"myview": {"description": "Test view"}},
+        )
+        proxy = MCPProxy(config)
+        proxy.upstream_instructions["server"] = "Server instructions here"
+
+        view_mcp = proxy.get_view_mcp("myview")
+
+        async with Client(view_mcp) as client:
+            result = await client.call_tool("get_server_instructions", {})
+            # Result is a CallToolResult with content
+            assert len(result.content) > 0
+            text_content = result.content[0].text
+            assert "Server instructions here" in text_content
+
+
 class TestMCPProxyToolRegistration:
     """Tests for tool registration in direct/search modes."""
 
@@ -1207,8 +1410,9 @@ class TestInputSchemaPreservation:
         async with Client(view_mcp) as client:
             tools = await client.list_tools()
 
-        assert len(tools) == 1
-        tool = tools[0]
+        # Should have 2 tools: search_tool + get_server_instructions
+        assert len(tools) == 2
+        tool = next(t for t in tools if t.name == "search_tool")
         assert tool.name == "search_tool"
         # The inputSchema should match what we provided
         assert tool.inputSchema["properties"]["query"]["type"] == "string"
