@@ -77,7 +77,9 @@ class TestThreadTools:
     @pytest.fixture
     def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path), embedding_model=embedding_model)
+        return create_memory_server(
+            base_path=str(tmp_path), embedding_model=embedding_model
+        )
 
     def test_create_thread(self, server):
         """Test creating a thread."""
@@ -229,7 +231,9 @@ class TestConceptTools:
     @pytest.fixture
     def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path), embedding_model=embedding_model)
+        return create_memory_server(
+            base_path=str(tmp_path), embedding_model=embedding_model
+        )
 
     def test_create_concept(self, server):
         """Test creating a concept."""
@@ -261,7 +265,9 @@ class TestSkillTools:
     @pytest.fixture
     def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path), embedding_model=embedding_model)
+        return create_memory_server(
+            base_path=str(tmp_path), embedding_model=embedding_model
+        )
 
     def test_list_skills_returns_summary_without_instructions(self, server):
         """Test that list_skills returns a compact summary without full instructions."""
@@ -424,7 +430,9 @@ class TestProjectTools:
     @pytest.fixture
     def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path), embedding_model=embedding_model)
+        return create_memory_server(
+            base_path=str(tmp_path), embedding_model=embedding_model
+        )
 
     def test_update_project(self, server):
         """Test updating a project."""
@@ -471,7 +479,9 @@ class TestReflectionTools:
     @pytest.fixture
     def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path), embedding_model=embedding_model)
+        return create_memory_server(
+            base_path=str(tmp_path), embedding_model=embedding_model
+        )
 
     def test_update_reflection(self, server):
         """Test updating a reflection."""
@@ -520,7 +530,9 @@ class TestArtifactTools:
     @pytest.fixture
     def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path), embedding_model=embedding_model)
+        return create_memory_server(
+            base_path=str(tmp_path), embedding_model=embedding_model
+        )
 
     def test_create_artifact(self, server):
         """Test creating an artifact."""
@@ -792,7 +804,9 @@ class TestServerCoverageGaps:
     @pytest.fixture
     def server(self, tmp_path, embedding_model):
         """Create a memory server with temp directory."""
-        return create_memory_server(base_path=str(tmp_path), embedding_model=embedding_model)
+        return create_memory_server(
+            base_path=str(tmp_path), embedding_model=embedding_model
+        )
 
     def test_read_thread_with_messages_from_filter(self, server):
         """Test read_thread with messages_from timestamp filter."""

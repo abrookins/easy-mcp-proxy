@@ -13,4 +13,3 @@ def embedding_model():
     from sentence_transformers import SentenceTransformer
 
     return SentenceTransformer("all-MiniLM-L6-v2")
-
