@@ -623,23 +623,20 @@ class MCPProxy:
         path: str = "",
         view_prefix: str = "/view",
     ) -> Starlette:
-        """Create an ASGI app with multi-view routing."""
+        """Create an ASGI app with multi-view routing.
+
+        Tools are registered lazily in the lifespan after connecting to upstream
+        servers. This ensures upstream processes are only spawned once (for
+        persistent connections) rather than twice (once for tool discovery,
+        once for connections).
+        """
         from contextlib import asynccontextmanager
 
-        self.sync_fetch_tools()
-
-        aggregated_instructions = self.get_aggregated_instructions()
-        default_mcp = FastMCP(
-            "MCP Proxy - Default", instructions=aggregated_instructions
-        )
-        default_tools = self.get_view_tools(None)
-        self._register_tools_on_mcp(default_mcp, default_tools)
-        self._register_instructions_tool(default_mcp)
-
+        # Create FastMCP instances - tools will be registered in the lifespan
+        default_mcp = FastMCP("MCP Proxy - Default")
         view_mcps: dict[str, FastMCP] = {}
         for view_name in self.views:
-            view_mcp = self.get_view_mcp(view_name)
-            view_mcps[view_name] = view_mcp
+            view_mcps[view_name] = FastMCP(f"MCP Proxy - {view_name}")
 
         default_mcp_app = default_mcp.http_app(path="/mcp")
 
@@ -649,8 +646,33 @@ class MCPProxy:
 
         @asynccontextmanager
         async def combined_lifespan(app: Starlette):  # pragma: no cover
-            await self.initialize()
+            # Connect to upstream servers (spawns processes once)
             await self.connect_clients()
+
+            # Fetch tools and instructions from active connections
+            await self.fetch_tools_from_active_clients()
+
+            # Now register tools on FastMCP instances
+            aggregated_instructions = self.get_aggregated_instructions()
+            default_mcp.instructions = aggregated_instructions
+
+            default_tools = self.get_view_tools(None)
+            self._register_tools_on_mcp(default_mcp, default_tools)
+            self._register_instructions_tool(default_mcp)
+
+            for view_name, view_mcp in view_mcps.items():
+                view_mcp.instructions = aggregated_instructions
+                view = self.views[view_name]
+                await view.initialize(
+                    self.upstream_clients, get_client=self.get_active_client
+                )
+                if view.config.exposure_mode == "search":
+                    self._register_search_tool(view_mcp, view_name)
+                else:
+                    view_tools = self.get_view_tools(view_name)
+                    self._register_tools_on_mcp(view_mcp, view_tools, view=view)
+                self._register_instructions_tool(view_mcp)
+
             try:
                 async with default_mcp_app.lifespan(default_mcp_app):
                     yield
