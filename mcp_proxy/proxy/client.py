@@ -1,5 +1,6 @@
 """Client management for MCP Proxy."""
 
+import logging
 from contextlib import AsyncExitStack
 from typing import Any
 
@@ -8,6 +9,8 @@ from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
 
 from mcp_proxy.models import ProxyConfig, UpstreamServerConfig
 from mcp_proxy.utils import expand_env_vars
+
+logger = logging.getLogger(__name__)
 
 
 class ClientManager:
@@ -110,9 +113,9 @@ class ClientManager:
         for server_name in self.upstream_clients:
             try:
                 await self.fetch_upstream_tools(server_name)
-            except Exception:
+            except Exception as e:
                 # Log error but continue - tool will work without schema
-                pass
+                logger.debug("Failed to fetch tools from %s: %s", server_name, e)
 
     async def refresh_tools_from_active_clients(
         self, instruction_callback: Any | None = None
@@ -133,9 +136,9 @@ class ClientManager:
                     await instruction_callback(
                         server_name, self._active_clients[server_name]
                     )
-            except Exception:
+            except Exception as e:
                 # Log error but continue - tool will work without schema
-                pass
+                logger.debug("Failed to refresh tools from %s: %s", server_name, e)
 
     async def connect_clients(self, fetch_tools: bool = False) -> None:
         """Establish persistent connections to all upstream servers.
@@ -164,9 +167,9 @@ class ClientManager:
                 # Enter the client context - this starts the connection/subprocess
                 await self._exit_stack.enter_async_context(client)
                 self._active_clients[server_name] = client
-            except Exception:
+            except Exception as e:
                 # Log but continue - some servers may be unavailable
-                pass
+                logger.warning("Failed to connect to server %s: %s", server_name, e)
 
         if fetch_tools:
             await self.refresh_tools_from_active_clients()

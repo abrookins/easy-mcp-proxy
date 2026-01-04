@@ -219,6 +219,91 @@ class TestProxyConnectionManagement:
         # Should NOT have called _create_client since client already exists
         mock_create.assert_not_called()
 
+    def test_sync_fetch_tools_skips_when_tools_exist(self):
+        """sync_fetch_tools should return early if tools already fetched."""
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Pre-populate _upstream_tools
+        mock_tool = MagicMock()
+        proxy._upstream_tools = {"server": [mock_tool]}
+
+        with patch.object(
+            proxy, "_create_client", new_callable=AsyncMock
+        ) as mock_create:
+            with patch.object(proxy, "fetch_upstream_tools", new_callable=AsyncMock):
+                proxy.sync_fetch_tools()
+
+        # Should NOT have called _create_client since tools already exist
+        mock_create.assert_not_called()
+
+    def test_sync_fetch_tools_creates_client_and_handles_error(self):
+        """sync_fetch_tools should create clients and handle errors gracefully."""
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        mock_client = AsyncMock()
+
+        with patch.object(
+            proxy, "_create_client", new_callable=AsyncMock, return_value=mock_client
+        ):
+            with patch.object(
+                proxy,
+                "fetch_upstream_tools",
+                new_callable=AsyncMock,
+                side_effect=ConnectionError("Failed"),
+            ):
+                # Should not raise - errors are caught
+                proxy.sync_fetch_tools()
+
+        # Client should be stored despite error
+        assert proxy.upstream_clients["server"] is mock_client
+
+    async def test_sync_fetch_tools_skips_when_loop_running(self):
+        """sync_fetch_tools should do nothing when called from async context."""
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        with patch.object(
+            proxy, "_create_client", new_callable=AsyncMock
+        ) as mock_create:
+            # Already in async context - sync_fetch_tools should detect loop
+            # and not run asyncio.run()
+            proxy.sync_fetch_tools()
+
+        # Should NOT have called _create_client since we're in async context
+        mock_create.assert_not_called()
+
+    async def test_fetch_tools_from_active_clients(self):
+        """fetch_tools_from_active_clients should delegate to client manager."""
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        mock_tool = MagicMock()
+        mock_tool.name = "test_tool"
+
+        mock_client = AsyncMock()
+        mock_client.list_tools.return_value = [mock_tool]
+
+        proxy._active_clients["server"] = mock_client
+
+        await proxy.fetch_tools_from_active_clients()
+
+        # Check that tools were fetched
+        assert "server" in proxy._upstream_tools
+
 
 class TestProxyClientFetchUpstreamTools:
     """Tests for fetch_upstream_tools in client.py."""
@@ -234,6 +319,128 @@ class TestProxyClientFetchUpstreamTools:
 
         with pytest.raises(ValueError, match="No client for server"):
             await manager.fetch_upstream_tools("nonexistent")
+
+    async def test_fetch_tools_from_active_client_success(self):
+        """fetch_tools_from_active_client should fetch tools from connected client."""
+        from mcp_proxy.proxy.client import ClientManager
+
+        mock_tool = MagicMock()
+        mock_tool.name = "active_tool"
+
+        mock_client = AsyncMock()
+        mock_client.list_tools.return_value = [mock_tool]
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        manager = ClientManager(config)
+        manager._active_clients["server"] = mock_client
+
+        tools = await manager.fetch_tools_from_active_client("server")
+
+        assert len(tools) == 1
+        assert tools[0].name == "active_tool"
+        assert "server" in manager._upstream_tools
+
+    async def test_fetch_tools_from_active_client_not_found(self):
+        """fetch_tools_from_active_client should raise for unknown server."""
+        import pytest
+
+        from mcp_proxy.proxy.client import ClientManager
+
+        config = ProxyConfig(mcp_servers={}, tool_views={})
+        manager = ClientManager(config)
+
+        with pytest.raises(ValueError, match="No active client for server"):
+            await manager.fetch_tools_from_active_client("nonexistent")
+
+    async def test_refresh_tools_from_active_clients_success(self):
+        """refresh_tools_from_active_clients should fetch from all clients."""
+        from mcp_proxy.proxy.client import ClientManager
+
+        mock_tool = MagicMock()
+        mock_tool.name = "refreshed_tool"
+
+        mock_client = AsyncMock()
+        mock_client.list_tools.return_value = [mock_tool]
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        manager = ClientManager(config)
+        manager._active_clients["server"] = mock_client
+
+        await manager.refresh_tools_from_active_clients()
+
+        assert "server" in manager._upstream_tools
+        assert manager._upstream_tools["server"][0].name == "refreshed_tool"
+
+    async def test_refresh_tools_from_active_clients_with_callback(self):
+        """refresh_tools_from_active_clients should call instruction callback."""
+        from mcp_proxy.proxy.client import ClientManager
+
+        mock_tool = MagicMock()
+        mock_client = AsyncMock()
+        mock_client.list_tools.return_value = [mock_tool]
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        manager = ClientManager(config)
+        manager._active_clients["server"] = mock_client
+
+        callback = AsyncMock()
+        await manager.refresh_tools_from_active_clients(instruction_callback=callback)
+
+        callback.assert_called_once_with("server", mock_client)
+
+    async def test_refresh_tools_from_active_clients_handles_errors(self):
+        """refresh_tools_from_active_clients should continue on errors."""
+        from mcp_proxy.proxy.client import ClientManager
+
+        mock_client = AsyncMock()
+        mock_client.list_tools.side_effect = ConnectionError("Failed")
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        manager = ClientManager(config)
+        manager._active_clients["server"] = mock_client
+
+        # Should not raise
+        await manager.refresh_tools_from_active_clients()
+
+    async def test_connect_clients_with_fetch_tools(self):
+        """connect_clients with fetch_tools=True should fetch tools."""
+        from mcp_proxy.proxy.client import ClientManager
+
+        mock_tool = MagicMock()
+        mock_tool.name = "fetched_tool"
+
+        mock_client = AsyncMock()
+        mock_client.list_tools.return_value = [mock_tool]
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        manager = ClientManager(config)
+
+        with patch.object(
+            manager, "create_client_from_config", return_value=mock_client
+        ):
+            await manager.connect_clients(fetch_tools=True)
+
+        assert "server" in manager._upstream_tools
+        mock_client.list_tools.assert_called_once()
+
+        await manager.disconnect_clients()
 
     async def test_fetch_upstream_tools_success(self):
         """fetch_upstream_tools should fetch and cache tools."""

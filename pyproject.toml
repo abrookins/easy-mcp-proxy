@@ -19,6 +19,7 @@ dependencies = [
     "faiss-cpu>=1.7.0",
     "numpy>=1.24.0",
     "python-ulid>=3.1.0",
+    "httpx>=0.28.1",
 ]
 
 [dependency-groups]
@@ -59,6 +60,9 @@ exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
     "if __name__ == .__main__.:",
+    "@abstractmethod",
+    "raise NotImplementedError",
+    "\\.\\.\\.",  # Ellipsis in abstract methods
 ]
 # Exclude partial branches that are hard to test
 partial_branches = [

@@ -2,6 +2,9 @@
 
 An MCP proxy server that aggregates tools from multiple upstream MCP servers and exposes them through **tool views** — filtered, transformed, and composed subsets of tools.
 
+## Development Status
+**Experimental, barely works!**
+
 ## Features
 
 - **Tool aggregation**: Connect to multiple upstream MCP servers (stdio or HTTP)

@@ -89,6 +89,26 @@ class UpstreamServerConfig(BaseModel):
     tools: dict[str, ToolConfig] | None = None
 
 
+class AuthConfig(BaseModel):
+    """Configuration for HTTP endpoint authentication.
+
+    Supports two modes:
+    1. Static credentials (no token_url): Validates client_id:client_secret directly
+    2. OAuth client credentials (with token_url): Validates against OAuth provider
+    """
+
+    client_id: str
+    client_secret: str
+    token_url: str | None = None  # If None, use static credential validation
+    scopes: list[str] = []
+    audience: str | None = None
+    issuer_url: str | None = None  # Base URL for OAuth discovery endpoints
+
+
+# Alias for backwards compatibility
+OAuthConfig = AuthConfig
+
+
 class ProxyConfig(BaseModel):
     """Root configuration for the MCP proxy."""
 
@@ -96,3 +116,4 @@ class ProxyConfig(BaseModel):
 
     mcp_servers: dict[str, UpstreamServerConfig] = {}
     tool_views: dict[str, ToolViewConfig] = {}
+    auth: OAuthConfig | None = None

@@ -94,6 +94,29 @@ class ToolView:
         """Get the upstream server name for a tool."""
         return self._tool_to_server.get(tool_name, "")
 
+    def update_tool_mapping(self, tools: list[Any]) -> None:
+        """Update the tool-to-server mapping with discovered tools.
+
+        This is called after upstream tools are fetched to ensure that
+        dynamically discovered tools (e.g., from include_all views or
+        servers without explicit tool config) are properly mapped.
+
+        Args:
+            tools: List of ToolInfo objects containing tool name, server,
+                   and original_name information.
+        """
+        for tool in tools:
+            tool_name = tool.name
+            server_name = tool.server
+            original_name = getattr(tool, "original_name", tool_name)
+
+            # Don't overwrite existing mappings (explicit config takes precedence)
+            if tool_name not in self._tool_to_server and server_name:
+                self._tool_to_server[tool_name] = server_name
+                # Track rename mapping if tool was renamed
+                if original_name != tool_name:
+                    self._tool_to_original_name[tool_name] = original_name
+
     def _transform_tool(self, tool: Any, config: ToolConfig) -> Any:
         """Transform a tool with name/description overrides."""
 

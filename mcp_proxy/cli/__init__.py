@@ -13,6 +13,7 @@ from mcp_proxy.cli.commands import (
     tools,
     validate,
 )
+from mcp_proxy.cli.nginx import nginx
 from mcp_proxy.cli.server import server
 from mcp_proxy.cli.utils import (
     DEFAULT_CONFIG_DIR,
@@ -46,6 +47,7 @@ main.add_command(instructions)
 # Register command groups
 main.add_command(server)
 main.add_command(view)
+main.add_command(nginx)
 
 __all__ = [
     "main",

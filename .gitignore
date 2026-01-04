@@ -54,3 +54,5 @@ Thumbs.db
 
 config.yaml
 .env
+certs
+custom_tools/

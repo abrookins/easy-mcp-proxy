@@ -9,6 +9,64 @@ from fastmcp.tools.tool import FunctionTool
 from mcp_proxy.models import ToolConfig
 
 
+def resolve_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
+    """Resolve $ref references in a JSON Schema to create a flat schema.
+
+    This is important because some LLM clients don't properly handle
+    $ref references in tool schemas. This function inlines all
+    references to make the schema self-contained.
+
+    Args:
+        schema: JSON Schema that may contain $ref references
+
+    Returns:
+        A new schema with all $ref references resolved inline
+    """
+    if not schema:
+        return schema
+
+    # Deep copy to avoid mutating the original
+    schema = copy.deepcopy(schema)
+
+    # Get definitions (could be under $defs or definitions)
+    defs = schema.get("$defs", schema.get("definitions", {}))
+
+    def resolve_ref(obj: Any) -> Any:
+        """Recursively resolve $ref references."""
+        if isinstance(obj, dict):
+            if "$ref" in obj:
+                ref = obj["$ref"]
+                # Handle local references like "#/$defs/SomeType"
+                if ref.startswith("#/$defs/") or ref.startswith("#/definitions/"):
+                    ref_name = ref.split("/")[-1]
+                    if ref_name in defs:
+                        # Replace the $ref with the actual definition
+                        resolved = copy.deepcopy(defs[ref_name])
+                        # Merge other properties from original (like description)
+                        for key, value in obj.items():
+                            if key != "$ref":
+                                resolved[key] = value
+                        return resolve_ref(resolved)  # Recursively resolve nested refs
+                # If we can't resolve, return as-is
+                return obj
+            else:
+                # Recursively process all values
+                return {k: resolve_ref(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [resolve_ref(item) for item in obj]
+        else:
+            return obj
+
+    # Resolve all references
+    resolved = resolve_ref(schema)
+
+    # Remove the $defs/definitions since they're now inlined
+    resolved.pop("$defs", None)
+    resolved.pop("definitions", None)
+
+    return resolved
+
+
 def create_tool_with_schema(
     name: str,
     description: str,

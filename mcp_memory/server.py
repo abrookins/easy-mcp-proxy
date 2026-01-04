@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastmcp import FastMCP
+from mcp.types import TextContent
 
 from mcp_memory.models import (
     Artifact,
@@ -239,46 +240,44 @@ def create_memory_server(
         thread_id: str | None = None,
         title: str | None = None,
     ) -> dict:
-        """Create a new conversation thread.
-
-        Args:
-            project_id: Optional project to associate with this thread
-            thread_id: Optional custom thread ID (auto-generated if not provided)
-            title: Optional human-friendly title (auto-derived from first message if not provided)
-        """
+        """Create a new conversation thread for persisting messages across sessions. Call this at the start of conversations you want to remember. Title is auto-derived from the first message if not provided."""
         thread = Thread(project_id=project_id, title=title)
         if thread_id:
             thread.thread_id = thread_id
         storage.save(thread)
         return {"thread_id": thread.thread_id, "title": thread.title, "created": True}
 
+    def _text(text: str) -> TextContent:
+        """Wrap text in TextContent for MCP response."""
+        return TextContent(type="text", text=text)
+
     @mcp.tool()
     def read_thread(
         thread_id: str,
         messages_from: str | None = None,
-    ) -> dict:
-        """Read a thread and its messages.
-
-        Args:
-            thread_id: The thread ID to read
-            messages_from: Optional ISO timestamp to filter messages from
-        """
+    ) -> TextContent:
+        """Retrieve a thread and its messages. Use when resuming a conversation to restore context. Pass messages_from as ISO timestamp to get only messages added since your last sync."""
         thread = storage.load_thread(thread_id)
         if not thread:
-            return {"error": f"Thread {thread_id} not found"}
+            return _text(f"Thread {thread_id} not found")
 
         messages = thread.messages
         if messages_from:
             from_dt = datetime.fromisoformat(messages_from)
             messages = [m for m in messages if m.timestamp >= from_dt]
 
-        return {
-            "thread_id": thread.thread_id,
-            "title": thread.title,
-            "project_id": thread.project_id,
-            "summary": thread.summary,
-            "messages": [m.model_dump(mode="json") for m in messages],
-        }
+        lines = [
+            f"# {thread.title or 'Untitled'}",
+            f"**Thread ID:** `{thread.thread_id}`",
+        ]
+        if thread.project_id:
+            lines.append(f"**Project:** `{thread.project_id}`")
+        if thread.summary:
+            lines.append(f"\n**Summary:** {thread.summary}")
+        lines.append(f"\n## Messages ({len(messages)})\n")
+        for m in messages:
+            lines.append(f"**{m.role}** ({m.timestamp:%Y-%m-%d %H:%M}):\n{m.text}\n")
+        return _text("\n".join(lines))
 
     def _derive_title_from_text(text: str, max_length: int = 60) -> str:
         """Derive a thread title from message text.
@@ -301,12 +300,7 @@ def create_memory_server(
         thread_id: str,
         messages: list[dict],
     ) -> dict:
-        """Add messages to a thread.
-
-        Args:
-            thread_id: The thread to add messages to
-            messages: List of messages with 'role' and 'text' fields
-        """
+        """Append messages to an existing thread. Call frequently during conversations to persist context—don't wait until the end. Each message needs 'role' (user/assistant) and 'text' fields; 'timestamp' is optional (defaults to now)."""
         thread = storage.load_thread(thread_id)
         if not thread:
             return {"error": f"Thread {thread_id} not found"}
@@ -344,39 +338,36 @@ def create_memory_server(
         thread_id: str | None = None,
         project_id: str | None = None,
         limit: int = 10,
-    ) -> dict:
-        """Search messages by semantic similarity.
-
-        Args:
-            query: Search query text
-            thread_id: Optional thread to search within
-            project_id: Optional project to filter by
-            limit: Maximum results to return
-        """
+    ) -> TextContent:
+        """Find past conversation content using semantic search. Returns thread IDs and message indices—use read_thread() to get full context. Filter by thread_id or project_id to narrow results."""
         results = searcher.search_messages(
             query, limit=limit, thread_id=thread_id, project_id=project_id
         )
-        return {"results": results}
+        if not results:
+            return _text(f"No messages found for query: {query}")
+        lines = [f"# Message Search Results ({len(results)})\n"]
+        for r in results:
+            lines.append(
+                f"- Thread `{r['thread_id']}` msg#{r['message_index']} "
+                f"(score: {r['score']:.2f})"
+            )
+        return _text("\n".join(lines))
 
     @mcp.tool()
-    def search_threads(query: str, limit: int = 10) -> dict:
-        """Search threads by their message content.
-
-        Args:
-            query: Search query text
-            limit: Maximum results to return
-        """
+    def search_threads(query: str, limit: int = 10) -> TextContent:
+        """Find conversation threads by their message content using semantic search. Use this to locate past conversations on a topic. Returns thread IDs—use read_thread() to get the full conversation."""
         results = searcher.search_threads(query, limit=limit)
-        return {"results": results}
+        if not results:
+            return _text(f"No threads found for query: {query}")
+        lines = [f"# Thread Search Results ({len(results)})\n"]
+        for r in results:
+            title = r.get("title", "Untitled")
+            lines.append(f"- `{r['thread_id']}` **{title}** (score: {r['score']:.2f})")
+        return _text("\n".join(lines))
 
     @mcp.tool()
     def compact_thread(thread_id: str, summary: str) -> dict:
-        """Compact a thread by replacing messages with a summary.
-
-        Args:
-            thread_id: The thread to compact
-            summary: Summary text to replace messages with
-        """
+        """Replace a thread's messages with a summary to reduce storage. Use for long threads where individual messages are no longer needed. The summary becomes the thread's new context—messages are deleted permanently."""
         thread = storage.load_thread(thread_id)
         if not thread:
             return {"error": f"Thread {thread_id} not found"}
@@ -388,30 +379,22 @@ def create_memory_server(
         return {"thread_id": thread_id, "compacted": True}
 
     @mcp.tool()
-    def list_threads(project_id: str | None = None, limit: int = 50) -> dict:
-        """List all threads, optionally filtered by project.
-
-        Args:
-            project_id: Optional project to filter by
-            limit: Maximum number of threads to return
-        """
+    def list_threads(project_id: str | None = None, limit: int = 50) -> TextContent:
+        """Browse all conversation threads, sorted by most recently updated. Use to find threads when you don't have a specific search query. Filter by project_id to see only threads for a specific project."""
         threads = storage.list_threads(project_id=project_id)
-        # Sort by updated_at descending
         threads.sort(key=lambda t: t.updated_at, reverse=True)
         threads = threads[:limit]
-        return {
-            "threads": [
-                {
-                    "thread_id": t.thread_id,
-                    "title": t.title,
-                    "project_id": t.project_id,
-                    "message_count": len(t.messages),
-                    "has_summary": t.summary is not None,
-                    "updated_at": t.updated_at.isoformat(),
-                }
-                for t in threads
-            ]
-        }
+        if not threads:
+            return _text("No threads found")
+        lines = [f"# Threads ({len(threads)})\n"]
+        for t in threads:
+            project_info = f" [project: `{t.project_id}`]" if t.project_id else ""
+            summary_mark = " 📝" if t.summary else ""
+            lines.append(
+                f"- `{t.thread_id}` **{t.title or 'Untitled'}**{project_info}\n"
+                f"  {len(t.messages)} msgs, updated {t.updated_at:%Y-%m-%d}{summary_mark}"
+            )
+        return _text("\n".join(lines))
 
     # ============ Concept Tools ============
 
@@ -420,40 +403,46 @@ def create_memory_server(
         query: str,
         project_id: str | None = None,
         limit: int = 10,
-    ) -> dict:
-        """Search concepts by semantic similarity.
-
-        Args:
-            query: Search query text
-            project_id: Optional project to filter by
-            limit: Maximum results to return
-        """
+    ) -> TextContent:
+        """Find stored knowledge about users, topics, or entities using semantic search. Always call this before create_concept() to avoid duplicates. Returns concept IDs—use read_concept() for full content."""
         results = searcher.search_concepts(query, limit=limit, project_id=project_id)
-        return {"results": results}
+        if not results:
+            return _text(f"No concepts found for query: {query}")
+        lines = [f"# Concept Search Results ({len(results)})\n"]
+        for r in results:
+            lines.append(f"- `{r['id']}` **{r['name']}** (score: {r['score']:.2f})")
+        return _text("\n".join(lines))
+
+    def _format_concept(concept) -> str:
+        """Format a concept as markdown."""
+        lines = [
+            f"# {concept.name}",
+            f"**Concept ID:** `{concept.concept_id}`",
+        ]
+        if concept.project_id:
+            lines.append(f"**Project:** `{concept.project_id}`")
+        if concept.tags:
+            lines.append(f"**Tags:** {', '.join(concept.tags)}")
+        lines.append(f"**Updated:** {concept.updated_at:%Y-%m-%d %H:%M}")
+        if concept.text:
+            lines.append(f"\n---\n\n{concept.text}")
+        return "\n".join(lines)
 
     @mcp.tool()
-    def read_concept(concept_id: str) -> dict:
-        """Read a concept by ID.
-
-        Args:
-            concept_id: The concept ID to read
-        """
+    def read_concept(concept_id: str) -> TextContent:
+        """Get the full content of a concept by its ID. Use after search_concepts() or list_concepts() to retrieve the complete markdown content."""
         concept = storage.load_concept(concept_id)
         if not concept:
-            return {"error": f"Concept {concept_id} not found"}
-        return concept.model_dump(mode="json")
+            return _text(f"Concept {concept_id} not found")
+        return _text(_format_concept(concept))
 
     @mcp.tool()
-    def read_concept_by_name(name: str) -> dict:
-        """Read a concept by name.
-
-        Args:
-            name: The concept name to read
-        """
+    def read_concept_by_name(name: str) -> TextContent:
+        """Get a concept by its exact name. Faster than search when you know the exact name. Returns the full markdown content."""
         concept = storage.load_concept_by_name(name)
         if not concept:
-            return {"error": f"Concept '{name}' not found"}
-        return concept.model_dump(mode="json")
+            return _text(f"Concept '{name}' not found")
+        return _text(_format_concept(concept))
 
     @mcp.tool()
     def create_concept(
@@ -462,14 +451,7 @@ def create_memory_server(
         project_id: str | None = None,
         tags: list[str] | None = None,
     ) -> dict:
-        """Create a new concept.
-
-        Args:
-            name: Name of the concept
-            text: Markdown content for the concept
-            project_id: Optional project association
-            tags: Optional list of tags
-        """
+        """Store knowledge about users, topics, or entities as a named markdown document. Always search_concepts() first to check for existing entries—use update_concept() instead if one exists. Good for user preferences, facts, and domain knowledge."""
         concept = Concept(
             name=name,
             text=text,
@@ -490,25 +472,17 @@ def create_memory_server(
         return {"concept_id": concept.concept_id, "created": True}
 
     @mcp.tool()
-    def list_concepts(project_id: str | None = None) -> dict:
-        """List all concepts, optionally filtered by project.
-
-        Args:
-            project_id: Optional project to filter by
-        """
+    def list_concepts(project_id: str | None = None) -> TextContent:
+        """Browse all stored concepts. Use when you want to see everything available rather than searching for something specific. Returns names and IDs—use read_concept() to get full content."""
         concepts = storage.list_concepts(project_id=project_id)
-        return {
-            "concepts": [
-                {
-                    "concept_id": c.concept_id,
-                    "name": c.name,
-                    "project_id": c.project_id,
-                    "tags": c.tags,
-                    "updated_at": c.updated_at.isoformat(),
-                }
-                for c in concepts
-            ]
-        }
+        if not concepts:
+            return _text("No concepts found")
+        lines = [f"# Concepts ({len(concepts)})\n"]
+        for c in concepts:
+            project_info = f" [project: `{c.project_id}`]" if c.project_id else ""
+            tags_info = f" ({', '.join(c.tags)})" if c.tags else ""
+            lines.append(f"- `{c.concept_id}` **{c.name}**{project_info}{tags_info}")
+        return _text("\n".join(lines))
 
     @mcp.tool()
     def update_concept(
@@ -518,15 +492,7 @@ def create_memory_server(
         project_id: str | None = None,
         tags: list[str] | None = None,
     ) -> dict:
-        """Update an existing concept.
-
-        Args:
-            concept_id: The concept ID to update
-            name: New name (optional)
-            text: New markdown content (optional)
-            project_id: New project association (optional)
-            tags: New tags (optional)
-        """
+        """Modify an existing concept's content or metadata. Use to add new information to existing concepts rather than creating duplicates. Only provided fields are updated—omit fields to keep current values."""
         concept = storage.load_concept(concept_id)
         if not concept:
             return {"error": f"Concept {concept_id} not found"}
@@ -556,15 +522,7 @@ def create_memory_server(
         skill_id: str | None = None,
         tags: list[str] | None = None,
     ) -> dict:
-        """Add a new reflection.
-
-        Args:
-            text: The reflection content (markdown)
-            project_id: Optional project association
-            thread_id: Optional thread association
-            skill_id: Optional skill association
-            tags: Optional list of tags
-        """
+        """Record a learning or insight from an error or corrective feedback. Use when something went wrong or could be improved—describe what happened and what to do differently. Link to skill_id if related to a specific procedure. Check read_reflections() before similar tasks."""
         reflection = Reflection(
             text=text,
             project_id=project_id,
@@ -579,15 +537,22 @@ def create_memory_server(
     def read_reflections(
         project_id: str | None = None,
         skill_id: str | None = None,
-    ) -> dict:
-        """Read reflections, optionally filtered by project or skill.
-
-        Args:
-            project_id: Optional project to filter by
-            skill_id: Optional skill to filter by
-        """
+    ) -> TextContent:
+        """Review past learnings and insights to avoid repeating mistakes. Call before performing tasks where you've previously made errors. Filter by skill_id to see reflections for a specific procedure."""
         reflections = storage.list_reflections(project_id=project_id, skill_id=skill_id)
-        return {"reflections": [r.model_dump(mode="json") for r in reflections]}
+        if not reflections:
+            return _text("No reflections found")
+        lines = [f"# Reflections ({len(reflections)})\n"]
+        for r in reflections:
+            project_info = f" [project: `{r.project_id}`]" if r.project_id else ""
+            skill_info = f" [skill: `{r.skill_id}`]" if r.skill_id else ""
+            thread_info = f" [thread: `{r.thread_id}`]" if r.thread_id else ""
+            tags_info = f" ({', '.join(r.tags)})" if r.tags else ""
+            lines.append(
+                f"## `{r.reflection_id}`{project_info}{skill_info}{thread_info}{tags_info}\n"
+                f"{r.text}\n"
+            )
+        return _text("\n".join(lines))
 
     @mcp.tool()
     def update_reflection(
@@ -598,16 +563,7 @@ def create_memory_server(
         skill_id: str | None = None,
         tags: list[str] | None = None,
     ) -> dict:
-        """Update an existing reflection.
-
-        Args:
-            reflection_id: The reflection ID to update
-            text: New text content (optional)
-            project_id: New project association (optional)
-            thread_id: New thread association (optional)
-            skill_id: New skill association (optional)
-            tags: New tags (optional)
-        """
+        """Modify an existing reflection's content or associations. Use to refine learnings or add context. Only provided fields are updated."""
         reflection = storage.load_reflection(reflection_id)
         if not reflection:
             return {"error": f"Reflection {reflection_id} not found"}
@@ -636,14 +592,7 @@ def create_memory_server(
         instructions: str = "",
         tags: list[str] | None = None,
     ) -> dict:
-        """Create a new project.
-
-        Args:
-            name: Project name
-            description: Short description
-            instructions: Markdown instructions for the project
-            tags: Optional list of tags
-        """
+        """Create a project to group related threads, concepts, and artifacts. Use to mirror project configuration from your IDE or workspace into persistent memory. Check list_projects() first to avoid duplicates."""
         project = Project(
             name=name,
             description=description,
@@ -654,22 +603,36 @@ def create_memory_server(
         return {"project_id": project.project_id, "created": True}
 
     @mcp.tool()
-    def read_project(project_id: str) -> dict:
-        """Read a project by ID.
-
-        Args:
-            project_id: The project ID to read
-        """
+    def read_project(project_id: str) -> TextContent:
+        """Get a project's full details including description and instructions. Use at the start of work sessions to load project-specific context and guidelines."""
         project = storage.load_project(project_id)
         if not project:
-            return {"error": f"Project {project_id} not found"}
-        return project.model_dump(mode="json")
+            return _text(f"Project {project_id} not found")
+        lines = [
+            f"# {project.name}",
+            f"**Project ID:** `{project.project_id}`",
+        ]
+        if project.description:
+            lines.append(f"**Description:** {project.description}")
+        if project.tags:
+            lines.append(f"**Tags:** {', '.join(project.tags)}")
+        lines.append(f"**Updated:** {project.updated_at:%Y-%m-%d %H:%M}")
+        if project.instructions:
+            lines.append(f"\n---\n\n{project.instructions}")
+        return _text("\n".join(lines))
 
     @mcp.tool()
-    def list_projects() -> dict:
-        """List all projects."""
+    def list_projects() -> TextContent:
+        """Browse all projects in memory. Use to find or verify project existence before creating a new one. Returns project IDs—use read_project() for full details."""
         projects = storage.list_projects()
-        return {"projects": [p.model_dump(mode="json") for p in projects]}
+        if not projects:
+            return _text("No projects found")
+        lines = [f"# Projects ({len(projects)})\n"]
+        for p in projects:
+            desc = f" - {p.description}" if p.description else ""
+            tags_info = f" ({', '.join(p.tags)})" if p.tags else ""
+            lines.append(f"- `{p.project_id}` **{p.name}**{tags_info}{desc}")
+        return _text("\n".join(lines))
 
     @mcp.tool()
     def update_project(
@@ -679,15 +642,7 @@ def create_memory_server(
         instructions: str | None = None,
         tags: list[str] | None = None,
     ) -> dict:
-        """Update an existing project.
-
-        Args:
-            project_id: The project ID to update
-            name: New name (optional)
-            description: New description (optional)
-            instructions: New instructions content (optional)
-            tags: New tags (optional)
-        """
+        """Modify a project's details. Use to sync changes from IDE or workspace configuration. Only provided fields are updated—omit fields to keep current values."""
         project = storage.load_project(project_id)
         if not project:
             return {"error": f"Project {project_id} not found"}
@@ -714,17 +669,7 @@ def create_memory_server(
         instructions: str = "",
         tags: list[str] | None = None,
     ) -> dict:
-        """Create a new skill.
-
-        For small code snippets, include them directly in the instructions.
-        For larger code files (100+ lines), use Artifacts linked via skill_id.
-
-        Args:
-            name: Skill name
-            description: Short description
-            instructions: Markdown instructions (reference Artifacts for large code)
-            tags: Optional list of tags
-        """
+        """Store a reusable procedure or workflow as markdown instructions. Use for recurring tasks, project-specific processes, or step-by-step guides. For large code (100+ lines), create linked Artifacts instead of embedding in instructions. Check search_skills() first to avoid duplicates."""
         skill = Skill(
             name=name,
             description=description,
@@ -735,63 +680,55 @@ def create_memory_server(
         return {"skill_id": skill.skill_id, "created": True}
 
     @mcp.tool()
-    def read_skill(skill_id: str) -> dict:
-        """Read a skill by ID.
-
-        Args:
-            skill_id: The skill ID to read
-        """
+    def read_skill(skill_id: str) -> TextContent:
+        """Get the full instructions for a skill. Use after search_skills() or list_skills() to retrieve the complete procedure. Also check read_reflections(skill_id=...) for past learnings about this skill."""
         skill = storage.load_skill(skill_id)
         if not skill:
-            return {"error": f"Skill {skill_id} not found"}
-        return skill.model_dump(mode="json")
+            return _text(f"Skill {skill_id} not found")
+        lines = [
+            f"# {skill.name}",
+            f"**Skill ID:** `{skill.skill_id}`",
+        ]
+        if skill.description:
+            lines.append(f"**Description:** {skill.description}")
+        if skill.tags:
+            lines.append(f"**Tags:** {', '.join(skill.tags)}")
+        lines.append(f"**Updated:** {skill.updated_at:%Y-%m-%d %H:%M}")
+        if skill.instructions:
+            lines.append(f"\n---\n\n{skill.instructions}")
+        return _text("\n".join(lines))
 
     @mcp.tool()
-    def list_skills() -> dict:
-        """List all skills with their names and descriptions.
-
-        Returns a compact summary for each skill. Use read_skill() to get
-        the full instructions content.
-        """
+    def list_skills() -> TextContent:
+        """Browse all stored procedures and workflows. Returns skill names, descriptions, and IDs—use read_skill() to get full instructions."""
         skills = storage.list_skills()
-        return {
-            "skills": [
-                {
-                    "skill_id": s.skill_id,
-                    "name": s.name,
-                    "description": s.description,
-                    "tags": s.tags,
-                }
-                for s in skills
-            ]
-        }
+        if not skills:
+            return _text("No skills found")
+        lines = [f"# Skills ({len(skills)})\n"]
+        for s in skills:
+            desc = f" - {s.description}" if s.description else ""
+            tags_info = f" ({', '.join(s.tags)})" if s.tags else ""
+            lines.append(f"- `{s.skill_id}` **{s.name}**{tags_info}{desc}")
+        return _text("\n".join(lines))
 
     @mcp.tool()
     def search_skills(
         query: str,
         limit: int = 10,
-    ) -> dict:
-        """Search skills by semantic similarity.
-
-        Args:
-            query: Search query text
-            limit: Maximum results to return
-        """
+    ) -> TextContent:
+        """Find procedures and workflows using semantic search. Use when you need a skill for a specific task. Returns skill IDs—use read_skill() for full instructions."""
         results = searcher.search_skills(query, limit=limit)
-        # Enrich results with skill name from storage
-        enriched = []
+        if not results:
+            return _text(f"No skills found for query: {query}")
+        lines = [f"# Skill Search Results ({len(results)})\n"]
         for r in results:
             skill = storage.load_skill(r["id"])
             if skill:
-                enriched.append(
-                    {
-                        "skill_id": r["id"],
-                        "name": skill.name,
-                        "description": skill.description,
-                        "score": r["score"],
-                    }
+                desc = f" - {skill.description}" if skill.description else ""
+                lines.append(
+                    f"- `{r['id']}` **{skill.name}** (score: {r['score']:.2f}){desc}"
                 )
-        return {"results": enriched}
+        return _text("\n".join(lines))
 
     @mcp.tool()
     def update_skill(
@@ -801,17 +738,7 @@ def create_memory_server(
         instructions: str | None = None,
         tags: list[str] | None = None,
     ) -> dict:
-        """Update an existing skill.
-
-        For code stored in linked Artifacts, use sync_artifact_from_disk() instead.
-
-        Args:
-            skill_id: The skill ID to update
-            name: New name (optional)
-            description: New description (optional)
-            instructions: New instructions content (optional)
-            tags: New tags (optional)
-        """
+        """Modify a skill's instructions or metadata. Use to improve procedures based on experience. For code stored in linked Artifacts, use sync_artifact_from_disk() instead. Only provided fields are updated."""
         skill = storage.load_skill(skill_id)
         if not skill:
             return {"error": f"Skill {skill_id} not found"}
@@ -843,22 +770,7 @@ def create_memory_server(
         originating_thread_id: str | None = None,
         tags: list[str] | None = None,
     ) -> dict:
-        """Create a new artifact (collaborative document).
-
-        For code artifacts that represent files, use `path` to specify the relative
-        path (e.g., "scripts/helper.py"). Use `skill_id` to link artifacts to Skills.
-
-        Args:
-            name: Human-readable title for the artifact
-            content: The artifact content (markdown by default)
-            description: Brief description of the artifact's purpose
-            content_type: Type of content (markdown, code, json, yaml, etc.)
-            path: Relative path for file-based artifacts (e.g., "scripts/helper.py")
-            skill_id: Optional link to parent Skill
-            project_id: Optional project to associate with
-            originating_thread_id: Optional thread where this artifact was created
-            tags: Optional list of tags
-        """
+        """Store a collaborative document that evolves through conversation—specs, code, designs, research. Set path (e.g., "scripts/helper.py") for file-based artifacts that can be written to disk. Link to skill_id to associate code with a procedure. Unlike concepts (knowledge), artifacts are work products."""
         artifact = Artifact(
             name=name,
             content=content,
@@ -884,16 +796,33 @@ def create_memory_server(
         return {"artifact_id": artifact.artifact_id, "created": True}
 
     @mcp.tool()
-    def read_artifact(artifact_id: str) -> dict:
-        """Read an artifact by ID.
-
-        Args:
-            artifact_id: The artifact ID to read
-        """
+    def read_artifact(artifact_id: str) -> TextContent:
+        """Get an artifact's full content and metadata. Use after search_artifacts() or list_artifacts() to retrieve the complete document for editing or reference."""
         artifact = storage.load_artifact(artifact_id)
         if not artifact:
-            return {"error": f"Artifact {artifact_id} not found"}
-        return artifact.model_dump(mode="json")
+            return _text(f"Artifact {artifact_id} not found")
+        lines = [
+            f"# {artifact.name}",
+            f"**Artifact ID:** `{artifact.artifact_id}`",
+        ]
+        if artifact.description:
+            lines.append(f"**Description:** {artifact.description}")
+        lines.append(f"**Type:** {artifact.content_type}")
+        if artifact.path:
+            lines.append(f"**Path:** `{artifact.path}`")
+        if artifact.skill_id:
+            lines.append(f"**Skill:** `{artifact.skill_id}`")
+        if artifact.project_id:
+            lines.append(f"**Project:** `{artifact.project_id}`")
+        if artifact.originating_thread_id:
+            lines.append(f"**Origin Thread:** `{artifact.originating_thread_id}`")
+        if artifact.tags:
+            lines.append(f"**Tags:** {', '.join(artifact.tags)}")
+        lines.append(f"**Updated:** {artifact.updated_at:%Y-%m-%d %H:%M}")
+        if artifact.content:
+            lang = artifact.content_type if artifact.content_type != "markdown" else ""
+            lines.append(f"\n---\n\n```{lang}\n{artifact.content}\n```")
+        return _text("\n".join(lines))
 
     @mcp.tool()
     def update_artifact(
@@ -907,19 +836,7 @@ def create_memory_server(
         project_id: str | None = None,
         tags: list[str] | None = None,
     ) -> dict:
-        """Update an existing artifact.
-
-        Args:
-            artifact_id: The artifact ID to update
-            name: New name (optional)
-            content: New content (optional)
-            description: New description (optional)
-            content_type: New content type (optional)
-            path: New path for file-based artifacts (optional)
-            skill_id: New skill association (optional)
-            project_id: New project association (optional)
-            tags: New tags (optional)
-        """
+        """Modify an artifact's content or metadata. Use to persist changes as you collaborate on documents. For code files edited on disk, use sync_artifact_from_disk() instead. Only provided fields are updated."""
         artifact = storage.load_artifact(artifact_id)
         if not artifact:
             return {"error": f"Artifact {artifact_id} not found"}
@@ -948,62 +865,41 @@ def create_memory_server(
         return {"artifact_id": artifact.artifact_id, "updated": True}
 
     @mcp.tool()
-    def list_artifacts(project_id: str | None = None) -> dict:
-        """List all artifacts, optionally filtered by project.
-
-        Returns a compact summary for each artifact. Use read_artifact() to get
-        the full content.
-
-        Args:
-            project_id: Optional project to filter by
-        """
+    def list_artifacts(project_id: str | None = None) -> TextContent:
+        """Browse all collaborative documents. Use when starting a project session to show available artifacts the user can continue working on. Returns artifact IDs—use read_artifact() for full content."""
         artifacts = storage.list_artifacts(project_id=project_id)
-        return {
-            "artifacts": [
-                {
-                    "artifact_id": a.artifact_id,
-                    "name": a.name,
-                    "description": a.description,
-                    "content_type": a.content_type,
-                    "project_id": a.project_id,
-                    "originating_thread_id": a.originating_thread_id,
-                    "tags": a.tags,
-                    "updated_at": a.updated_at.isoformat(),
-                }
-                for a in artifacts
-            ]
-        }
+        if not artifacts:
+            return _text("No artifacts found")
+        lines = [f"# Artifacts ({len(artifacts)})\n"]
+        for a in artifacts:
+            desc = f" - {a.description}" if a.description else ""
+            path_info = f" [`{a.path}`]" if a.path else ""
+            lines.append(
+                f"- `{a.artifact_id}` **{a.name}**{path_info} ({a.content_type}){desc}"
+            )
+        return _text("\n".join(lines))
 
     @mcp.tool()
     def search_artifacts(
         query: str,
         project_id: str | None = None,
         limit: int = 10,
-    ) -> dict:
-        """Search artifacts by semantic similarity.
-
-        Args:
-            query: Search query text
-            project_id: Optional project to filter by
-            limit: Maximum results to return
-        """
+    ) -> TextContent:
+        """Find collaborative documents by their content using semantic search. Returns artifact IDs—use read_artifact() to get the full document."""
         results = searcher.search_artifacts(query, limit=limit, project_id=project_id)
-        return {"results": results}
+        if not results:
+            return _text(f"No artifacts found for query: {query}")
+        lines = [f"# Artifact Search Results ({len(results)})\n"]
+        for r in results:
+            lines.append(f"- `{r['id']}` **{r['name']}** (score: {r['score']:.2f})")
+        return _text("\n".join(lines))
 
     @mcp.tool()
     def write_artifact_to_disk(
         artifact_id: str,
         target_dir: str,
     ) -> dict:
-        """Write an artifact to disk at target_dir/artifact.path.
-
-        The artifact must have a `path` set. The file will be written to
-        `target_dir/path`, creating any necessary parent directories.
-
-        Args:
-            artifact_id: The artifact ID to write
-            target_dir: Base directory to write the file to
-        """
+        """Export an artifact to the filesystem at target_dir/artifact.path. The artifact must have a path set. Creates parent directories as needed. Use to materialize code artifacts into a project."""
         artifact = storage.load_artifact(artifact_id)
         if not artifact:
             return {"error": f"Artifact {artifact_id} not found"}
@@ -1022,15 +918,7 @@ def create_memory_server(
         artifact_id: str,
         source_path: str,
     ) -> dict:
-        """Sync an artifact's content from a file on disk.
-
-        Reads the file at `source_path` and updates the artifact's content.
-        Use this after modifying code files to sync changes back to the artifact.
-
-        Args:
-            artifact_id: The artifact ID to update
-            source_path: Path to the file to read content from
-        """
+        """Import file content from disk into an artifact. Use after editing code files externally to sync changes back to memory. The artifact's content is replaced with the file's content."""
         artifact = storage.load_artifact(artifact_id)
         if not artifact:
             return {"error": f"Artifact {artifact_id} not found"}
@@ -1052,7 +940,7 @@ def create_memory_server(
 
     @mcp.tool()
     def rebuild_index() -> dict:
-        """Rebuild the search index from all content."""
+        """Regenerate the semantic search index from all stored content. Only needed if search results seem stale or after bulk imports. This is an expensive operation—use sparingly."""
         searcher.build_index()
         return {"rebuilt": True, "items": len(searcher._id_map)}
 

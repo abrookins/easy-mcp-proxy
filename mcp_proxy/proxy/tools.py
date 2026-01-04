@@ -7,7 +7,7 @@ smaller focused functions for better maintainability.
 from typing import Any
 
 from mcp_proxy.models import ToolConfig, ToolViewConfig
-from mcp_proxy.proxy.schema import transform_schema
+from mcp_proxy.proxy.schema import resolve_schema_refs, transform_schema
 from mcp_proxy.proxy.tool_info import ToolInfo
 
 
@@ -94,6 +94,10 @@ def _process_server_with_tools_config(
             getattr(upstream_tool, "description", "") if upstream_tool else ""
         )
 
+        # Resolve $ref references to make schema self-contained for LLMs
+        if tool_schema:
+            tool_schema = resolve_schema_refs(tool_schema)
+
         # Transform schema based on parameter config
         transformed_schema = transform_schema(tool_schema, tool_config)
         param_config = _get_param_config(tool_config)
@@ -138,6 +142,9 @@ def _process_server_all_tools(
         tool_name = upstream_tool.name
         tool_description = getattr(upstream_tool, "description", "") or ""
         tool_schema = getattr(upstream_tool, "inputSchema", None)
+        # Resolve $ref references to make schema self-contained for LLMs
+        if tool_schema:  # pragma: no branch
+            tool_schema = resolve_schema_refs(tool_schema)
         tools.append(
             ToolInfo(
                 name=tool_name,
@@ -161,6 +168,10 @@ def _process_upstream_tool_with_override(
     tool_name = upstream_tool.name
     tool_description = getattr(upstream_tool, "description", "") or ""
     tool_schema = getattr(upstream_tool, "inputSchema", None)
+
+    # Resolve $ref references to make schema self-contained for LLMs
+    if tool_schema:  # pragma: no branch
+        tool_schema = resolve_schema_refs(tool_schema)
 
     # Get effective config (view override takes precedence)
     effective_config = view_override or server_tool_config
