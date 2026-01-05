@@ -44,6 +44,52 @@ def tools(config: str | None, server: str | None):
                     click.echo(f"{server_name}.{tool_name}")
 
 
+def _output_tool_schema(tool_name: str, tool_schema: dict | None, as_json: bool):
+    """Output schema for a single tool."""
+    import json as json_module
+
+    if as_json:
+        if tool_schema:
+            click.echo(json_module.dumps({"tool": tool_name, "schema": tool_schema}))
+        else:
+            click.echo(json_module.dumps({"tool": tool_name, "error": "not found"}))
+    else:
+        if tool_schema:
+            click.echo(f"Tool: {tool_name}")
+            click.echo(f"Description: {tool_schema.get('description', 'N/A')}")
+            params = json_module.dumps(tool_schema.get("inputSchema", {}), indent=2)
+            click.echo(f"Parameters: {params}")
+        else:
+            parts = tool_name.split(".", 1)
+            click.echo(f"Tool '{parts[1]}' not found on server '{parts[0]}'")
+
+
+def _output_server_tools(server_name: str, tools_list: list, as_json: bool):
+    """Output tools for a single server."""
+    import json as json_module
+
+    if as_json:
+        click.echo(json_module.dumps({"server": server_name, "tools": tools_list}))
+    else:
+        click.echo(f"Server: {server_name}")
+        click.echo(f"Tools ({len(tools_list)}):")
+        for t in tools_list:
+            click.echo(f"  - {t['name']}: {t.get('description', 'No description')}")
+
+
+def _output_connection_error(
+    name: str, error: str, as_json: bool, is_tool: bool = False
+):
+    """Output a connection error."""
+    import json as json_module
+
+    key = "tool" if is_tool else "server"
+    if as_json:
+        click.echo(json_module.dumps({key: name, "error": error}))
+    else:
+        click.echo(f"Error connecting to {name}: {error}", err=True)
+
+
 @click.command()
 @click.argument("tool_name", required=False)
 @config_option()
@@ -61,7 +107,7 @@ def schema(
     proxy = MCPProxy(cfg)
 
     async def fetch_schemas():
-        """Fetch schemas from upstream servers."""
+        """Fetch schemas from upstream servers and custom tools."""
         all_tools = {}
 
         for server_name, server_config in cfg.mcp_servers.items():
@@ -85,6 +131,24 @@ def schema(
             except Exception as e:
                 all_tools[server_name] = {"error": str(e)}
 
+        # Include custom tools from views
+        for view_name, view in proxy.views.items():
+            if view.custom_tools:
+                custom_tools_list = []
+                for name, tool_fn in view.custom_tools.items():
+                    desc = getattr(tool_fn, "_tool_description", "")
+                    schema = getattr(tool_fn, "_input_schema", {})
+                    custom_tools_list.append(
+                        {
+                            "name": name,
+                            "description": desc,
+                            "inputSchema": schema,
+                        }
+                    )
+                if custom_tools_list:  # pragma: no branch
+                    key = f"custom ({view_name})"
+                    all_tools[key] = custom_tools_list
+
         return all_tools
 
     if tool_name:
@@ -103,36 +167,13 @@ def schema(
         server_tools = all_tools.get(server_name, [])
 
         if isinstance(server_tools, dict) and "error" in server_tools:
-            if as_json:
-                click.echo(
-                    json_module.dumps(
-                        {"tool": tool_name, "error": server_tools["error"]}
-                    )
-                )
-            else:
-                click.echo(
-                    f"Error connecting to {server_name}: {server_tools['error']}",
-                    err=True,
-                )
+            _output_connection_error(
+                server_name, server_tools["error"], as_json, is_tool=True
+            )
             raise SystemExit(1)
 
         tool_schema = next((t for t in server_tools if t["name"] == tool), None)
-
-        if as_json:
-            if tool_schema:
-                click.echo(
-                    json_module.dumps({"tool": tool_name, "schema": tool_schema})
-                )
-            else:
-                click.echo(json_module.dumps({"tool": tool_name, "error": "not found"}))
-        else:
-            if tool_schema:
-                click.echo(f"Tool: {tool_name}")
-                click.echo(f"Description: {tool_schema.get('description', 'N/A')}")
-                params = json_module.dumps(tool_schema.get("inputSchema", {}), indent=2)
-                click.echo(f"Parameters: {params}")
-            else:
-                click.echo(f"Tool '{tool}' not found on server '{server_name}'")
+        _output_tool_schema(tool_name, tool_schema, as_json)
 
     elif server:
         if server not in cfg.mcp_servers:
@@ -143,25 +184,10 @@ def schema(
         server_tools = all_tools.get(server, [])
 
         if isinstance(server_tools, dict) and "error" in server_tools:
-            if as_json:
-                click.echo(
-                    json_module.dumps(
-                        {"server": server, "error": server_tools["error"]}
-                    )
-                )
-            else:
-                click.echo(
-                    f"Error connecting to {server}: {server_tools['error']}", err=True
-                )
+            _output_connection_error(server, server_tools["error"], as_json)
             raise SystemExit(1)
 
-        if as_json:
-            click.echo(json_module.dumps({"server": server, "tools": server_tools}))
-        else:
-            click.echo(f"Server: {server}")
-            click.echo(f"Tools ({len(server_tools)}):")
-            for t in server_tools:
-                click.echo(f"  - {t['name']}: {t.get('description', 'No description')}")
+        _output_server_tools(server, server_tools, as_json)
     else:
         # List all schemas
         all_tools = run_async(fetch_schemas())
@@ -253,18 +279,105 @@ def validate(config: str | None, check_connections: bool):
     type=click.Path(),
     help="Path to .env file (default: .env)",
 )
+@click.option(
+    "--auth/--no-auth",
+    default=False,
+    help="Enable auth using MCP_PROXY_AUTH_CLIENT_ID and MCP_PROXY_AUTH_CLIENT_SECRET",
+)
+@click.option(
+    "--oauth-client-id",
+    envvar="MCP_PROXY_OAUTH_CLIENT_ID",
+    help="OAuth client ID for HTTP auth (or set MCP_PROXY_OAUTH_CLIENT_ID)",
+)
+@click.option(
+    "--oauth-client-secret",
+    envvar="MCP_PROXY_OAUTH_CLIENT_SECRET",
+    help="OAuth client secret for HTTP auth (or set MCP_PROXY_OAUTH_CLIENT_SECRET)",
+)
+@click.option(
+    "--oauth-token-url",
+    envvar="MCP_PROXY_OAUTH_TOKEN_URL",
+    help="OAuth token URL for HTTP auth (or set MCP_PROXY_OAUTH_TOKEN_URL)",
+)
+@click.option(
+    "--oauth-audience",
+    envvar="MCP_PROXY_OAUTH_AUDIENCE",
+    help="OAuth audience for HTTP auth (or set MCP_PROXY_OAUTH_AUDIENCE)",
+)
+@click.option(
+    "--issuer-url",
+    envvar="MCP_PROXY_ISSUER_URL",
+    help="Public URL for OAuth discovery (or MCP_PROXY_ISSUER_URL). For --auth.",
+)
 def serve(
-    config: str | None, transport: str, port: int, env_file: str
+    config: str | None,
+    transport: str,
+    port: int,
+    env_file: str,
+    auth: bool,
+    oauth_client_id: str | None,
+    oauth_client_secret: str | None,
+    oauth_token_url: str | None,
+    oauth_audience: str | None,
+    issuer_url: str | None,
 ):  # pragma: no cover
-    """Start the MCP proxy server."""
+    """Start the MCP proxy server.
+
+    For simple authentication (HTTP only), use --auth and set:
+      MCP_PROXY_AUTH_CLIENT_ID     - Client ID
+      MCP_PROXY_AUTH_CLIENT_SECRET - Client secret
+
+    Clients authenticate with Bearer token (base64 client_id:client_secret)
+    or HTTP Basic auth.
+    """
+    import os
+
     from dotenv import load_dotenv
 
+    from mcp_proxy.models import OAuthConfig
     from mcp_proxy.proxy import MCPProxy
 
     # Load environment variables from .env file
     load_dotenv(env_file)
 
     cfg = load_config(str(get_config_path(config)))
+
+    # Simple auth mode - use StaticTokenValidator
+    if auth:
+        if transport != "http":
+            raise click.ClickException("--auth requires --transport http")
+
+        client_id = os.environ.get("MCP_PROXY_AUTH_CLIENT_ID")
+        client_secret = os.environ.get("MCP_PROXY_AUTH_CLIENT_SECRET")
+
+        if not client_id or not client_secret:
+            raise click.ClickException(
+                "--auth requires environment variables:\n"
+                "  MCP_PROXY_AUTH_CLIENT_ID\n"
+                "  MCP_PROXY_AUTH_CLIENT_SECRET"
+            )
+
+        # Get issuer_url from env if not passed via CLI (since dotenv loads after click)
+        actual_issuer_url = issuer_url or os.environ.get("MCP_PROXY_ISSUER_URL")
+
+        proxy = MCPProxy(cfg)
+        proxy.run_with_static_auth(
+            client_id=client_id,
+            client_secret=client_secret,
+            port=port,
+            issuer_url=actual_issuer_url,
+        )
+        return
+
+    # Override auth config from CLI options if provided (full OAuth flow)
+    if oauth_client_id and oauth_client_secret and oauth_token_url:
+        cfg.auth = OAuthConfig(
+            client_id=oauth_client_id,
+            client_secret=oauth_client_secret,
+            token_url=oauth_token_url,
+            audience=oauth_audience,
+        )
+
     proxy = MCPProxy(cfg)
     proxy.run(transport=transport, port=port)
 

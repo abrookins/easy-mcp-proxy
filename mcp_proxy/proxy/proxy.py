@@ -29,6 +29,11 @@ class MCPProxy:
     """MCP Proxy that aggregates and filters tools from upstream servers."""
 
     def __init__(self, config: ProxyConfig):
+        """Initialize the MCP Proxy with the given configuration.
+
+        Args:
+            config: Proxy configuration containing server and view definitions.
+        """
         self.config = config
         self.views: dict[str, ToolView] = {}
         self._client_manager = ClientManager(config)
@@ -48,32 +53,40 @@ class MCPProxy:
     # Delegate client management to ClientManager
     @property
     def upstream_clients(self) -> dict[str, Client]:
+        """Map of server names to their MCP clients."""
         return self._client_manager.upstream_clients
 
     @upstream_clients.setter
     def upstream_clients(self, value: dict[str, Client]) -> None:
+        """Set the map of server names to clients."""
         self._client_manager.upstream_clients = value
 
     @property
     def _upstream_tools(self) -> dict[str, list[Any]]:
+        """Cached tools fetched from upstream servers."""
         return self._client_manager._upstream_tools
 
     @_upstream_tools.setter
     def _upstream_tools(self, value: dict[str, list[Any]]) -> None:
+        """Set the cached upstream tools."""
         self._client_manager._upstream_tools = value
 
     @property
     def _active_clients(self) -> dict[str, Client]:
+        """Map of server names to active (connected) clients."""
         return self._client_manager._active_clients
 
     @_active_clients.setter
     def _active_clients(self, value: dict[str, Client]) -> None:
+        """Set the active clients map."""
         self._client_manager._active_clients = value
 
     def _create_client_from_config(self, config):
+        """Create an MCP client from server configuration."""
         return self._client_manager.create_client_from_config(config)
 
     async def _create_client(self, server_name: str) -> Client:
+        """Create and connect a new client for the specified server."""
         return await self._client_manager.create_client(server_name)
 
     async def fetch_upstream_tools(self, server_name: str) -> list[Any]:
@@ -100,9 +113,15 @@ class MCPProxy:
                 pass
 
     async def connect_clients(self, fetch_tools: bool = False) -> None:
+        """Establish persistent connections to all upstream servers.
+
+        Args:
+            fetch_tools: If True, also fetch tool metadata after connecting.
+        """
         return await self._client_manager.connect_clients(fetch_tools=fetch_tools)
 
     async def disconnect_clients(self) -> None:
+        """Disconnect from all upstream servers and clean up resources."""
         return await self._client_manager.disconnect_clients()
 
     async def fetch_tools_from_active_clients(self) -> None:
@@ -112,14 +131,26 @@ class MCPProxy:
         )
 
     def get_active_client(self, server_name: str) -> Client | None:
+        """Get the active client for a server, or None if not connected."""
         return self._client_manager.get_active_client(server_name)
 
     def has_active_connection(self, server_name: str) -> bool:
+        """Check if there's an active connection to the specified server."""
         return self._client_manager.has_active_connection(server_name)
 
     async def call_upstream_tool(
         self, server_name: str, tool_name: str, args: dict[str, Any]
     ) -> Any:
+        """Call a tool on an upstream server.
+
+        Args:
+            server_name: Name of the upstream server.
+            tool_name: Name of the tool to call.
+            args: Arguments to pass to the tool.
+
+        Returns:
+            The result from the upstream tool.
+        """
         return await self._client_manager.call_upstream_tool(
             server_name, tool_name, args
         )
@@ -211,10 +242,13 @@ class MCPProxy:
 
         await self.refresh_upstream_tools()
 
-        for view in self.views.values():
+        for view_name, view in self.views.items():
             await view.initialize(
                 self.upstream_clients, get_client=self.get_active_client
             )
+            # Update tool mapping for dynamically discovered tools
+            view_tools = self.get_view_tools(view_name)
+            view.update_tool_mapping(view_tools)
 
         self._initialized = True
 
@@ -276,6 +310,51 @@ class MCPProxy:
             # http_app() handles its own tool fetching
             app = self.http_app()
             uvicorn.run(app, host="0.0.0.0", port=port or 8000, ws="wsproto")
+
+    def run_with_static_auth(
+        self,
+        client_id: str,
+        client_secret: str,
+        port: int = 8000,
+        issuer_url: str | None = None,
+    ) -> None:  # pragma: no cover
+        """Run the proxy server with simple static token authentication.
+
+        Implements a minimal OAuth 2.0 server that accepts client credentials
+        and returns tokens, allowing OAuth-expecting clients (like Claude) to
+        authenticate while internally using simple static credential validation.
+
+        Args:
+            client_id: Client ID for authentication
+            client_secret: Client secret for authentication
+            port: Port to listen on
+            issuer_url: Base URL for OAuth discovery (defaults to http://localhost:port)
+        """
+        import uvicorn
+
+        from mcp_proxy.auth import AuthMiddleware, StaticAuthProvider
+
+        if issuer_url is None:
+            issuer_url = f"http://localhost:{port}"
+
+        # Create auth provider with OAuth-compatible endpoints
+        auth_provider = StaticAuthProvider(
+            client_id=client_id,
+            client_secret=client_secret,
+            issuer_url=issuer_url,
+            debug=True,
+        )
+
+        # Pass OAuth routes to http_app so they're included with proper lifespan
+        app = self.http_app(extra_routes=auth_provider.get_routes())
+
+        app = AuthMiddleware(
+            app,
+            auth_provider.get_validator(),
+            exclude_paths=auth_provider.get_excluded_paths(),
+            resource_metadata_url=auth_provider.get_resource_metadata_url(),
+        )
+        uvicorn.run(app, host="0.0.0.0", port=port, ws="wsproto")
 
     def get_view_tools(self, view_name: str | None) -> list[ToolInfo]:
         """Get the list of tools for a specific view."""
@@ -357,10 +436,13 @@ class MCPProxy:
         aggregated_instructions = self.get_aggregated_instructions()
         mcp = FastMCP(f"MCP Proxy - {view_name}", instructions=aggregated_instructions)
 
+        # Always update tool mapping (needed for view.call_tool to work)
+        view_tools = self.get_view_tools(view_name)
+        view.update_tool_mapping(view_tools)
+
         if view_config.exposure_mode == "search":
             self._register_search_tool(mcp, view_name)
         else:
-            view_tools = self.get_view_tools(view_name)
             self._register_tools_on_mcp(mcp, view_tools, view=view)
 
         # Register the get_server_instructions tool
@@ -622,6 +704,7 @@ class MCPProxy:
         self,
         path: str = "",
         view_prefix: str = "/view",
+        extra_routes: list[Route] | None = None,
     ) -> Starlette:
         """Create an ASGI app with multi-view routing.
 
@@ -656,6 +739,7 @@ class MCPProxy:
             aggregated_instructions = self.get_aggregated_instructions()
             default_mcp.instructions = aggregated_instructions
 
+            # Default path uses mcp_servers directly (no view)
             default_tools = self.get_view_tools(None)
             self._register_tools_on_mcp(default_mcp, default_tools)
             self._register_instructions_tool(default_mcp)
@@ -666,10 +750,13 @@ class MCPProxy:
                 await view.initialize(
                     self.upstream_clients, get_client=self.get_active_client
                 )
+                # Always update tool mapping (needed for view.call_tool to work)
+                view_tools = self.get_view_tools(view_name)
+                view.update_tool_mapping(view_tools)
+
                 if view.config.exposure_mode == "search":
                     self._register_search_tool(view_mcp, view_name)
                 else:
-                    view_tools = self.get_view_tools(view_name)
                     self._register_tools_on_mcp(view_mcp, view_tools, view=view)
                 self._register_instructions_tool(view_mcp)
 
@@ -680,6 +767,10 @@ class MCPProxy:
                 await self.disconnect_clients()
 
         routes: list[Route | Mount] = []
+
+        # Add extra routes first (e.g., OAuth discovery endpoints)
+        if extra_routes:
+            routes.extend(extra_routes)
 
         async def health_check(request: Request) -> JSONResponse:
             return JSONResponse({"status": "healthy"})
@@ -732,5 +823,38 @@ class MCPProxy:
             routes.append(Mount("/", app=default_mcp_app))
 
         app = Starlette(routes=routes, lifespan=combined_lifespan)
+
+        # Add auth middleware if auth is configured
+        if self.config.auth:
+            from mcp_proxy.auth import AuthMiddleware, OAuthProvider, StaticAuthProvider
+
+            resource_metadata_url: str | None = None
+
+            if self.config.auth.token_url:
+                # Full OAuth validation against an external identity provider
+                auth_provider = OAuthProvider(
+                    client_id=self.config.auth.client_id,
+                    client_secret=self.config.auth.client_secret,
+                    token_url=self.config.auth.token_url,
+                    scopes=self.config.auth.scopes,
+                    audience=self.config.auth.audience,
+                )
+            else:
+                # Static credential validation with OAuth-compatible endpoints
+                issuer_url = self.config.auth.issuer_url or ""
+                auth_provider = StaticAuthProvider(
+                    client_id=self.config.auth.client_id,
+                    client_secret=self.config.auth.client_secret,
+                    issuer_url=issuer_url,
+                )
+                if issuer_url:
+                    resource_metadata_url = auth_provider.get_resource_metadata_url()
+
+            app = AuthMiddleware(
+                app,
+                auth_provider.get_validator(),
+                exclude_paths=[f"{path}/health"] + auth_provider.get_excluded_paths(),
+                resource_metadata_url=resource_metadata_url,
+            )
 
         return app

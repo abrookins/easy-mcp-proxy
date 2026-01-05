@@ -5,9 +5,15 @@ The proxy should expose different tool views at different URL paths:
 - /view/<name>/mcp → Tools from specific view
 """
 
+from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from mcp_proxy.models import ProxyConfig, ToolViewConfig, UpstreamServerConfig
+from mcp_proxy.models import (
+    OAuthConfig,
+    ProxyConfig,
+    ToolViewConfig,
+    UpstreamServerConfig,
+)
 from mcp_proxy.proxy import MCPProxy
 
 
@@ -354,3 +360,178 @@ class TestHTTPViewServerSubset:
         # With mocked upstream, can't verify exact count
         # but the view should be properly configured
         assert proxy.views["all-github"].config.include_all is True
+
+
+class TestHTTPAuthIntegration:
+    """Tests for OAuth authentication in http_app."""
+
+    def test_http_app_with_oauth_config(self):
+        """http_app should add OAuth middleware when auth is configured."""
+        config = ProxyConfig(
+            mcp_servers={
+                "server-a": UpstreamServerConfig(command="echo", args=["test"])
+            },
+            tool_views={},
+            auth=OAuthConfig(
+                client_id="test-client",
+                client_secret="test-secret",
+                token_url="https://auth.example.com/token",
+            ),
+        )
+        proxy = MCPProxy(config)
+        app = proxy.http_app()
+
+        # The app should be an AuthMiddleware wrapping the Starlette app
+        from mcp_proxy.auth import AuthMiddleware
+
+        assert isinstance(app, AuthMiddleware)
+
+    def test_http_app_with_oauth_requires_auth(self):
+        """http_app with OAuth should require authentication on endpoints."""
+        config = ProxyConfig(
+            mcp_servers={
+                "server-a": UpstreamServerConfig(command="echo", args=["test"])
+            },
+            tool_views={},
+            auth=OAuthConfig(
+                client_id="test-client",
+                client_secret="test-secret",
+                token_url="https://auth.example.com/token",
+            ),
+        )
+        proxy = MCPProxy(config)
+        app = proxy.http_app()
+        client = TestClient(app)
+
+        # Request without auth header should be rejected
+        response = client.get("/mcp")
+        assert response.status_code == 401
+
+    def test_http_app_with_oauth_health_excluded(self):
+        """http_app with OAuth should exclude health endpoint from auth."""
+        config = ProxyConfig(
+            mcp_servers={
+                "server-a": UpstreamServerConfig(command="echo", args=["test"])
+            },
+            tool_views={},
+            auth=OAuthConfig(
+                client_id="test-client",
+                client_secret="test-secret",
+                token_url="https://auth.example.com/token",
+            ),
+        )
+        proxy = MCPProxy(config)
+        app = proxy.http_app()
+        client = TestClient(app)
+
+        # Health endpoint should not require auth
+        response = client.get("/health")
+        assert response.status_code == 200
+
+    def test_http_app_with_oauth_custom_path_health_excluded(self):
+        """http_app with OAuth should exclude health at custom base path."""
+        config = ProxyConfig(
+            mcp_servers={
+                "server-a": UpstreamServerConfig(command="echo", args=["test"])
+            },
+            tool_views={},
+            auth=OAuthConfig(
+                client_id="test-client",
+                client_secret="test-secret",
+                token_url="https://auth.example.com/token",
+            ),
+        )
+        proxy = MCPProxy(config)
+        app = proxy.http_app(path="/api/v1")
+        client = TestClient(app)
+
+        # Health endpoint at custom path should not require auth
+        response = client.get("/api/v1/health")
+        assert response.status_code == 200
+
+        # But the main endpoint should require auth
+        response = client.get("/api/v1/mcp")
+        assert response.status_code == 401
+
+    def test_http_app_with_static_auth_provider(self):
+        """http_app uses StaticAuthProvider when no token_url/introspection_url."""
+        config = ProxyConfig(
+            mcp_servers={
+                "server-a": UpstreamServerConfig(command="echo", args=["test"])
+            },
+            tool_views={},
+            auth=OAuthConfig(
+                client_id="test-client",
+                client_secret="test-secret",
+                # No token_url or introspection_url - uses StaticAuthProvider
+            ),
+        )
+        proxy = MCPProxy(config)
+        app = proxy.http_app()
+
+        from mcp_proxy.auth import AuthMiddleware
+
+        assert isinstance(app, AuthMiddleware)
+
+        client = TestClient(app)
+        # Request without auth should be rejected
+        response = client.get("/mcp")
+        assert response.status_code == 401
+
+        # Health should be excluded
+        response = client.get("/health")
+        assert response.status_code == 200
+
+    def test_http_app_with_static_auth_and_issuer_url(self):
+        """http_app should configure resource metadata when issuer_url is provided."""
+        from mcp_proxy.auth import StaticAuthProvider
+
+        config = ProxyConfig(
+            mcp_servers={
+                "server-a": UpstreamServerConfig(command="echo", args=["test"])
+            },
+            tool_views={},
+            auth=OAuthConfig(
+                client_id="test-client",
+                client_secret="test-secret",
+                issuer_url="https://auth.example.com",
+                # No token_url or introspection_url - uses StaticAuthProvider
+            ),
+        )
+        proxy = MCPProxy(config)
+
+        # Create auth provider and pass routes to http_app
+        auth_provider = StaticAuthProvider(
+            client_id="test-client",
+            client_secret="test-secret",
+            issuer_url="https://auth.example.com",
+        )
+        app = proxy.http_app(extra_routes=auth_provider.get_routes())
+
+        client = TestClient(app)
+        # Static auth routes should be available via extra_routes
+        response = client.get("/.well-known/oauth-authorization-server")
+        assert response.status_code == 200
+
+    def test_http_app_with_extra_routes(self):
+        """http_app should include extra_routes in the application."""
+        from starlette.responses import PlainTextResponse
+
+        config = ProxyConfig(
+            mcp_servers={
+                "server-a": UpstreamServerConfig(command="echo", args=["test"])
+            },
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        async def custom_endpoint(request):
+            return PlainTextResponse("custom response")
+
+        extra_routes = [Route("/custom", custom_endpoint, methods=["GET"])]
+        app = proxy.http_app(extra_routes=extra_routes)
+
+        client = TestClient(app)
+        response = client.get("/custom")
+        assert response.status_code == 200
+        assert response.text == "custom response"

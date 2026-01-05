@@ -3668,6 +3668,74 @@ mcp_servers:
         assert result.exit_code == 1
         assert "Error" in result.output
 
+    def test_schema_includes_custom_tools_from_views(self, tmp_path, monkeypatch):
+        """schema (all) should include custom tools from views."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from click.testing import CliRunner
+
+        from mcp_proxy.cli import main
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+mcp_servers:
+  myserver:
+    command: echo
+tool_views:
+  myview:
+    include_all: true
+""")
+
+        mock_tool = MagicMock()
+        mock_tool.name = "server_tool"
+        mock_tool.description = "A server tool"
+        mock_tool.inputSchema = {"type": "object"}
+
+        mock_client = MagicMock()
+        mock_client.list_tools = AsyncMock(return_value=[mock_tool])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_create_client(self, server_name):
+            return mock_client
+
+        monkeypatch.setattr(
+            "mcp_proxy.proxy.MCPProxy._create_client", mock_create_client
+        )
+
+        # Create a fake custom tool function with proper attributes
+        async def my_custom_tool(ctx, query: str) -> str:
+            return f"Result: {query}"
+
+        my_custom_tool._tool_description = "A custom tool for testing"
+        my_custom_tool._input_schema = {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+        }
+
+        # Patch the view's custom_tools dict after proxy is created
+        original_init = None
+
+        def patched_proxy_init(self, config):
+            original_init(self, config)
+            # Add custom tool to the view
+            if "myview" in self.views:
+                self.views["myview"].custom_tools["my_custom_tool"] = my_custom_tool
+
+        import mcp_proxy.proxy.proxy as proxy_module
+
+        original_init = proxy_module.MCPProxy.__init__
+
+        monkeypatch.setattr(proxy_module.MCPProxy, "__init__", patched_proxy_init)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["schema", "-c", str(config_file)])
+
+        # Should include both server tools and custom tools
+        assert "myserver" in result.output
+        assert "custom (myview)" in result.output
+        assert "my_custom_tool" in result.output
+
     def test_call_exception_handling(self, tmp_path, monkeypatch):
         """call should handle exceptions gracefully."""
         from click.testing import CliRunner
