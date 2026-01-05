@@ -46,4 +46,3 @@ def _format_concept(concept: Concept) -> str:
     if concept.text:
         lines.append(f"\n---\n\n{concept.text}")
     return "\n".join(lines)
-

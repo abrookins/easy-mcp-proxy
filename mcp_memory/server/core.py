@@ -57,4 +57,3 @@ def create_memory_server(
         return {"rebuilt": True, "items": len(searcher._id_map)}
 
     return mcp
-

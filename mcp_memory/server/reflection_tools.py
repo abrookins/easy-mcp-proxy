@@ -87,4 +87,3 @@ def register_reflection_tools(
         reflection.updated_at = datetime.now()
         storage.save(reflection)
         return {"reflection_id": reflection.reflection_id, "updated": True}
-

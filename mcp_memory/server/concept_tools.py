@@ -206,4 +206,3 @@ def register_concept_tools(
         # Rebuild index to update embeddings
         searcher.build_index()
         return {"concept_id": concept_id, "path": concept.full_path, "updated": True}
-

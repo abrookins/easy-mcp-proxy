@@ -112,4 +112,3 @@ def register_skill_tools(
         skill.updated_at = datetime.now()
         storage.save(skill)
         return {"skill_id": skill.skill_id, "updated": True}
-

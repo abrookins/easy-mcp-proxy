@@ -27,4 +27,3 @@ class ProjectStorageMixin:
     def list_projects(self: "BaseStorage") -> list[Project]:
         """List all projects."""
         return self._list_markdown_files("Project", Project, "instructions", None)
-

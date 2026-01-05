@@ -93,4 +93,3 @@ def register_project_tools(
         project.updated_at = datetime.now()
         storage.save(project)
         return {"project_id": project.project_id, "updated": True}
-

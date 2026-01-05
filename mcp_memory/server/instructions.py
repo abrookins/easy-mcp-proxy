@@ -186,4 +186,3 @@ Search queries work best with natural language descriptions of what you're looki
 - Use `sync_artifact_from_disk()` to update Artifacts after editing files on disk
 """.strip()
 # fmt: on
-

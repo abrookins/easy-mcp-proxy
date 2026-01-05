@@ -29,4 +29,3 @@ class ArtifactStorageMixin:
     ) -> list[Artifact]:
         """List all artifacts, optionally filtered by project."""
         return self._list_markdown_files("Artifact", Artifact, "content", project_id)
-

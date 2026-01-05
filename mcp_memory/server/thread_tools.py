@@ -160,4 +160,3 @@ def register_thread_tools(
                 f"  {len(t.messages)} msgs, updated {t.updated_at:%Y-%m-%d}{summary_mark}"
             )
         return _text("\n".join(lines))
-

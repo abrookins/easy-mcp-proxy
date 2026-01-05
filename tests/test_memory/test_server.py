@@ -366,9 +366,7 @@ class TestConceptTools:
         create_result = create_tool.fn(name="Orphan", text="Orphan concept.")
         concept_id = create_result["concept_id"]
 
-        update_result = update_tool.fn(
-            concept_id=concept_id, parent_path="New Parent"
-        )
+        update_result = update_tool.fn(concept_id=concept_id, parent_path="New Parent")
 
         assert update_result["updated"] is True
         assert update_result["path"] == "New Parent/Orphan"

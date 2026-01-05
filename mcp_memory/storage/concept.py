@@ -187,4 +187,3 @@ class ConceptStorageMixin:
             ]
 
         return concepts
-

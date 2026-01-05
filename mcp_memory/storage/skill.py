@@ -18,4 +18,3 @@ class SkillStorageMixin:
     def list_skills(self: "BaseStorage") -> list[Skill]:
         """List all skills."""
         return self._list_markdown_files("Skill", Skill, "instructions", None)
-

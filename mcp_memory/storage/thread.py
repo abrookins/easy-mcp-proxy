@@ -38,4 +38,3 @@ class ThreadStorageMixin:
             if project_id is None or thread.project_id == project_id:
                 threads.append(thread)
         return threads
-

@@ -38,4 +38,3 @@ class ReflectionStorageMixin:
                     continue
                 reflections.append(obj)
         return reflections
-

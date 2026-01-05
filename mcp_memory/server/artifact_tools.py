@@ -153,7 +153,7 @@ def register_artifact_tools(
             return _text(f"No artifacts found for query: {query}")
         lines = [f"# Artifact Search Results ({len(results)})\n"]
         for r in results:
-                lines.append(f"- `{r['id']}` **{r['name']}** (score: {r['score']:.2f})")
+            lines.append(f"- `{r['id']}` **{r['name']}** (score: {r['score']:.2f})")
         return _text("\n".join(lines))
 
     @mcp.tool()
@@ -197,4 +197,3 @@ def register_artifact_tools(
         searcher.build_index()
 
         return {"synced": True, "artifact_id": artifact_id}
-
