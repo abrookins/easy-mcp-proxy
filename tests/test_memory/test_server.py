@@ -371,6 +371,50 @@ class TestConceptTools:
         assert update_result["updated"] is True
         assert update_result["path"] == "New Parent/Orphan"
 
+    def test_update_concept_move_deletes_old_file(self, server, tmp_path):
+        """Test that moving a concept deletes the old file (no duplicates)."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        update_tool = server._tool_manager._tools["update_concept"]
+
+        # Create a concept at root level
+        create_result = create_tool.fn(name="Movable", text="Content.")
+        concept_id = create_result["concept_id"]
+
+        # Verify old file exists
+        old_file = tmp_path / "Concepts" / "Movable.md"
+        assert old_file.exists()
+
+        # Move to a new parent
+        update_tool.fn(concept_id=concept_id, parent_path="New Location")
+
+        # Old file should be deleted
+        assert not old_file.exists()
+        # New file should exist
+        new_file = tmp_path / "Concepts" / "New Location" / "Movable.md"
+        assert new_file.exists()
+
+    def test_update_concept_rename_deletes_old_file(self, server, tmp_path):
+        """Test that renaming a concept deletes the old file (no duplicates)."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        update_tool = server._tool_manager._tools["update_concept"]
+
+        # Create a concept
+        create_result = create_tool.fn(name="OldName", text="Content.")
+        concept_id = create_result["concept_id"]
+
+        # Verify old file exists
+        old_file = tmp_path / "Concepts" / "OldName.md"
+        assert old_file.exists()
+
+        # Rename the concept
+        update_tool.fn(concept_id=concept_id, name="NewName")
+
+        # Old file should be deleted
+        assert not old_file.exists()
+        # New file should exist
+        new_file = tmp_path / "Concepts" / "NewName.md"
+        assert new_file.exists()
+
     def test_update_concept_with_links(self, server):
         """Test updating a concept's links."""
         create_tool = server._tool_manager._tools["create_concept"]

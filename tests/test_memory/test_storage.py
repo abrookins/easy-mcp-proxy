@@ -530,6 +530,60 @@ class TestConceptHierarchy:
         assert loaded.name == "Unique Nested Name"
         assert loaded.parent_path == "Deep/Nested/Path"
 
+    def test_find_concept_file(self, storage, tmp_path):
+        """find_concept_file should return the file path for a concept."""
+        concept = Concept(
+            name="Test Concept",
+            parent_path="Some/Path",
+            text="Content.",
+        )
+        saved_path = storage.save(concept)
+
+        found_path = storage.find_concept_file(concept.concept_id)
+        assert found_path is not None
+        assert found_path == saved_path
+
+    def test_find_concept_file_not_found(self, storage):
+        """find_concept_file should return None for non-existent concept."""
+        result = storage.find_concept_file("nonexistent_id")
+        assert result is None
+
+    def test_delete_concept_file(self, storage, tmp_path):
+        """delete_concept_file should remove the file."""
+        concept = Concept(
+            name="To Delete",
+            parent_path="Delete/Path",
+            text="Content.",
+        )
+        saved_path = storage.save(concept)
+        assert saved_path.exists()
+
+        result = storage.delete_concept_file(saved_path)
+        assert result is True
+        assert not saved_path.exists()
+
+    def test_delete_concept_file_cleans_empty_dirs(self, storage, tmp_path):
+        """delete_concept_file should clean up empty parent directories."""
+        concept = Concept(
+            name="Lonely",
+            parent_path="Empty/Parent/Dirs",
+            text="Content.",
+        )
+        saved_path = storage.save(concept)
+        parent_dir = saved_path.parent
+
+        storage.delete_concept_file(saved_path)
+
+        # Parent directories should be cleaned up since they're empty
+        assert not parent_dir.exists()
+
+    def test_delete_concept_file_not_found(self, storage, tmp_path):
+        """delete_concept_file should return False for non-existent file."""
+        from pathlib import Path
+
+        result = storage.delete_concept_file(Path("/nonexistent/path.md"))
+        assert result is False
+
 
 class TestIndexAutoUpdate:
     """Tests for automatic index updates when files change."""

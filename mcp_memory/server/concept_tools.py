@@ -188,6 +188,11 @@ def register_concept_tools(
         if not concept:
             return {"error": f"Concept {concept_id} not found"}
 
+        # Track if we need to move the file (name or parent_path changed)
+        old_file_path = storage.find_concept_file(concept_id)
+        old_name = concept.name
+        old_parent_path = concept.parent_path
+
         if name is not None:
             concept.name = name
         if text is not None:
@@ -202,6 +207,15 @@ def register_concept_tools(
             concept.links = links
 
         concept.updated_at = datetime.now()
+
+        # Check if file location changed (name or parent_path changed)
+        name_changed = name is not None and name != old_name
+        path_changed = parent_path is not None and parent_path != old_parent_path
+
+        if (name_changed or path_changed) and old_file_path:
+            # Delete old file before saving to new location
+            storage.delete_concept_file(old_file_path)
+
         storage.save(concept)
         # Rebuild index to update embeddings
         searcher.build_index()

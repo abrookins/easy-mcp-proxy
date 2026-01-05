@@ -1,5 +1,6 @@
 """Concept storage mixin."""
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mcp_memory.models import Concept
@@ -15,6 +16,46 @@ class ConceptStorageMixin:
     def load_concept(self: "BaseStorage", concept_id: str) -> Concept | None:
         """Load a concept by ID (searches all concept files recursively)."""
         return self._load_by_id("Concept", "concept_id", concept_id, Concept)
+
+    def find_concept_file(self: "BaseStorage", concept_id: str) -> Path | None:
+        """Find the file path for a concept by its ID.
+
+        Returns the path to the file containing the concept, or None if not found.
+        Used when updating concepts to detect if the file needs to be moved.
+        """
+        base_dir = self._get_dir("Concept")
+        if not base_dir.exists():
+            return None
+
+        for file_path in base_dir.glob("**/*.md"):
+            content = file_path.read_text(encoding="utf-8")
+            frontmatter, _ = parse_frontmatter(content)
+            if frontmatter.get("concept_id") == concept_id:
+                return file_path
+        return None
+
+    def delete_concept_file(self: "BaseStorage", file_path: Path) -> bool:
+        """Delete a concept file at the given path.
+
+        Returns True if the file was deleted, False if it didn't exist.
+        Also cleans up empty parent directories.
+        """
+        if not file_path.exists():
+            return False
+
+        file_path.unlink()
+
+        # Clean up empty parent directories up to the concepts base dir
+        base_dir = self._get_dir("Concept")
+        parent = file_path.parent
+        while parent != base_dir and parent.exists():
+            if not any(parent.iterdir()):
+                parent.rmdir()
+                parent = parent.parent
+            else:
+                break
+
+        return True
 
     def load_concept_by_name(self: "BaseStorage", name: str) -> Concept | None:
         """Load a concept by name (searches recursively, backward compatible).
