@@ -45,7 +45,8 @@ def register_concept_tools(
         concept = storage.load_concept(concept_id)
         if not concept:
             return _text(f"Concept {concept_id} not found")
-        return _text(_format_concept(concept))
+        child_paths = storage.list_concept_child_paths(concept.full_path)
+        return _text(_format_concept(concept, child_paths=child_paths))
 
     @mcp.tool()
     def read_concept_by_name(name: str) -> TextContent:
@@ -53,21 +54,22 @@ def register_concept_tools(
         concept = storage.load_concept_by_name(name)
         if not concept:
             return _text(f"Concept '{name}' not found")
-        return _text(_format_concept(concept))
+        child_paths = storage.list_concept_child_paths(concept.full_path)
+        return _text(_format_concept(concept, child_paths=child_paths))
 
     @mcp.tool()
     def read_concept_by_path(path: str) -> TextContent:
         """Get a concept by its hierarchical path.
 
         Path format: "Parent/Child/Grandchild" (e.g., "Lane Harker/Characters/Lane")
-        Use this to navigate the concept hierarchy. After reading a concept, you can:
-        - Read its parent by removing the last path component
-        - List its children with list_concept_children(path)
+        Use this to navigate the concept hierarchy. The output includes any children
+        of this concept, so you can see the hierarchy structure in a single call.
         """
         concept = storage.load_concept_by_path(path)
         if not concept:
             return _text(f"Concept at path '{path}' not found")
-        return _text(_format_concept(concept))
+        child_paths = storage.list_concept_child_paths(concept.full_path)
+        return _text(_format_concept(concept, child_paths=child_paths))
 
     @mcp.tool()
     def list_concept_children(parent_path: str | None = None) -> TextContent:

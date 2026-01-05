@@ -584,6 +584,46 @@ class TestConceptHierarchy:
         result = storage.delete_concept_file(Path("/nonexistent/path.md"))
         assert result is False
 
+    def test_list_concept_child_paths(self, storage):
+        """list_concept_child_paths should return paths without file I/O."""
+        parent = Concept(name="Parent", text="Parent concept.")
+        child1 = Concept(name="Child One", parent_path="Parent", text="First.")
+        child2 = Concept(name="Child Two", parent_path="Parent", text="Second.")
+
+        storage.save(parent)
+        storage.save(child1)
+        storage.save(child2)
+
+        paths = storage.list_concept_child_paths("Parent")
+        assert len(paths) == 2
+        assert "Parent/Child One" in paths
+        assert "Parent/Child Two" in paths
+
+    def test_list_concept_child_paths_empty(self, storage):
+        """list_concept_child_paths should return empty list for leaf concepts."""
+        leaf = Concept(name="Leaf", text="No children.")
+        storage.save(leaf)
+
+        paths = storage.list_concept_child_paths("Leaf")
+        assert paths == []
+
+    def test_list_concept_child_paths_nonexistent(self, storage):
+        """list_concept_child_paths should return empty for non-existent path."""
+        paths = storage.list_concept_child_paths("NonExistent")
+        assert paths == []
+
+    def test_list_concept_child_paths_root(self, storage):
+        """list_concept_child_paths should work for root level."""
+        concept1 = Concept(name="TopLevel1", text="First root concept.")
+        concept2 = Concept(name="TopLevel2", text="Second root concept.")
+
+        storage.save(concept1)
+        storage.save(concept2)
+
+        paths = storage.list_concept_child_paths(None)
+        assert "TopLevel1" in paths
+        assert "TopLevel2" in paths
+
 
 class TestIndexAutoUpdate:
     """Tests for automatic index updates when files change."""

@@ -27,8 +27,17 @@ def _derive_title_from_text(text: str, max_length: int = 60) -> str:
     return truncated + "..." if truncated else first_line[:max_length] + "..."
 
 
-def _format_concept(concept: Concept) -> str:
-    """Format a concept as markdown."""
+def _format_concept(
+    concept: Concept,
+    child_paths: list[str] | None = None,
+) -> str:
+    """Format a concept as markdown.
+
+    Args:
+        concept: The concept to format.
+        child_paths: Optional list of child concept paths. If provided, child
+            info is included in the output.
+    """
     lines = [
         f"# {concept.name}",
         f"**Path:** `{concept.full_path}`",
@@ -42,6 +51,14 @@ def _format_concept(concept: Concept) -> str:
         lines.append(f"**Tags:** {', '.join(concept.tags)}")
     if concept.links:
         lines.append(f"**Links:** {', '.join(concept.links)}")
+
+    # Include children information if provided
+    if child_paths is not None:
+        if child_paths:
+            lines.append(f"**Children ({len(child_paths)}):** {', '.join(child_paths)}")
+        else:
+            lines.append("**Children:** none")
+
     lines.append(f"**Updated:** {concept.updated_at:%Y-%m-%d %H:%M}")
     if concept.text:
         lines.append(f"\n---\n\n{concept.text}")

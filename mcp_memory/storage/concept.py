@@ -121,6 +121,59 @@ class ConceptStorageMixin:
 
         return None
 
+    def list_concept_child_paths(
+        self: "BaseStorage", parent_path: str | None = None
+    ) -> list[str]:
+        """List paths of direct children of a concept (no file I/O).
+
+        Returns paths that can be used with read_concept_by_path().
+        This is the most efficient way to discover children since it
+        only examines directory/file names, not file contents.
+
+        Args:
+            parent_path: Path to parent (e.g., "Andrew Brookins"). None for root.
+
+        Returns:
+            List of child concept paths (e.g., ["Parent/Child1", "Parent/Child2"]).
+        """
+        base_dir = self._get_dir("Concept")
+        if not base_dir.exists():
+            return []
+
+        if parent_path:
+            safe_path = self._sanitize_path(parent_path)
+            target_dir = base_dir / safe_path
+        else:
+            target_dir = base_dir
+
+        if not target_dir.exists():
+            return []
+
+        paths = []
+
+        # Get direct child files (*.md but not in subdirectories)
+        for file_path in target_dir.glob("*.md"):
+            if file_path.name == "_index.md":
+                continue
+            # Construct path from filename
+            child_name = file_path.stem
+            if parent_path:
+                paths.append(f"{parent_path}/{child_name}")
+            else:
+                paths.append(child_name)
+
+        # Get direct child folders (represented by folder name)
+        for subdir in target_dir.iterdir():
+            if subdir.is_dir():
+                # Folder represents a concept (may or may not have _index.md)
+                child_name = subdir.name
+                if parent_path:
+                    paths.append(f"{parent_path}/{child_name}")
+                else:
+                    paths.append(child_name)
+
+        return paths
+
     def list_concept_children(
         self: "BaseStorage", parent_path: str | None = None
     ) -> list[Concept]:
@@ -131,6 +184,8 @@ class ConceptStorageMixin:
 
         Returns:
             List of concepts that are direct children of the given path.
+
+        Note: For just paths, use list_concept_child_paths() which is faster.
         """
         base_dir = self._get_dir("Concept")
         if not base_dir.exists():

@@ -317,6 +317,33 @@ class TestConceptTools:
         assert "Setting" in result
         assert "story setting" in result
 
+    def test_read_concept_shows_children(self, server):
+        """Test that reading a concept shows its children as paths."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        read_tool = server._tool_manager._tools["read_concept_by_path"]
+
+        # Create parent with children
+        create_tool.fn(name="Lane Harker", text="A novel.")
+        create_tool.fn(name="Characters", parent_path="Lane Harker", text="Characters.")
+        create_tool.fn(name="Setting", parent_path="Lane Harker", text="Setting.")
+
+        result = get_text(read_tool.fn(path="Lane Harker"))
+        # Should show children info with paths
+        assert "Children" in result
+        assert "Lane Harker/Characters" in result
+        assert "Lane Harker/Setting" in result
+
+    def test_read_concept_shows_no_children(self, server):
+        """Test that reading a leaf concept shows no children."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        read_tool = server._tool_manager._tools["read_concept_by_path"]
+
+        create_tool.fn(name="Leaf", text="A leaf concept with no children.")
+
+        result = get_text(read_tool.fn(path="Leaf"))
+        # Should indicate no children
+        assert "Children:** none" in result
+
     def test_read_concept_by_path_not_found(self, server):
         """Test reading a non-existent path."""
         read_tool = server._tool_manager._tools["read_concept_by_path"]
