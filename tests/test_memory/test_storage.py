@@ -335,6 +335,202 @@ Step 2: Do the other thing
         assert loaded.content == "Document content here"
 
 
+class TestConceptHierarchy:
+    """Tests for hierarchical concept storage and retrieval."""
+
+    @pytest.fixture
+    def storage(self, tmp_path):
+        """Create a storage instance with temp directory."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        return MemoryStorage(config)
+
+    def test_save_concept_with_parent_path(self, storage, tmp_path):
+        """Concepts with parent_path should be saved in nested directories."""
+        concept = Concept(
+            name="Preferences",
+            parent_path="Andrew Brookins",
+            text="User preferences.",
+        )
+        path = storage.save(concept)
+
+        # Should be in nested directory
+        assert "Andrew Brookins" in str(path)
+        assert path.name == "Preferences.md"
+        assert path.exists()
+
+    def test_save_concept_deep_hierarchy(self, storage, tmp_path):
+        """Concepts with deep nesting should create nested directories."""
+        concept = Concept(
+            name="Lane",
+            parent_path="Lane Harker/Characters",
+            text="Main character.",
+        )
+        path = storage.save(concept)
+
+        # Should be in deeply nested directory
+        assert "Lane Harker" in str(path)
+        assert "Characters" in str(path)
+        assert path.name == "Lane.md"
+
+    def test_load_concept_preserves_parent_path(self, storage):
+        """Loading a concept should preserve its parent_path."""
+        concept = Concept(
+            name="Setting",
+            parent_path="Lane Harker",
+            text="The story setting.",
+        )
+        storage.save(concept)
+
+        loaded = storage.load_concept(concept.concept_id)
+        assert loaded is not None
+        assert loaded.parent_path == "Lane Harker"
+        assert loaded.full_path == "Lane Harker/Setting"
+
+    def test_load_concept_by_path(self, storage):
+        """Test loading a concept by its hierarchical path."""
+        concept = Concept(
+            name="Preferences",
+            parent_path="Andrew Brookins",
+            text="User preferences.",
+        )
+        storage.save(concept)
+
+        loaded = storage.load_concept_by_path("Andrew Brookins/Preferences")
+        assert loaded is not None
+        assert loaded.name == "Preferences"
+        assert loaded.parent_path == "Andrew Brookins"
+
+    def test_load_concept_by_path_not_found(self, storage):
+        """Test loading a non-existent path returns None."""
+        result = storage.load_concept_by_path("NonExistent/Path")
+        assert result is None
+
+    def test_load_concept_by_path_index_file(self, storage, tmp_path):
+        """Test loading a folder concept via _index.md."""
+        # Create a folder with _index.md
+        concepts_dir = tmp_path / "Concepts" / "Lane Harker"
+        concepts_dir.mkdir(parents=True)
+        index_file = concepts_dir / "_index.md"
+        index_file.write_text(
+            "---\nname: Lane Harker\nconcept_id: c_test123\n---\nNovel overview."
+        )
+
+        loaded = storage.load_concept_by_path("Lane Harker")
+        assert loaded is not None
+        assert loaded.name == "Lane Harker"
+        assert "Novel overview" in loaded.text
+
+    def test_list_concept_children(self, storage):
+        """Test listing direct children of a concept path."""
+        # Create parent and children
+        parent = Concept(name="Lane Harker", text="Novel overview.")
+        child1 = Concept(name="Setting", parent_path="Lane Harker", text="Setting.")
+        child2 = Concept(name="Plot", parent_path="Lane Harker", text="Plot.")
+        grandchild = Concept(
+            name="Lane", parent_path="Lane Harker/Characters", text="Character."
+        )
+
+        storage.save(parent)
+        storage.save(child1)
+        storage.save(child2)
+        storage.save(grandchild)
+
+        children = storage.list_concept_children("Lane Harker")
+        names = [c.name for c in children]
+
+        # Should include direct children only
+        assert "Setting" in names
+        assert "Plot" in names
+        # Should NOT include grandchildren
+        assert "Lane" not in names
+
+    def test_list_concept_children_root(self, storage):
+        """Test listing root-level concepts."""
+        root1 = Concept(name="Andrew Brookins", text="User.")
+        root2 = Concept(name="Lane Harker", text="Novel.")
+        child = Concept(name="Preferences", parent_path="Andrew Brookins", text=".")
+
+        storage.save(root1)
+        storage.save(root2)
+        storage.save(child)
+
+        roots = storage.list_concept_children(None)
+        names = [c.name for c in roots]
+
+        assert "Andrew Brookins" in names
+        assert "Lane Harker" in names
+        # Children should not appear at root level
+        assert "Preferences" not in names
+
+    def test_get_concept_parent(self, storage):
+        """Test getting the parent concept of a path."""
+        parent = Concept(name="Lane Harker", text="Novel overview.")
+        child = Concept(name="Setting", parent_path="Lane Harker", text="Setting.")
+
+        storage.save(parent)
+        storage.save(child)
+
+        parent_concept = storage.get_concept_parent("Lane Harker/Setting")
+        assert parent_concept is not None
+        assert parent_concept.name == "Lane Harker"
+
+    def test_get_concept_parent_not_found(self, storage):
+        """Test getting parent when parent doesn't exist."""
+        child = Concept(name="Orphan", parent_path="NonExistent", text="Orphan.")
+        storage.save(child)
+
+        parent = storage.get_concept_parent("NonExistent/Orphan")
+        assert parent is None
+
+    def test_list_concepts_with_parent_path_filter(self, storage):
+        """Test listing concepts filtered by parent_path."""
+        root = Concept(name="Lane Harker", text="Novel.")
+        child1 = Concept(name="Setting", parent_path="Lane Harker", text="Setting.")
+        child2 = Concept(name="Plot", parent_path="Lane Harker", text="Plot.")
+        other = Concept(name="Andrew", text="User.")
+
+        storage.save(root)
+        storage.save(child1)
+        storage.save(child2)
+        storage.save(other)
+
+        # Filter by parent_path
+        lane_concepts = storage.list_concepts(parent_path="Lane Harker")
+        names = [c.name for c in lane_concepts]
+
+        assert "Setting" in names
+        assert "Plot" in names
+        assert "Andrew" not in names
+
+    def test_concept_with_links(self, storage):
+        """Test saving and loading concepts with cross-reference links."""
+        concept = Concept(
+            name="Nose",
+            parent_path="Anatomy/Face",
+            text="The nose.",
+            links=["Respiratory System", "Sensory Organs"],
+        )
+        storage.save(concept)
+
+        loaded = storage.load_concept(concept.concept_id)
+        assert loaded is not None
+        assert loaded.links == ["Respiratory System", "Sensory Organs"]
+
+    def test_load_concept_by_name_finds_nested(self, storage):
+        """load_concept_by_name should find concepts in nested directories."""
+        concept = Concept(
+            name="Unique Nested Name",
+            parent_path="Deep/Nested/Path",
+            text="Content.",
+        )
+        storage.save(concept)
+
+        loaded = storage.load_concept_by_name("Unique Nested Name")
+        assert loaded is not None
+        assert loaded.name == "Unique Nested Name"
+        assert loaded.parent_path == "Deep/Nested/Path"
+
+
 class TestIndexAutoUpdate:
     """Tests for automatic index updates when files change."""
 

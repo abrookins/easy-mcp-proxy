@@ -276,6 +276,118 @@ class TestConceptTools:
         assert "Test Person" in result
         assert "Description here" in result
 
+    def test_create_concept_with_parent_path(self, server):
+        """Test creating a concept with parent_path for hierarchy."""
+        tool = server._tool_manager._tools["create_concept"]
+        result = tool.fn(
+            name="Preferences",
+            parent_path="Andrew Brookins",
+            text="User preferences.",
+        )
+
+        assert "concept_id" in result
+        assert result["path"] == "Andrew Brookins/Preferences"
+        assert result["created"] is True
+
+    def test_create_concept_with_links(self, server):
+        """Test creating a concept with cross-reference links."""
+        tool = server._tool_manager._tools["create_concept"]
+        result = tool.fn(
+            name="Nose",
+            parent_path="Anatomy/Face",
+            text="The nose.",
+            links=["Respiratory System", "Sensory Organs"],
+        )
+
+        assert "concept_id" in result
+        assert result["path"] == "Anatomy/Face/Nose"
+
+    def test_read_concept_by_path(self, server):
+        """Test reading a concept by its hierarchical path."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        read_tool = server._tool_manager._tools["read_concept_by_path"]
+
+        create_tool.fn(
+            name="Setting",
+            parent_path="Lane Harker",
+            text="The story setting.",
+        )
+
+        result = get_text(read_tool.fn(path="Lane Harker/Setting"))
+        assert "Setting" in result
+        assert "story setting" in result
+
+    def test_read_concept_by_path_not_found(self, server):
+        """Test reading a non-existent path."""
+        read_tool = server._tool_manager._tools["read_concept_by_path"]
+        result = get_text(read_tool.fn(path="NonExistent/Path"))
+        assert "not found" in result.lower()
+
+    def test_list_concept_children(self, server):
+        """Test listing direct children of a concept."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        list_tool = server._tool_manager._tools["list_concept_children"]
+
+        create_tool.fn(name="Lane Harker", text="Novel.")
+        create_tool.fn(name="Setting", parent_path="Lane Harker", text="Setting.")
+        create_tool.fn(name="Plot", parent_path="Lane Harker", text="Plot.")
+
+        result = get_text(list_tool.fn(parent_path="Lane Harker"))
+        assert "Setting" in result
+        assert "Plot" in result
+
+    def test_list_concept_children_root(self, server):
+        """Test listing root-level concepts."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        list_tool = server._tool_manager._tools["list_concept_children"]
+
+        create_tool.fn(name="Andrew Brookins", text="User.")
+        create_tool.fn(name="Lane Harker", text="Novel.")
+
+        result = get_text(list_tool.fn())
+        assert "Andrew Brookins" in result
+        assert "Lane Harker" in result
+
+    def test_list_concepts_shows_full_path(self, server):
+        """Test that list_concepts shows full hierarchical paths."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        list_tool = server._tool_manager._tools["list_concepts"]
+
+        create_tool.fn(name="Setting", parent_path="Lane Harker", text="Setting.")
+
+        result = get_text(list_tool.fn())
+        assert "Lane Harker/Setting" in result
+
+    def test_update_concept_with_parent_path(self, server):
+        """Test moving a concept to a new parent."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        update_tool = server._tool_manager._tools["update_concept"]
+
+        create_result = create_tool.fn(name="Orphan", text="Orphan concept.")
+        concept_id = create_result["concept_id"]
+
+        update_result = update_tool.fn(
+            concept_id=concept_id, parent_path="New Parent"
+        )
+
+        assert update_result["updated"] is True
+        assert update_result["path"] == "New Parent/Orphan"
+
+    def test_update_concept_with_links(self, server):
+        """Test updating a concept's links."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        update_tool = server._tool_manager._tools["update_concept"]
+        read_tool = server._tool_manager._tools["read_concept"]
+
+        create_result = create_tool.fn(name="Test", text="Test concept.")
+        concept_id = create_result["concept_id"]
+
+        update_tool.fn(concept_id=concept_id, links=["Related A", "Related B"])
+
+        result = get_text(read_tool.fn(concept_id=concept_id))
+        assert "Related A" in result
+        assert "Related B" in result
+
 
 class TestSkillTools:
     """Tests for skill-related tools."""

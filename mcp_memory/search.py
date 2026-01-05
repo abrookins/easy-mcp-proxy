@@ -54,16 +54,16 @@ class MemorySearcher:
         files = []
         base = Path(self.config.base_path)
 
-        # Concept files
+        # Concept files (recursive for hierarchy support)
         concepts_dir = base / self.config.concepts_dir
         if concepts_dir.exists():
-            files.extend(concepts_dir.glob("*.md"))
+            files.extend(concepts_dir.glob("**/*.md"))
 
-        # Extra concept directories
+        # Extra concept directories (also recursive)
         for extra_dir in self.config.extra_concept_dirs:
             extra_path = base / extra_dir
             if extra_path.exists():
-                files.extend(extra_path.glob("*.md"))
+                files.extend(extra_path.glob("**/*.md"))
 
         # Thread files
         threads_dir = base / self.config.threads_dir
@@ -120,15 +120,18 @@ class MemorySearcher:
         self._file_mtimes = self._get_current_mtimes()
         self._indexed_files = set(self._file_mtimes.keys())
 
-        # Index concepts
+        # Index concepts (including full path for hierarchy)
         for concept in self.storage.list_concepts():
-            text = f"{concept.name}\n{concept.text}"
+            # Include full path in searchable text for better discovery
+            full_path = concept.full_path
+            text = f"{full_path}\n{concept.name}\n{concept.text}"
             texts.append(text)
             id_map.append(
                 {
                     "type": "concept",
                     "id": concept.concept_id,
                     "name": concept.name,
+                    "path": full_path,
                     "project_id": concept.project_id,
                 }
             )

@@ -46,21 +46,52 @@ class Thread(BaseModel):
 class Concept(BaseModel):
     """A concept or entity with associated knowledge.
 
-    Stored as markdown with YAML frontmatter.
+    Stored as markdown with YAML frontmatter in a hierarchical folder structure.
     Compatible with existing Obsidian files - derives name from filename if needed.
+
+    Hierarchy:
+    - `parent_path` determines folder location (e.g., "Lane Harker/Characters")
+    - Concepts are stored at `{concepts_dir}/{parent_path}/{name}.md`
+    - A folder can have an `_index.md` to represent the folder itself as a concept
+    - `links` provides graph-like cross-references to other concepts
+
+    Example structure:
+        Concepts/
+          Andrew Brookins/
+            _index.md           # Concept about Andrew himself
+            Preferences.md      # parent_path="Andrew Brookins"
+            Projects.md
+          Lane Harker/
+            _index.md
+            Characters/
+              _index.md
+              Lane.md           # parent_path="Lane Harker/Characters"
     """
 
     model_config = {"extra": "allow"}  # Allow Obsidian-specific fields
 
     concept_id: str = Field(default_factory=lambda: generate_id("c"))
-    name: str = ""  # Can be derived from filename
+    name: str = ""  # Can be derived from filename (leaf name, not full path)
+    parent_path: str | None = None  # Hierarchical path to parent folder
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
     project_id: str | None = None  # Optional project association
     tags: list[str] = Field(default_factory=list)
     text: str = ""  # Markdown body
+    # Cross-references to other concepts (graph edges)
+    links: list[str] = Field(default_factory=list)  # Concept names or paths
     # Common Obsidian fields we preserve
     aliases: list[str] = Field(default_factory=list)
+
+    @property
+    def full_path(self) -> str:
+        """Get the full hierarchical path of this concept.
+
+        Returns path like "Lane Harker/Characters/Lane" or just "Lane" if no parent.
+        """
+        if self.parent_path:
+            return f"{self.parent_path}/{self.name}"
+        return self.name
 
 
 class Project(BaseModel):

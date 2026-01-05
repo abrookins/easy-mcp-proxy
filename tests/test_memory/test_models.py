@@ -88,6 +88,8 @@ class TestConcept:
         assert concept.name == "Test Concept"
         assert concept.text == ""
         assert concept.tags == []
+        assert concept.parent_path is None
+        assert concept.links == []
 
     def test_concept_with_content(self):
         """Test concept with full content."""
@@ -101,6 +103,41 @@ class TestConcept:
         assert concept.text == "A character in the story."
         assert concept.project_id == "p_123"
         assert "character" in concept.tags
+
+    def test_concept_hierarchy(self):
+        """Test concept with parent_path for hierarchy."""
+        concept = Concept(
+            name="Preferences",
+            parent_path="Andrew Brookins",
+            text="User preferences.",
+        )
+        assert concept.name == "Preferences"
+        assert concept.parent_path == "Andrew Brookins"
+        assert concept.full_path == "Andrew Brookins/Preferences"
+
+    def test_concept_deep_hierarchy(self):
+        """Test concept with deep nesting."""
+        concept = Concept(
+            name="Lane",
+            parent_path="Lane Harker/Characters",
+            text="Main character.",
+        )
+        assert concept.full_path == "Lane Harker/Characters/Lane"
+
+    def test_concept_full_path_no_parent(self):
+        """Test full_path for root-level concept."""
+        concept = Concept(name="Root Concept")
+        assert concept.full_path == "Root Concept"
+
+    def test_concept_with_links(self):
+        """Test concept with cross-references."""
+        concept = Concept(
+            name="Nose",
+            parent_path="Anatomy/Face",
+            links=["Respiratory System", "Sensory Organs"],
+        )
+        assert concept.links == ["Respiratory System", "Sensory Organs"]
+        assert concept.full_path == "Anatomy/Face/Nose"
 
 
 class TestProject:
