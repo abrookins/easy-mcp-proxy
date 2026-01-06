@@ -144,11 +144,54 @@ class BaseStorage:
     def _get_concept_file_path(self, concept: "Concept") -> Path:
         """Get the file path for a concept.
 
-        All concepts use the folder/folder.md format: Name/Name.md
+        Uses flat format (Name.md) by default.
+        Uses folder format (Name/Name.md) only if a folder already exists
+        for this concept (i.e., it has children).
         """
         parent_dir = self._get_concept_dir(concept)
         safe_name = self._sanitize_name(concept.name)
-        return parent_dir / safe_name / f"{safe_name}.md"
+
+        # Check if a folder already exists for this concept
+        folder_path = parent_dir / safe_name
+        if folder_path.is_dir():
+            # Folder exists (concept has children), use folder format
+            return folder_path / f"{safe_name}.md"
+        else:
+            # No folder, use flat format
+            return parent_dir / f"{safe_name}.md"
+
+    def _promote_parent_to_folder(self, concept: "Concept") -> None:
+        """Promote parent concept from flat to folder format if needed.
+
+        When saving a child concept, the parent must be in folder format.
+        If parent is currently flat (Parent.md), move it to Parent/Parent.md.
+        """
+        if not concept.parent_path:
+            return
+
+        # Get the immediate parent's name (last component of parent_path)
+        parent_parts = concept.parent_path.split("/")
+        immediate_parent_name = parent_parts[-1]
+        safe_parent_name = self._sanitize_name(immediate_parent_name)
+
+        # Get the grandparent directory (where the parent concept lives)
+        concepts_dir = self._get_dir("Concept")
+        if len(parent_parts) > 1:
+            grandparent_path = "/".join(parent_parts[:-1])
+            safe_grandparent = self._sanitize_path(grandparent_path)
+            grandparent_dir = concepts_dir / safe_grandparent
+        else:
+            grandparent_dir = concepts_dir
+
+        # Check if parent is in flat format
+        flat_file = grandparent_dir / f"{safe_parent_name}.md"
+        folder_path = grandparent_dir / safe_parent_name
+        folder_file = folder_path / f"{safe_parent_name}.md"
+
+        if flat_file.exists() and not folder_path.exists():
+            # Parent is flat, promote to folder format
+            folder_path.mkdir(parents=True, exist_ok=True)
+            flat_file.rename(folder_file)
 
     def save(self, obj: BaseModel) -> Path:
         """Save an object to disk."""
@@ -156,6 +199,8 @@ class BaseStorage:
 
         # Handle concept hierarchy specially
         if model_type == "Concept":
+            # Promote parent to folder format if needed (for child concepts)
+            self._promote_parent_to_folder(obj)
             file_path = self._get_concept_file_path(obj)
             file_path.parent.mkdir(parents=True, exist_ok=True)
         else:
@@ -251,9 +296,18 @@ class BaseStorage:
                 frontmatter[id_field] = derived_name
 
         # For Concepts, derive parent_path from directory structure
-        # Concepts are stored as Folder/Folder.md, so parent is grandparent
+        # Supports both flat (Name.md) and folder (Name/Name.md) formats
         if model_name == "Concept" and base_dir is not None:
-            parent_dir = file_path.parent.parent  # Go up past the concept's folder
+            # Detect format: folder format if filename matches parent dir name
+            is_folder_format = file_path.parent.name == file_path.stem
+
+            if is_folder_format:
+                # Folder format: Parent/Parent.md -> go up twice
+                parent_dir = file_path.parent.parent
+            else:
+                # Flat format: Name.md -> go up once
+                parent_dir = file_path.parent
+
             if parent_dir != base_dir:
                 try:
                     rel_path = parent_dir.relative_to(base_dir)
@@ -307,9 +361,18 @@ class BaseStorage:
                 if "name" not in frontmatter or not frontmatter["name"]:
                     frontmatter["name"] = derived_name
                 # For Concepts, derive parent_path from directory structure
-                # Concepts are stored as Folder/Folder.md, so parent is grandparent
+                # Supports both flat (Name.md) and folder (Name/Name.md) formats
                 if model_type == "Concept":
-                    parent_dir = file_path.parent.parent
+                    # Detect format: folder format if filename matches parent dir
+                    is_folder_format = file_path.parent.name == file_path.stem
+
+                    if is_folder_format:
+                        # Folder format: Parent/Parent.md -> go up twice
+                        parent_dir = file_path.parent.parent
+                    else:
+                        # Flat format: Name.md -> go up once
+                        parent_dir = file_path.parent
+
                     if parent_dir != dir_path:
                         try:
                             rel_path = parent_dir.relative_to(dir_path)

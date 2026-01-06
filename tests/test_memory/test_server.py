@@ -403,48 +403,44 @@ class TestConceptTools:
         create_tool = server._tool_manager._tools["create_concept"]
         update_tool = server._tool_manager._tools["update_concept"]
 
-        # Create a concept at root level (stored as Folder/Folder.md)
+        # Create a concept at root level (stored as flat file)
         create_result = create_tool.fn(name="Movable", text="Content.")
         concept_id = create_result["concept_id"]
 
-        # Verify old folder exists
-        old_folder = tmp_path / "Concepts" / "Movable"
-        assert old_folder.exists()
-        assert (old_folder / "Movable.md").exists()
+        # Verify old flat file exists
+        old_file = tmp_path / "Concepts" / "Movable.md"
+        assert old_file.exists()
 
         # Move to a new parent
         update_tool.fn(concept_id=concept_id, parent_path="New Location")
 
-        # Old folder should be deleted
-        assert not old_folder.exists()
-        # New folder should exist
-        new_folder = tmp_path / "Concepts" / "New Location" / "Movable"
-        assert new_folder.exists()
-        assert (new_folder / "Movable.md").exists()
+        # Old file should be deleted
+        assert not old_file.exists()
+        # New file should exist (flat format within new location folder)
+        new_file = tmp_path / "Concepts" / "New Location" / "Movable.md"
+        assert new_file.exists()
 
     def test_update_concept_rename_deletes_old_file(self, server, tmp_path):
-        """Test that renaming a concept deletes the old folder (no duplicates)."""
+        """Test that renaming a concept deletes the old file (no duplicates)."""
         create_tool = server._tool_manager._tools["create_concept"]
         update_tool = server._tool_manager._tools["update_concept"]
 
-        # Create a concept (stored as Folder/Folder.md)
+        # Create a concept (stored as flat file)
         create_result = create_tool.fn(name="OldName", text="Content.")
         concept_id = create_result["concept_id"]
 
-        # Verify old folder exists
-        old_folder = tmp_path / "Concepts" / "OldName"
-        assert old_folder.exists()
-        assert (old_folder / "OldName.md").exists()
+        # Verify old flat file exists
+        old_file = tmp_path / "Concepts" / "OldName.md"
+        assert old_file.exists()
 
         # Rename the concept
         update_tool.fn(concept_id=concept_id, name="NewName")
 
-        # Old folder should be deleted
-        assert not old_folder.exists()
-        # New folder should exist
-        new_folder = tmp_path / "Concepts" / "NewName"
-        assert new_folder.exists()
-        assert (new_folder / "NewName.md").exists()
+        # Old file should be deleted
+        assert not old_file.exists()
+        # New file should exist (flat format)
+        new_file = tmp_path / "Concepts" / "NewName.md"
+        assert new_file.exists()
 
     def test_update_concept_with_links(self, server):
         """Test updating a concept's links."""

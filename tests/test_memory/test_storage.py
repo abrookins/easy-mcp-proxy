@@ -167,7 +167,8 @@ class TestMemoryStorage:
         path = storage.save(concept)
         assert path.exists()
         assert path.name == "Lane Harker.md"
-        assert "Lane Harker" in str(path.parent)  # Folder name contains concept name
+        # Flat format: stored directly in Concepts/
+        assert path.parent.name == "Concepts"
 
         loaded = storage.load_concept_by_name("Lane Harker")
         assert loaded is not None
@@ -646,25 +647,32 @@ class TestConceptHierarchy:
         parent_count = sum(1 for p in root_paths if p == "Parent")
         assert parent_count == 1
 
-    def test_all_concepts_use_folder_format(self, storage, tmp_path):
-        """All concepts should be stored as Folder/Folder.md."""
-        # Create a leaf concept
+    def test_concepts_use_appropriate_format(self, storage, tmp_path):
+        """Concepts use flat format by default, folder when they have children."""
+        # Create a leaf concept (no children) - should be flat
         leaf = Concept(name="Leaf", text="Leaf content.", concept_id="leaf_id")
         leaf_path = storage.save(leaf)
 
-        # Create a parent concept
+        # Create a parent concept (initially no children) - should be flat
         parent = Concept(name="Parent", text="Parent content.", concept_id="parent_id")
         parent_path = storage.save(parent)
 
-        # Add a child to parent
+        concepts_dir = tmp_path / "Concepts"
+
+        # Initially both should be flat
+        assert leaf_path == concepts_dir / "Leaf.md"
+        assert parent_path == concepts_dir / "Parent.md"
+
+        # Add a child to parent - parent should be promoted to folder
         child = Concept(name="Child", parent_path="Parent", text="Child content.")
         child_path = storage.save(child)
 
-        # All should use Folder/Folder.md format
-        concepts_dir = tmp_path / "Concepts"
-        assert leaf_path == concepts_dir / "Leaf" / "Leaf.md"
-        assert parent_path == concepts_dir / "Parent" / "Parent.md"
-        assert child_path == concepts_dir / "Parent" / "Child" / "Child.md"
+        # Child should be flat within parent folder
+        assert child_path == concepts_dir / "Parent" / "Child.md"
+
+        # Parent should have been promoted to folder format
+        promoted_parent = concepts_dir / "Parent" / "Parent.md"
+        assert promoted_parent.exists()
 
         # All should be loadable
         loaded_leaf = storage.load_concept_by_path("Leaf")
@@ -760,9 +768,9 @@ class TestIndexAutoUpdate:
         storage.save(concept)
         searcher.build_index()
 
-        # Delete the file externally (now at Folder/Folder.md)
+        # Delete the file externally (now at flat format)
         concepts_dir = tmp_path / "Concepts"
-        (concepts_dir / "To Delete" / "To Delete.md").unlink()
+        (concepts_dir / "To Delete.md").unlink()
 
         # Search should not return the deleted file
         results = searcher.search_concepts("This will be removed")
@@ -1850,3 +1858,139 @@ Original content."""
         loaded = storage.load_concept(concept.concept_id)
         assert loaded.text == "Just plain text."
         assert "---" not in loaded.text
+
+
+class TestConceptFlatAndFolderFormats:
+    """Tests for flat (Name.md) and folder (Name/Name.md) concept formats."""
+
+    def test_new_concept_uses_flat_format(self, tmp_path):
+        """New concepts without children should use flat format."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+
+        concept = Concept(name="SimpleConcept", text="Content")
+        file_path = storage.save(concept)
+
+        # Should be flat format: Concepts/SimpleConcept.md
+        assert file_path.name == "SimpleConcept.md"
+        assert file_path.parent.name == "Concepts"
+
+    def test_concept_with_folder_uses_folder_format(self, tmp_path):
+        """Concepts with existing folder should use folder format."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+
+        # Manually create a folder for the concept
+        concepts_dir = tmp_path / "Concepts"
+        concepts_dir.mkdir()
+        (concepts_dir / "ParentConcept").mkdir()
+
+        concept = Concept(name="ParentConcept", text="Content")
+        file_path = storage.save(concept)
+
+        # Should be folder format: Concepts/ParentConcept/ParentConcept.md
+        assert file_path.name == "ParentConcept.md"
+        assert file_path.parent.name == "ParentConcept"
+
+    def test_saving_child_promotes_parent_to_folder(self, tmp_path):
+        """Saving a child concept should promote parent from flat to folder."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+
+        # Create parent in flat format
+        parent = Concept(name="Parent", text="Parent content")
+        parent_path = storage.save(parent)
+        assert parent_path.name == "Parent.md"
+        assert parent_path.parent.name == "Concepts"
+
+        # Create child with parent_path
+        child = Concept(name="Child", text="Child content", parent_path="Parent")
+        child_path = storage.save(child)
+
+        # Child should be inside Parent folder
+        assert child_path.name == "Child.md"
+        assert child_path.parent.name == "Parent"
+
+        # Parent should have been promoted to folder format
+        promoted_parent = tmp_path / "Concepts" / "Parent" / "Parent.md"
+        assert promoted_parent.exists()
+
+        # Old flat parent file should be gone
+        old_parent = tmp_path / "Concepts" / "Parent.md"
+        assert not old_parent.exists()
+
+    def test_load_flat_format_derives_correct_parent_path(self, tmp_path):
+        """Loading flat format should derive correct parent_path."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+
+        # Create a concept inside a folder (flat format within folder)
+        concepts_dir = tmp_path / "Concepts"
+        parent_dir = concepts_dir / "MyParent"
+        parent_dir.mkdir(parents=True)
+
+        # Create flat file inside the parent folder
+        file_path = parent_dir / "FlatChild.md"
+        file_path.write_text("---\nconcept_id: c_flat\nname: FlatChild\n---\nContent")
+
+        loaded = storage.load_concept("c_flat")
+        assert loaded is not None
+        assert loaded.name == "FlatChild"
+        assert loaded.parent_path == "MyParent"
+
+    def test_load_folder_format_derives_correct_parent_path(self, tmp_path):
+        """Loading folder format should derive correct parent_path."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+
+        # Create a concept in folder format inside a parent
+        concepts_dir = tmp_path / "Concepts"
+        parent_dir = concepts_dir / "MyParent" / "FolderChild"
+        parent_dir.mkdir(parents=True)
+
+        # Create folder format file
+        file_path = parent_dir / "FolderChild.md"
+        file_path.write_text("---\nconcept_id: c_folder\nname: FolderChild\n---\nBody")
+
+        loaded = storage.load_concept("c_folder")
+        assert loaded is not None
+        assert loaded.name == "FolderChild"
+        assert loaded.parent_path == "MyParent"
+
+    def test_roundtrip_flat_format(self, tmp_path):
+        """Save and load flat format preserves data."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+
+        concept = Concept(name="FlatConcept", text="My content", tags=["test"])
+        storage.save(concept)
+
+        loaded = storage.load_concept(concept.concept_id)
+        assert loaded.name == "FlatConcept"
+        assert loaded.text == "My content"
+        assert "test" in loaded.tags
+
+    def test_nested_children(self, tmp_path):
+        """Test multiple levels of nesting."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+
+        # Create grandparent
+        grandparent = Concept(name="Grandparent", text="GP")
+        storage.save(grandparent)
+
+        # Create parent (promotes grandparent to folder)
+        parent = Concept(name="Parent", text="P", parent_path="Grandparent")
+        storage.save(parent)
+
+        # Create child (promotes parent to folder)
+        child = Concept(name="Child", text="C", parent_path="Grandparent/Parent")
+        child_path = storage.save(child)
+
+        # Verify structure
+        assert child_path.parent.name == "Parent"
+        assert child_path.parent.parent.name == "Grandparent"
+
+        # Load and verify parent_path
+        loaded = storage.load_concept(child.concept_id)
+        assert loaded.parent_path == "Grandparent/Parent"

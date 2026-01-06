@@ -89,11 +89,13 @@ class ConceptStorageMixin:
         """Load a concept by its hierarchical path.
 
         Path format: "Parent/Child/Grandchild" or just "Name" for root concepts.
-        Concepts are stored as Folder/Folder.md.
+        Supports both flat format (Name.md) and folder format (Name/Name.md).
 
         Examples:
-            - "Andrew Brookins" -> Concepts/Andrew Brookins/Andrew Brookins.md
-            - "Parent/Child" -> Concepts/Parent/Child/Child.md
+            - "Lane Harker" -> Concepts/Lane Harker.md (flat)
+                           or Concepts/Lane Harker/Lane Harker.md (folder)
+            - "Parent/Child" -> Concepts/Parent/Child.md (flat)
+                            or Concepts/Parent/Child/Child.md (folder)
         """
         base_dir = self._get_dir("Concept")
         if not base_dir.exists():
@@ -104,17 +106,36 @@ class ConceptStorageMixin:
         safe_parts = [self._sanitize_name(p) for p in parts]
         concept_name = safe_parts[-1]
 
-        # Concepts are stored as Folder/Folder.md
-        folder_path = base_dir / "/".join(safe_parts)
-        file_path = folder_path / f"{concept_name}.md"
-        if file_path.exists():
-            return self._load_markdown_file(file_path, Concept, "text", base_dir)
+        # Build parent directory path
+        if len(safe_parts) > 1:
+            parent_dir = base_dir / "/".join(safe_parts[:-1])
+        else:
+            parent_dir = base_dir
 
-        # Try exact path without sanitization
-        folder_path = base_dir / path
-        file_path = folder_path / f"{parts[-1]}.md"
-        if file_path.exists():
-            return self._load_markdown_file(file_path, Concept, "text", base_dir)
+        # Try flat format first: Parent/Child.md
+        flat_file = parent_dir / f"{concept_name}.md"
+        if flat_file.exists():
+            return self._load_markdown_file(flat_file, Concept, "text", base_dir)
+
+        # Try folder format: Parent/Child/Child.md
+        folder_file = parent_dir / concept_name / f"{concept_name}.md"
+        if folder_file.exists():
+            return self._load_markdown_file(folder_file, Concept, "text", base_dir)
+
+        # Try without sanitization - flat format
+        if len(parts) > 1:
+            parent_dir = base_dir / "/".join(parts[:-1])
+        else:
+            parent_dir = base_dir
+
+        flat_file = parent_dir / f"{parts[-1]}.md"
+        if flat_file.exists():
+            return self._load_markdown_file(flat_file, Concept, "text", base_dir)
+
+        # Try without sanitization - folder format
+        folder_file = parent_dir / parts[-1] / f"{parts[-1]}.md"
+        if folder_file.exists():
+            return self._load_markdown_file(folder_file, Concept, "text", base_dir)
 
         return None
 
@@ -126,6 +147,8 @@ class ConceptStorageMixin:
         Returns paths that can be used with read_concept_by_path().
         This is the most efficient way to discover children since it
         only examines directory/file names, not file contents.
+
+        Supports both flat format (Name.md) and folder format (Name/Name.md).
 
         Args:
             parent_path: Path to parent (e.g., "Andrew Brookins"). None for root.
@@ -146,11 +169,20 @@ class ConceptStorageMixin:
         if not target_dir.exists():
             return []
 
-        # All concepts are stored as Folder/Folder.md
-        child_names: list[str] = []
-        for subdir in target_dir.iterdir():
-            if subdir.is_dir() and (subdir / f"{subdir.name}.md").exists():
-                child_names.append(subdir.name)
+        child_names: set[str] = set()
+        for item in target_dir.iterdir():
+            if item.is_dir():
+                # Folder format: check for Name/Name.md
+                if (item / f"{item.name}.md").exists():
+                    child_names.add(item.name)
+            elif item.is_file() and item.suffix == ".md":
+                # Flat format: Name.md (but not parent's own file in folder format)
+                # Skip if this is the parent's file (e.g., Parent/Parent.md)
+                if parent_path:
+                    parent_name = parent_path.split("/")[-1]
+                    if item.stem == self._sanitize_name(parent_name):
+                        continue
+                child_names.add(item.stem)
 
         # Build full paths
         if parent_path:
@@ -161,6 +193,8 @@ class ConceptStorageMixin:
         self: "BaseStorage", parent_path: str | None = None
     ) -> list[Concept]:
         """List direct children of a concept path.
+
+        Supports both flat format (Name.md) and folder format (Name/Name.md).
 
         Args:
             parent_path: Path to parent (e.g., "Andrew Brookins"). None for root.
@@ -184,17 +218,34 @@ class ConceptStorageMixin:
             return []
 
         children = []
+        seen_names: set[str] = set()
 
-        # All concepts are stored as Folder/Folder.md
-        for subdir in target_dir.iterdir():
-            if subdir.is_dir():
-                concept_file = subdir / f"{subdir.name}.md"
-                if concept_file.exists():
+        # Get parent name to skip parent's own file in folder format
+        parent_name = None
+        if parent_path:
+            parent_name = self._sanitize_name(parent_path.split("/")[-1])
+
+        for item in target_dir.iterdir():
+            if item.is_dir():
+                # Folder format: Name/Name.md
+                concept_file = item / f"{item.name}.md"
+                if concept_file.exists() and item.name not in seen_names:
                     concept = self._load_markdown_file(
                         concept_file, Concept, "text", base_dir
                     )
                     if concept:
                         children.append(concept)
+                        seen_names.add(item.name)
+            elif item.is_file() and item.suffix == ".md":
+                # Flat format: Name.md
+                # Skip parent's own file (e.g., Parent/Parent.md)
+                if parent_name and item.stem == parent_name:
+                    continue
+                if item.stem not in seen_names:
+                    concept = self._load_markdown_file(item, Concept, "text", base_dir)
+                    if concept:
+                        children.append(concept)
+                        seen_names.add(item.stem)
 
         return children
 
