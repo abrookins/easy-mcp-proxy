@@ -45,13 +45,19 @@ def register_artifact_tools(
             tags=tags or [],
         )
         storage.save(artifact)
-        # Add to search index
+        # Add to search index (include path and tags for better discovery)
+        index_parts = [name, description, content]
+        if path:
+            index_parts.insert(0, path)
+        if tags:
+            index_parts.append(" ".join(tags))
         searcher.add_to_index(
             "artifact",
-            f"{name}\n{description}\n{content}",
+            "\n".join(index_parts),
             {
                 "id": artifact.artifact_id,
                 "name": name,
+                "path": path,
                 "project_id": project_id,
             },
         )

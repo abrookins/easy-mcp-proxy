@@ -149,22 +149,31 @@ class MemorySearcher:
                     }
                 )
 
-        # Index artifacts
+        # Index artifacts (include path and tags for better discovery)
         for artifact in self.storage.list_artifacts():
-            text = f"{artifact.name}\n{artifact.description}\n{artifact.content}"
+            parts = [artifact.name, artifact.description, artifact.content]
+            if artifact.path:
+                parts.insert(0, artifact.path)
+            if artifact.tags:
+                parts.append(" ".join(artifact.tags))
+            text = "\n".join(parts)
             texts.append(text)
             id_map.append(
                 {
                     "type": "artifact",
                     "id": artifact.artifact_id,
                     "name": artifact.name,
+                    "path": artifact.path,
                     "project_id": artifact.project_id,
                 }
             )
 
-        # Index skills
+        # Index skills (include tags for better discovery)
         for skill in self.storage.list_skills():
-            text = f"{skill.name}\n{skill.description}\n{skill.instructions}"
+            parts = [skill.name, skill.description, skill.instructions]
+            if skill.tags:
+                parts.append(" ".join(skill.tags))
+            text = "\n".join(parts)
             texts.append(text)
             id_map.append(
                 {

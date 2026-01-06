@@ -34,6 +34,15 @@ def register_skill_tools(
             tags=tags or [],
         )
         storage.save(skill)
+        # Add to search index (include tags for better discovery)
+        index_parts = [name, description, instructions]
+        if tags:
+            index_parts.append(" ".join(tags))
+        searcher.add_to_index(
+            "skill",
+            "\n".join(index_parts),
+            {"id": skill.skill_id, "name": name},
+        )
         return {"skill_id": skill.skill_id, "created": True}
 
     @mcp.tool()
