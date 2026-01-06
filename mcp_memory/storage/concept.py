@@ -149,30 +149,25 @@ class ConceptStorageMixin:
         if not target_dir.exists():
             return []
 
-        paths = []
+        # Collect unique child names (folder takes precedence over file)
+        child_names: set[str] = set()
 
-        # Get direct child files (*.md but not in subdirectories)
+        # Get direct child folders first (these take precedence)
+        for subdir in target_dir.iterdir():
+            if subdir.is_dir():
+                child_names.add(subdir.name)
+
+        # Get direct child files (*.md), skip if folder with same name exists
         for file_path in target_dir.glob("*.md"):
             if file_path.name == "_index.md":
                 continue
-            # Construct path from filename
-            child_name = file_path.stem
-            if parent_path:
-                paths.append(f"{parent_path}/{child_name}")
-            else:
-                paths.append(child_name)
+            if file_path.stem not in child_names:
+                child_names.add(file_path.stem)
 
-        # Get direct child folders (represented by folder name)
-        for subdir in target_dir.iterdir():
-            if subdir.is_dir():
-                # Folder represents a concept (may or may not have _index.md)
-                child_name = subdir.name
-                if parent_path:
-                    paths.append(f"{parent_path}/{child_name}")
-                else:
-                    paths.append(child_name)
-
-        return paths
+        # Build full paths
+        if parent_path:
+            return [f"{parent_path}/{name}" for name in sorted(child_names)]
+        return sorted(child_names)
 
     def list_concept_children(
         self: "BaseStorage", parent_path: str | None = None
@@ -202,15 +197,20 @@ class ConceptStorageMixin:
 
         children = []
 
-        # Get direct child files (*.md but not in subdirectories)
+        # First, collect folder names to avoid duplicates
+        folder_names = {d.name for d in target_dir.iterdir() if d.is_dir()}
+
+        # Get direct child files, skip if folder with same name exists
         for file_path in target_dir.glob("*.md"):
             if file_path.name == "_index.md":
                 continue  # Skip index files, they represent the folder itself
+            if file_path.stem in folder_names:
+                continue  # Skip file if folder takes precedence
             concept = self._load_markdown_file(file_path, Concept, "text", base_dir)
             if concept:
                 children.append(concept)
 
-        # Get direct child folders (represented by _index.md or folder name)
+        # Get direct child folders (represented by _index.md)
         for subdir in target_dir.iterdir():
             if subdir.is_dir():
                 index_path = subdir / "_index.md"

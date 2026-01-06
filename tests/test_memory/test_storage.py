@@ -624,6 +624,83 @@ class TestConceptHierarchy:
         assert "TopLevel1" in paths
         assert "TopLevel2" in paths
 
+    def test_list_concept_child_paths_no_duplicates(self, storage):
+        """list_concept_child_paths should not duplicate file and folder."""
+        # Create a parent concept (will be a file initially)
+        parent = Concept(name="Parent", text="Parent concept.")
+        storage.save(parent)
+
+        # Create a child - this migrates Parent.md to Parent/_index.md
+        child = Concept(name="Child", parent_path="Parent", text="Child concept.")
+        storage.save(child)
+
+        # list_concept_child_paths should only list Child once
+        paths = storage.list_concept_child_paths("Parent")
+        assert len(paths) == 1
+        assert paths[0] == "Parent/Child"
+
+        # Root level should only show Parent once (not twice)
+        root_paths = storage.list_concept_child_paths(None)
+        parent_count = sum(1 for p in root_paths if p == "Parent")
+        assert parent_count == 1
+
+    def test_parent_migrated_to_index_on_child_create(self, storage, tmp_path):
+        """Parent.md should be migrated to Parent/_index.md when child is added."""
+        # Create a parent concept
+        parent = Concept(name="Parent", text="Parent content.")
+        parent_path = storage.save(parent)
+        assert parent_path.name == "Parent.md"
+
+        # Create a child - this should migrate parent
+        child = Concept(name="Child", parent_path="Parent", text="Child content.")
+        storage.save(child)
+
+        # Verify migration happened
+        concepts_dir = tmp_path / "Concepts"
+        assert not (concepts_dir / "Parent.md").exists()
+        assert (concepts_dir / "Parent" / "_index.md").exists()
+        assert (concepts_dir / "Parent" / "Child.md").exists()
+
+        # Parent should still be loadable and look the same
+        loaded_parent = storage.load_concept_by_path("Parent")
+        assert loaded_parent is not None
+        assert loaded_parent.name == "Parent"
+        assert loaded_parent.text == "Parent content."
+        assert loaded_parent.parent_path is None  # Root level
+
+    def test_concepts_look_identical_regardless_of_storage_format(self, storage, tmp_path):
+        """Concepts should look the same whether stored as file or _index.md."""
+        # Create a leaf concept (stored as file)
+        leaf = Concept(name="Leaf", text="Leaf content.", concept_id="leaf_id")
+        storage.save(leaf)
+
+        # Create a parent concept (stored as file initially)
+        parent = Concept(name="Parent", text="Parent content.", concept_id="parent_id")
+        storage.save(parent)
+
+        # Add a child to parent (migrates to _index.md)
+        child = Concept(name="Child", parent_path="Parent", text="Child content.")
+        storage.save(child)
+
+        # Load both and compare - they should look identical in structure
+        loaded_leaf = storage.load_concept_by_path("Leaf")
+        loaded_parent = storage.load_concept_by_path("Parent")
+
+        # Both should have same fields populated
+        assert loaded_leaf.name == "Leaf"
+        assert loaded_parent.name == "Parent"
+        assert loaded_leaf.text == "Leaf content."
+        assert loaded_parent.text == "Parent content."
+        assert loaded_leaf.concept_id == "leaf_id"
+        assert loaded_parent.concept_id == "parent_id"
+        assert loaded_leaf.parent_path is None
+        assert loaded_parent.parent_path is None
+
+        # Verify actual storage format differs
+        concepts_dir = tmp_path / "Concepts"
+        assert (concepts_dir / "Leaf.md").exists()  # File format
+        assert (concepts_dir / "Parent" / "_index.md").exists()  # Folder format
+
 
 class TestIndexAutoUpdate:
     """Tests for automatic index updates when files change."""
