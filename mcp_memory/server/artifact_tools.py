@@ -103,6 +103,10 @@ def register_artifact_tools(
         if not artifact:
             return {"error": f"Artifact {artifact_id} not found"}
 
+        # Track if we need to delete old file (name changed means new filename)
+        old_name = artifact.name
+        old_file_path = storage._find_file_by_id("Artifact", "artifact_id", artifact_id)
+
         if name is not None:
             artifact.name = name
         if content is not None:
@@ -121,6 +125,11 @@ def register_artifact_tools(
             artifact.tags = tags
 
         artifact.updated_at = datetime.now()
+
+        # Delete old file if name changed (new file will be created with new name)
+        if name is not None and name != old_name and old_file_path:
+            storage._delete_file(old_file_path)
+
         storage.save(artifact)
         # Rebuild index to update embeddings
         searcher.build_index()

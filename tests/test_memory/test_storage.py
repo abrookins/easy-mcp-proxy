@@ -1516,7 +1516,8 @@ class TestStorageCoverageGaps:
         storage = MemoryStorage(config)
 
         # Create a file with different filename than frontmatter name
-        concepts_dir = tmp_path / "concepts"
+        # Use correct case (Concepts not concepts) for Linux
+        concepts_dir = tmp_path / "Concepts"
         concepts_dir.mkdir()
         file_path = concepts_dir / "different_filename.md"
         file_path.write_text("---\nname: ActualName\n---\nContent here")
@@ -1532,7 +1533,8 @@ class TestStorageCoverageGaps:
         storage = MemoryStorage(config)
 
         # Create a file with aliases
-        concepts_dir = tmp_path / "concepts"
+        # Use correct case (Concepts not concepts) for Linux
+        concepts_dir = tmp_path / "Concepts"
         concepts_dir.mkdir()
         file_path = concepts_dir / "main_name.md"
         content = "---\nname: MainName\naliases:\n  - AliasOne\n  - AliasTwo\n---\n"
@@ -1586,7 +1588,8 @@ class TestStorageCoverageGaps:
         storage = MemoryStorage(config)
 
         # Create a file without name in frontmatter
-        skills_dir = tmp_path / "skills"
+        # Use correct case (Skills not skills) for Linux
+        skills_dir = tmp_path / "Skills"
         skills_dir.mkdir()
         file_path = skills_dir / "MySkillName.md"
         content = "---\nskill_id: s_123\ndescription: Test\n---\nInstructions"
@@ -1603,7 +1606,8 @@ class TestStorageCoverageGaps:
         storage = MemoryStorage(config)
 
         # Create a file without ID in frontmatter
-        skills_dir = tmp_path / "skills"
+        # Use correct case (Skills not skills) for Linux
+        skills_dir = tmp_path / "Skills"
         skills_dir.mkdir()
         file_path = skills_dir / "MySkillID.md"
         content = "---\nname: Test Skill\ndescription: Test\n---\nInstructions"
@@ -1698,7 +1702,8 @@ class TestStorageCoverageGaps:
         # 3. Stem match succeeds (line 180)
 
         # Create a file with a simple name
-        concepts_dir = tmp_path / "concepts"
+        # Use correct case (Concepts not concepts) for Linux
+        concepts_dir = tmp_path / "Concepts"
         concepts_dir.mkdir()
         file_path = concepts_dir / "TestConcept.md"
         file_path.write_text("---\nname: DifferentName\n---\nContent")
@@ -1719,7 +1724,8 @@ class TestStorageCoverageGaps:
         storage = MemoryStorage(config)
 
         # Create skills dir with a file that has different ID
-        skills_dir = tmp_path / "skills"
+        # Use correct case (Skills not skills) for Linux
+        skills_dir = tmp_path / "Skills"
         skills_dir.mkdir()
         file_path = skills_dir / "SomeSkill.md"
         content = "---\nskill_id: s_different\nname: Some Skill\n---\nInstructions"

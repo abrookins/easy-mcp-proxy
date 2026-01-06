@@ -81,6 +81,10 @@ def register_project_tools(
         if not project:
             return {"error": f"Project {project_id} not found"}
 
+        # Track if we need to delete old file (name changed means new filename)
+        old_name = project.name
+        old_file_path = storage._find_file_by_id("Project", "project_id", project_id)
+
         if name is not None:
             project.name = name
         if description is not None:
@@ -91,5 +95,10 @@ def register_project_tools(
             project.tags = tags
 
         project.updated_at = datetime.now()
+
+        # Delete old file if name changed (new file will be created with new name)
+        if name is not None and name != old_name and old_file_path:
+            storage._delete_file(old_file_path)
+
         storage.save(project)
         return {"project_id": project.project_id, "updated": True}

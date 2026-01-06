@@ -100,6 +100,10 @@ def register_skill_tools(
         if not skill:
             return {"error": f"Skill {skill_id} not found"}
 
+        # Track if we need to delete old file (name changed means new filename)
+        old_name = skill.name
+        old_file_path = storage._find_file_by_id("Skill", "skill_id", skill_id)
+
         if name is not None:
             skill.name = name
         if description is not None:
@@ -110,5 +114,10 @@ def register_skill_tools(
             skill.tags = tags
 
         skill.updated_at = datetime.now()
+
+        # Delete old file if name changed (new file will be created with new name)
+        if name is not None and name != old_name and old_file_path:
+            storage._delete_file(old_file_path)
+
         storage.save(skill)
         return {"skill_id": skill.skill_id, "updated": True}

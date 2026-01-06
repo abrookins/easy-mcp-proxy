@@ -291,3 +291,36 @@ class BaseStorage:
                         continue
                 items.append(obj)
         return items
+
+    def _find_file_by_id(
+        self, model_type: str, id_field: str, id_value: str
+    ) -> Path | None:
+        """Find the file path for an object by its ID.
+
+        Returns the path to the file, or None if not found.
+        Used when updating objects to detect if the file needs to be moved.
+        """
+        dir_path = self._get_dir(model_type)
+        if not dir_path.exists():
+            return None
+
+        # Use recursive glob for Concepts, flat glob for others
+        glob_pattern = "**/*.md" if model_type == "Concept" else "*.md"
+
+        for file_path in dir_path.glob(glob_pattern):
+            content = file_path.read_text(encoding="utf-8")
+            frontmatter, _ = parse_frontmatter(content)
+            if frontmatter.get(id_field) == id_value:
+                return file_path
+        return None
+
+    def _delete_file(self, file_path: Path) -> bool:
+        """Delete a file at the given path.
+
+        Returns True if the file was deleted, False if it didn't exist.
+        """
+        if not file_path.exists():
+            return False
+
+        file_path.unlink()
+        return True
