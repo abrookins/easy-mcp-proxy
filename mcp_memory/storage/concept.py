@@ -89,11 +89,11 @@ class ConceptStorageMixin:
         """Load a concept by its hierarchical path.
 
         Path format: "Parent/Child/Grandchild" or just "Name" for root concepts.
-        For folder-level concepts, looks for _index.md in the folder.
+        Concepts are stored as Folder/Folder.md.
 
         Examples:
-            - "Andrew Brookins/Preferences" -> Concepts/Andrew Brookins/Preferences.md
-            - "Lane Harker" -> Concepts/Lane Harker.md or Concepts/Lane Harker/_index.md
+            - "Andrew Brookins" -> Concepts/Andrew Brookins/Andrew Brookins.md
+            - "Parent/Child" -> Concepts/Parent/Child/Child.md
         """
         base_dir = self._get_dir("Concept")
         if not base_dir.exists():
@@ -102,20 +102,17 @@ class ConceptStorageMixin:
         # Parse the path
         parts = path.split("/")
         safe_parts = [self._sanitize_name(p) for p in parts]
-        safe_path = "/".join(safe_parts)
+        concept_name = safe_parts[-1]
 
-        # Try as a file first: path/to/Name.md
-        file_path = base_dir / f"{safe_path}.md"
+        # Concepts are stored as Folder/Folder.md
+        folder_path = base_dir / "/".join(safe_parts)
+        file_path = folder_path / f"{concept_name}.md"
         if file_path.exists():
             return self._load_markdown_file(file_path, Concept, "text", base_dir)
 
-        # Try as folder with _index.md: path/to/Name/_index.md
-        index_path = base_dir / safe_path / "_index.md"
-        if index_path.exists():
-            return self._load_markdown_file(index_path, Concept, "text", base_dir)
-
         # Try exact path without sanitization
-        file_path = base_dir / f"{path}.md"
+        folder_path = base_dir / path
+        file_path = folder_path / f"{parts[-1]}.md"
         if file_path.exists():
             return self._load_markdown_file(file_path, Concept, "text", base_dir)
 
@@ -149,20 +146,11 @@ class ConceptStorageMixin:
         if not target_dir.exists():
             return []
 
-        # Collect unique child names (folder takes precedence over file)
-        child_names: set[str] = set()
-
-        # Get direct child folders first (these take precedence)
+        # All concepts are stored as Folder/Folder.md
+        child_names: list[str] = []
         for subdir in target_dir.iterdir():
-            if subdir.is_dir():
-                child_names.add(subdir.name)
-
-        # Get direct child files (*.md), skip if folder with same name exists
-        for file_path in target_dir.glob("*.md"):
-            if file_path.name == "_index.md":
-                continue
-            if file_path.stem not in child_names:
-                child_names.add(file_path.stem)
+            if subdir.is_dir() and (subdir / f"{subdir.name}.md").exists():
+                child_names.append(subdir.name)
 
         # Build full paths
         if parent_path:
@@ -197,26 +185,13 @@ class ConceptStorageMixin:
 
         children = []
 
-        # First, collect folder names to avoid duplicates
-        folder_names = {d.name for d in target_dir.iterdir() if d.is_dir()}
-
-        # Get direct child files, skip if folder with same name exists
-        for file_path in target_dir.glob("*.md"):
-            if file_path.name == "_index.md":
-                continue  # Skip index files, they represent the folder itself
-            if file_path.stem in folder_names:
-                continue  # Skip file if folder takes precedence
-            concept = self._load_markdown_file(file_path, Concept, "text", base_dir)
-            if concept:
-                children.append(concept)
-
-        # Get direct child folders (represented by _index.md)
+        # All concepts are stored as Folder/Folder.md
         for subdir in target_dir.iterdir():
             if subdir.is_dir():
-                index_path = subdir / "_index.md"
-                if index_path.exists():
+                concept_file = subdir / f"{subdir.name}.md"
+                if concept_file.exists():
                     concept = self._load_markdown_file(
-                        index_path, Concept, "text", base_dir
+                        concept_file, Concept, "text", base_dir
                     )
                     if concept:
                         children.append(concept)

@@ -166,8 +166,8 @@ class TestMemoryStorage:
 
         path = storage.save(concept)
         assert path.exists()
-        assert path.suffix == ".md"
-        assert "Lane Harker" in path.name
+        assert path.name == "Lane Harker.md"
+        assert "Lane Harker" in str(path.parent)  # Folder name contains concept name
 
         loaded = storage.load_concept_by_name("Lane Harker")
         assert loaded is not None
@@ -353,8 +353,9 @@ class TestConceptHierarchy:
         )
         path = storage.save(concept)
 
-        # Should be in nested directory
+        # Should be in nested directory as Folder/Folder.md
         assert "Andrew Brookins" in str(path)
+        assert "Preferences" in str(path)
         assert path.name == "Preferences.md"
         assert path.exists()
 
@@ -367,9 +368,10 @@ class TestConceptHierarchy:
         )
         path = storage.save(concept)
 
-        # Should be in deeply nested directory
+        # Should be in deeply nested directory as Folder/Folder.md
         assert "Lane Harker" in str(path)
         assert "Characters" in str(path)
+        assert "Lane" in str(path)
         assert path.name == "Lane.md"
 
     def test_load_concept_preserves_parent_path(self, storage):
@@ -405,13 +407,13 @@ class TestConceptHierarchy:
         result = storage.load_concept_by_path("NonExistent/Path")
         assert result is None
 
-    def test_load_concept_by_path_index_file(self, storage, tmp_path):
-        """Test loading a folder concept via _index.md."""
-        # Create a folder with _index.md
+    def test_load_concept_by_path_folder_format(self, storage, tmp_path):
+        """Test loading a folder concept via Folder/Folder.md."""
+        # Create a folder with Folder.md
         concepts_dir = tmp_path / "Concepts" / "Lane Harker"
         concepts_dir.mkdir(parents=True)
-        index_file = concepts_dir / "_index.md"
-        index_file.write_text(
+        concept_file = concepts_dir / "Lane Harker.md"
+        concept_file.write_text(
             "---\nname: Lane Harker\nconcept_id: c_test123\n---\nNovel overview."
         )
 
@@ -626,11 +628,11 @@ class TestConceptHierarchy:
 
     def test_list_concept_child_paths_no_duplicates(self, storage):
         """list_concept_child_paths should not duplicate file and folder."""
-        # Create a parent concept (will be a file initially)
+        # Create a parent concept
         parent = Concept(name="Parent", text="Parent concept.")
         storage.save(parent)
 
-        # Create a child - this migrates Parent.md to Parent/_index.md
+        # Create a child
         child = Concept(name="Child", parent_path="Parent", text="Child concept.")
         storage.save(child)
 
@@ -644,62 +646,37 @@ class TestConceptHierarchy:
         parent_count = sum(1 for p in root_paths if p == "Parent")
         assert parent_count == 1
 
-    def test_parent_migrated_to_index_on_child_create(self, storage, tmp_path):
-        """Parent.md should be migrated to Parent/_index.md when child is added."""
-        # Create a parent concept
-        parent = Concept(name="Parent", text="Parent content.")
-        parent_path = storage.save(parent)
-        assert parent_path.name == "Parent.md"
-
-        # Create a child - this should migrate parent
-        child = Concept(name="Child", parent_path="Parent", text="Child content.")
-        storage.save(child)
-
-        # Verify migration happened
-        concepts_dir = tmp_path / "Concepts"
-        assert not (concepts_dir / "Parent.md").exists()
-        assert (concepts_dir / "Parent" / "_index.md").exists()
-        assert (concepts_dir / "Parent" / "Child.md").exists()
-
-        # Parent should still be loadable and look the same
-        loaded_parent = storage.load_concept_by_path("Parent")
-        assert loaded_parent is not None
-        assert loaded_parent.name == "Parent"
-        assert loaded_parent.text == "Parent content."
-        assert loaded_parent.parent_path is None  # Root level
-
-    def test_concepts_look_identical_regardless_of_storage_format(self, storage, tmp_path):
-        """Concepts should look the same whether stored as file or _index.md."""
-        # Create a leaf concept (stored as file)
+    def test_all_concepts_use_folder_format(self, storage, tmp_path):
+        """All concepts should be stored as Folder/Folder.md."""
+        # Create a leaf concept
         leaf = Concept(name="Leaf", text="Leaf content.", concept_id="leaf_id")
-        storage.save(leaf)
+        leaf_path = storage.save(leaf)
 
-        # Create a parent concept (stored as file initially)
+        # Create a parent concept
         parent = Concept(name="Parent", text="Parent content.", concept_id="parent_id")
-        storage.save(parent)
+        parent_path = storage.save(parent)
 
-        # Add a child to parent (migrates to _index.md)
+        # Add a child to parent
         child = Concept(name="Child", parent_path="Parent", text="Child content.")
-        storage.save(child)
+        child_path = storage.save(child)
 
-        # Load both and compare - they should look identical in structure
+        # All should use Folder/Folder.md format
+        concepts_dir = tmp_path / "Concepts"
+        assert leaf_path == concepts_dir / "Leaf" / "Leaf.md"
+        assert parent_path == concepts_dir / "Parent" / "Parent.md"
+        assert child_path == concepts_dir / "Parent" / "Child" / "Child.md"
+
+        # All should be loadable
         loaded_leaf = storage.load_concept_by_path("Leaf")
         loaded_parent = storage.load_concept_by_path("Parent")
+        loaded_child = storage.load_concept_by_path("Parent/Child")
 
-        # Both should have same fields populated
         assert loaded_leaf.name == "Leaf"
         assert loaded_parent.name == "Parent"
-        assert loaded_leaf.text == "Leaf content."
-        assert loaded_parent.text == "Parent content."
-        assert loaded_leaf.concept_id == "leaf_id"
-        assert loaded_parent.concept_id == "parent_id"
+        assert loaded_child.name == "Child"
         assert loaded_leaf.parent_path is None
         assert loaded_parent.parent_path is None
-
-        # Verify actual storage format differs
-        concepts_dir = tmp_path / "Concepts"
-        assert (concepts_dir / "Leaf.md").exists()  # File format
-        assert (concepts_dir / "Parent" / "_index.md").exists()  # Folder format
+        assert loaded_child.parent_path == "Parent"
 
 
 class TestIndexAutoUpdate:
@@ -783,9 +760,9 @@ class TestIndexAutoUpdate:
         storage.save(concept)
         searcher.build_index()
 
-        # Delete the file externally
+        # Delete the file externally (now at Folder/Folder.md)
         concepts_dir = tmp_path / "Concepts"
-        (concepts_dir / "To Delete.md").unlink()
+        (concepts_dir / "To Delete" / "To Delete.md").unlink()
 
         # Search should not return the deleted file
         results = searcher.search_concepts("This will be removed")

@@ -109,46 +109,13 @@ class BaseStorage:
         return base_dir
 
     def _get_concept_file_path(self, concept: "Concept") -> Path:
-        """Get the file path for a concept, using _index.md for parents.
+        """Get the file path for a concept.
 
-        If this concept already has a folder (children), use _index.md inside it.
-        Otherwise, use a regular .md file.
+        All concepts use the folder/folder.md format: Name/Name.md
         """
         parent_dir = self._get_concept_dir(concept)
         safe_name = self._sanitize_name(concept.name)
-
-        # Check if this concept has a folder (meaning it has/had children)
-        concept_folder = parent_dir / safe_name
-        if concept_folder.exists() and concept_folder.is_dir():
-            return concept_folder / "_index.md"
-
-        return parent_dir / f"{safe_name}.md"
-
-    def _migrate_concept_to_folder(self, concept: "Concept") -> None:
-        """Migrate a concept from file to folder format if needed.
-
-        Called when a child is being added. Converts Parent.md to Parent/_index.md.
-        """
-        if not concept.parent_path:
-            return
-
-        base_dir = self._get_dir("Concept")
-        parts = concept.parent_path.split("/")
-
-        # Check each ancestor in the path
-        current_path = base_dir
-        for i, part in enumerate(parts):
-            safe_part = self._sanitize_name(part)
-            file_path = current_path / f"{safe_part}.md"
-            folder_path = current_path / safe_part
-
-            if file_path.exists() and not folder_path.exists():
-                # Need to migrate: rename file.md to file/_index.md
-                folder_path.mkdir(parents=True, exist_ok=True)
-                index_path = folder_path / "_index.md"
-                file_path.rename(index_path)
-
-            current_path = folder_path
+        return parent_dir / safe_name / f"{safe_name}.md"
 
     def save(self, obj: BaseModel) -> Path:
         """Save an object to disk."""
@@ -156,12 +123,8 @@ class BaseStorage:
 
         # Handle concept hierarchy specially
         if model_type == "Concept":
-            # Migrate parent concepts to folder format if needed
-            self._migrate_concept_to_folder(obj)
-
-            dir_path = self._get_concept_dir(obj)
-            dir_path.mkdir(parents=True, exist_ok=True)
             file_path = self._get_concept_file_path(obj)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
         else:
             dir_path = self._ensure_dir(model_type)
             filename = self._get_filename(obj)
@@ -215,16 +178,12 @@ class BaseStorage:
         frontmatter, body = parse_frontmatter(content)
         frontmatter[body_field] = body
 
-        # Derive name from filename or folder if missing
-        # For _index.md, use parent folder name; otherwise use file stem
-        if file_path.name == "_index.md":
-            derived_name = file_path.parent.name
-        else:
-            derived_name = file_path.stem
+        # Derive name from filename if missing
+        derived_name = file_path.stem
         if "name" not in frontmatter or not frontmatter["name"]:
             frontmatter["name"] = derived_name
 
-        # Derive ID from filename/folder if missing
+        # Derive ID from filename if missing
         id_field_map = {
             "Concept": "concept_id",
             "Project": "project_id",
@@ -239,11 +198,9 @@ class BaseStorage:
                 frontmatter[id_field] = derived_name
 
         # For Concepts, derive parent_path from directory structure
+        # Concepts are stored as Folder/Folder.md, so parent is grandparent
         if model_name == "Concept" and base_dir is not None:
-            parent_dir = file_path.parent
-            # For _index.md, parent_path is grandparent relative to base
-            if file_path.name == "_index.md":
-                parent_dir = parent_dir.parent
+            parent_dir = file_path.parent.parent  # Go up past the concept's folder
             if parent_dir != base_dir:
                 try:
                     rel_path = parent_dir.relative_to(base_dir)
@@ -275,13 +232,9 @@ class BaseStorage:
             content = file_path.read_text(encoding="utf-8")
             frontmatter, body = parse_frontmatter(content)
 
-            # Derive name from folder for _index.md, otherwise from file stem
-            if file_path.name == "_index.md":
-                derived_name = file_path.parent.name
-            else:
-                derived_name = file_path.stem
+            derived_name = file_path.stem
 
-            # Get ID from frontmatter, or derive from filename/folder if missing
+            # Get ID from frontmatter, or derive from filename if missing
             file_id = frontmatter.get(id_field)
             if not file_id:
                 file_id = derived_name
@@ -296,11 +249,9 @@ class BaseStorage:
                 if "name" not in frontmatter or not frontmatter["name"]:
                     frontmatter["name"] = derived_name
                 # For Concepts, derive parent_path from directory structure
+                # Concepts are stored as Folder/Folder.md, so parent is grandparent
                 if model_type == "Concept":
-                    parent_dir = file_path.parent
-                    # For _index.md, parent_path is grandparent relative to base
-                    if file_path.name == "_index.md":
-                        parent_dir = parent_dir.parent
+                    parent_dir = file_path.parent.parent
                     if parent_dir != dir_path:
                         try:
                             rel_path = parent_dir.relative_to(dir_path)
