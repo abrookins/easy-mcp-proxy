@@ -38,6 +38,39 @@ def parse_frontmatter(content: str) -> tuple[dict, str]:
     return frontmatter, body
 
 
+def extract_client_frontmatter(text: str) -> tuple[dict | None, str]:
+    """Extract frontmatter from text content if present.
+
+    Used to detect when clients submit content with their own frontmatter.
+    Returns (client_frontmatter, remaining_body) or (None, original_text).
+    """
+    if not text.startswith("---"):
+        return None, text
+
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return None, text
+
+    try:
+        client_fm = yaml.safe_load(parts[1])
+        if client_fm and isinstance(client_fm, dict):
+            remaining = parts[2].strip()
+            return client_fm, remaining
+    except yaml.YAMLError:
+        pass
+
+    return None, text
+
+
+def reconstruct_client_frontmatter(client_fm: dict, body: str) -> str:
+    """Reconstruct body text with client frontmatter prepended.
+
+    Used when loading content to return it in the same format the client sent.
+    """
+    yaml_str = yaml.dump(client_fm, default_flow_style=False, allow_unicode=True)
+    return f"---\n{yaml_str}---\n\n{body}"
+
+
 def format_frontmatter(data: dict, body: str = "") -> str:
     """Format data as YAML frontmatter with optional markdown body."""
     yaml_str = yaml.dump(data, default_flow_style=False, allow_unicode=True)
@@ -137,13 +170,24 @@ class BaseStorage:
         body_field_names = BODY_FIELDS.get(model_type, set())
         body_parts = []
         frontmatter = {}
+        client_frontmatter = None
 
         for key, value in data.items():
             if key in body_field_names:
                 if value:
-                    body_parts.append(str(value))
+                    # Check if body content has its own frontmatter
+                    client_fm, remaining = extract_client_frontmatter(str(value))
+                    if client_fm:
+                        client_frontmatter = client_fm
+                        body_parts.append(remaining)
+                    else:
+                        body_parts.append(str(value))
             else:
                 frontmatter[key] = value
+
+        # Store client frontmatter under 'client' key if present
+        if client_frontmatter:
+            frontmatter["client"] = client_frontmatter
 
         body = "\n\n".join(body_parts)
 
@@ -173,9 +217,18 @@ class BaseStorage:
 
         For Concept hierarchy:
         - Derives 'parent_path' from directory structure relative to base_dir
+
+        For client frontmatter round-tripping:
+        - If 'client' key exists, reconstructs body with client frontmatter
         """
         content = file_path.read_text(encoding="utf-8")
         frontmatter, body = parse_frontmatter(content)
+
+        # Reconstruct client frontmatter in body if present
+        client_fm = frontmatter.pop("client", None)
+        if client_fm and isinstance(client_fm, dict):
+            body = reconstruct_client_frontmatter(client_fm, body)
+
         frontmatter[body_field] = body
 
         # Derive name from filename if missing
@@ -240,6 +293,11 @@ class BaseStorage:
                 file_id = derived_name
 
             if file_id == id_value:
+                # Reconstruct client frontmatter in body if present
+                client_fm = frontmatter.pop("client", None)
+                if client_fm and isinstance(client_fm, dict):
+                    body = reconstruct_client_frontmatter(client_fm, body)
+
                 if body_field:  # pragma: no branch
                     frontmatter[body_field] = body
                 # Ensure ID field is set for model validation

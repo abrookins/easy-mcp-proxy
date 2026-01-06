@@ -1754,3 +1754,99 @@ class TestStorageCoverageGaps:
         concepts = storage.list_concepts()
         # No valid concepts should be returned
         assert isinstance(concepts, list)
+
+
+class TestClientFrontmatterRoundTrip:
+    """Tests for client frontmatter preservation."""
+
+    def test_save_extracts_client_frontmatter(self, tmp_path):
+        """Test that client frontmatter in body is extracted to 'client' key."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+
+        text_with_fm = """---
+type: fact
+confidence: high
+retrieval_count: 0
+---
+
+This is the body content."""
+
+        concept = Concept(name="TestConcept", text=text_with_fm)
+        file_path = storage.save(concept)
+
+        # Read raw file to verify structure
+        content = file_path.read_text()
+        assert "client:" in content
+        assert "type: fact" in content
+        assert "confidence: high" in content
+        # Body should NOT have the frontmatter anymore
+        lines = content.split("---")
+        body_section = lines[-1].strip()
+        assert body_section == "This is the body content."
+
+    def test_load_reconstructs_client_frontmatter(self, tmp_path):
+        """Test that client frontmatter is reconstructed in body on load."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+
+        text_with_fm = """---
+type: fact
+confidence: high
+---
+
+Body content here."""
+
+        concept = Concept(name="TestConcept", text=text_with_fm)
+        storage.save(concept)
+
+        # Load and verify frontmatter is in the text
+        loaded = storage.load_concept(concept.concept_id)
+        assert "---" in loaded.text
+        assert "type: fact" in loaded.text
+        assert "confidence: high" in loaded.text
+        assert "Body content here." in loaded.text
+
+    def test_roundtrip_preserves_client_frontmatter(self, tmp_path):
+        """Test full round-trip: save with FM, load, save again, load again."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+
+        original_text = """---
+type: fact
+confidence: high
+helpful: 5
+---
+
+Original content."""
+
+        concept = Concept(name="TestConcept", text=original_text)
+        storage.save(concept)
+
+        # Load, modify content, save again
+        loaded = storage.load_concept(concept.concept_id)
+        # The text should have the client frontmatter
+        assert "type: fact" in loaded.text
+
+        # Modify and save again
+        loaded.text = loaded.text.replace("Original content.", "Modified content.")
+        storage.save(loaded)
+
+        # Load again and verify
+        reloaded = storage.load_concept(concept.concept_id)
+        assert "type: fact" in reloaded.text
+        assert "confidence: high" in reloaded.text
+        assert "helpful: 5" in reloaded.text
+        assert "Modified content." in reloaded.text
+
+    def test_no_client_frontmatter_works_normally(self, tmp_path):
+        """Test that concepts without client frontmatter work as before."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+
+        concept = Concept(name="SimpleConcept", text="Just plain text.")
+        storage.save(concept)
+
+        loaded = storage.load_concept(concept.concept_id)
+        assert loaded.text == "Just plain text."
+        assert "---" not in loaded.text

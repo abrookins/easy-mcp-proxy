@@ -8,8 +8,10 @@ from mcp_memory.storage.artifact import ArtifactStorageMixin
 from mcp_memory.storage.base import (
     BODY_FIELDS,
     BaseStorage,
+    extract_client_frontmatter,
     format_frontmatter,
     parse_frontmatter,
+    reconstruct_client_frontmatter,
 )
 from mcp_memory.storage.concept import ConceptStorageMixin
 from mcp_memory.storage.project import ProjectStorageMixin
@@ -39,6 +41,8 @@ __all__ = [
     "MemoryStorage",
     "parse_frontmatter",
     "format_frontmatter",
+    "extract_client_frontmatter",
+    "reconstruct_client_frontmatter",
     "BODY_FIELDS",
     "BaseStorage",
     "ThreadStorageMixin",
