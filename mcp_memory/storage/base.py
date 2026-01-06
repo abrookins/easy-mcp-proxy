@@ -23,6 +23,11 @@ BODY_FIELDS = {
     "Artifact": {"content"},
 }
 
+# Fields derived from file/directory structure (not stored in frontmatter)
+DERIVED_FIELDS = {
+    "Concept": {"parent_path"},  # Derived from directory structure
+}
+
 
 def parse_frontmatter(content: str) -> tuple[dict, str]:
     """Parse YAML frontmatter and markdown body from content."""
@@ -213,6 +218,7 @@ class BaseStorage:
 
         # Separate body fields from frontmatter
         body_field_names = BODY_FIELDS.get(model_type, set())
+        derived_field_names = DERIVED_FIELDS.get(model_type, set())
         body_parts = []
         frontmatter = {}
         client_frontmatter = None
@@ -227,6 +233,9 @@ class BaseStorage:
                         body_parts.append(remaining)
                     else:
                         body_parts.append(str(value))
+            elif key in derived_field_names:
+                # Skip derived fields - they're reconstructed from file structure
+                pass
             else:
                 frontmatter[key] = value
 

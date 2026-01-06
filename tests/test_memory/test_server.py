@@ -457,6 +457,105 @@ class TestConceptTools:
         assert "Related A" in result
         assert "Related B" in result
 
+    def test_delete_concept(self, server, tmp_path):
+        """Test deleting a concept."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        delete_tool = server._tool_manager._tools["delete_concept"]
+
+        # Create a concept
+        create_result = create_tool.fn(name="ToDelete", text="Will be deleted.")
+        concept_id = create_result["concept_id"]
+
+        # Verify file exists
+        file_path = tmp_path / "Concepts" / "ToDelete.md"
+        assert file_path.exists()
+
+        # Delete the concept
+        delete_result = delete_tool.fn(concept_id=concept_id)
+
+        assert delete_result["deleted"] is True
+        assert delete_result["concept_id"] == concept_id
+        assert delete_result["path"] == "ToDelete"
+        # File should be gone
+        assert not file_path.exists()
+
+    def test_delete_concept_not_found(self, server):
+        """Test deleting a non-existent concept."""
+        delete_tool = server._tool_manager._tools["delete_concept"]
+        result = delete_tool.fn(concept_id="nonexistent_id")
+        assert "error" in result
+        assert "not found" in result["error"]
+
+    def test_read_many_concepts(self, server):
+        """Test reading multiple concepts at once."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        read_many_tool = server._tool_manager._tools["read_many_concepts"]
+
+        # Create multiple concepts
+        result1 = create_tool.fn(name="Concept A", text="Content A")
+        result2 = create_tool.fn(name="Concept B", text="Content B")
+
+        # Read both
+        ids = [result1["concept_id"], result2["concept_id"]]
+        result = get_text(read_many_tool.fn(concept_ids=ids))
+
+        assert "Concept A" in result
+        assert "Concept B" in result
+        assert "Content A" in result
+        assert "Content B" in result
+        assert "Found:** 2/2" in result
+
+    def test_read_many_concepts_partial(self, server):
+        """Test reading multiple concepts where some don't exist."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        read_many_tool = server._tool_manager._tools["read_many_concepts"]
+
+        # Create one concept
+        result1 = create_tool.fn(name="Exists", text="This exists")
+
+        # Read with one valid and one invalid ID
+        result = get_text(
+            read_many_tool.fn(concept_ids=[result1["concept_id"], "nonexistent_id"])
+        )
+
+        assert "Exists" in result
+        assert "This exists" in result
+        assert "Found:** 1/2" in result
+        assert "not found" in result.lower()
+
+    def test_read_many_concepts_empty(self, server):
+        """Test reading with empty list."""
+        read_many_tool = server._tool_manager._tools["read_many_concepts"]
+        result = get_text(read_many_tool.fn(concept_ids=[]))
+        assert "No concept IDs provided" in result
+
+    def test_search_concepts_include_content(self, server):
+        """Test searching concepts with include_content=True."""
+        create_tool = server._tool_manager._tools["create_concept"]
+        search_tool = server._tool_manager._tools["search_concepts"]
+
+        # Create a concept with distinctive content
+        create_tool.fn(
+            name="SearchableItem",
+            text="This has unique searchable content about databases.",
+        )
+
+        # Search without content
+        result_without = get_text(
+            search_tool.fn(query="searchable databases", include_content=False)
+        )
+        assert "SearchableItem" in result_without
+        # Content should NOT be in the result
+        assert "unique searchable content" not in result_without
+
+        # Search with content
+        result_with = get_text(
+            search_tool.fn(query="searchable databases", include_content=True)
+        )
+        assert "SearchableItem" in result_with
+        # Full content SHOULD be in the result
+        assert "unique searchable content about databases" in result_with
+
 
 class TestSkillTools:
     """Tests for skill-related tools."""

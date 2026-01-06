@@ -24,11 +24,18 @@ def register_concept_tools(
         query: str,
         project_id: str | None = None,
         limit: int = 10,
+        include_content: bool = False,
     ) -> TextContent:
         """Find stored knowledge using semantic search.
 
         Returns concept paths and IDs. Use read_concept_by_path() to navigate
         the hierarchy, or read_concept() with the ID for full content.
+
+        Args:
+            query: The search query.
+            project_id: Optional project ID to filter results.
+            limit: Maximum number of results to return.
+            include_content: If True, include full content of matching concepts.
         """
         results = searcher.search_concepts(query, limit=limit, project_id=project_id)
         if not results:
@@ -37,6 +44,13 @@ def register_concept_tools(
         for r in results:
             path = r.get("path", r["name"])
             lines.append(f"- `{r['id']}` **{path}** (score: {r['score']:.2f})")
+            if include_content:
+                concept = storage.load_concept(r["id"])
+                if concept:
+                    child_paths = storage.list_concept_child_paths(concept.full_path)
+                    lines.append("")
+                    lines.append(_format_concept(concept, child_paths=child_paths))
+                    lines.append("")
         return _text("\n".join(lines))
 
     @mcp.tool()
@@ -47,6 +61,37 @@ def register_concept_tools(
             return _text(f"Concept {concept_id} not found")
         child_paths = storage.list_concept_child_paths(concept.full_path)
         return _text(_format_concept(concept, child_paths=child_paths))
+
+    @mcp.tool()
+    def read_many_concepts(concept_ids: list[str]) -> TextContent:
+        """Read multiple concepts at once by their IDs.
+
+        More efficient than calling read_concept() multiple times when you need
+        to retrieve several concepts.
+
+        Args:
+            concept_ids: List of concept IDs to retrieve.
+
+        Returns:
+            Formatted content of all found concepts, with errors for missing ones.
+        """
+        if not concept_ids:
+            return _text("No concept IDs provided")
+
+        lines = [f"# Concepts ({len(concept_ids)} requested)\n"]
+        found = 0
+        for concept_id in concept_ids:
+            concept = storage.load_concept(concept_id)
+            if not concept:
+                lines.append(f"## Error: Concept `{concept_id}` not found\n")
+            else:
+                found += 1
+                child_paths = storage.list_concept_child_paths(concept.full_path)
+                lines.append(_format_concept(concept, child_paths=child_paths))
+                lines.append("\n---\n")
+
+        lines.insert(1, f"**Found:** {found}/{len(concept_ids)}\n")
+        return _text("\n".join(lines))
 
     @mcp.tool()
     def read_concept_by_name(name: str) -> TextContent:
@@ -222,3 +267,34 @@ def register_concept_tools(
         # Rebuild index to update embeddings
         searcher.build_index()
         return {"concept_id": concept_id, "path": concept.full_path, "updated": True}
+
+    @mcp.tool()
+    def delete_concept(concept_id: str) -> dict:
+        """Delete a concept by its ID.
+
+        This permanently removes the concept from storage and the search index.
+        Use with caution—this action cannot be undone.
+
+        Args:
+            concept_id: The ID of the concept to delete.
+
+        Returns:
+            A dict with deleted=True on success, or error message on failure.
+        """
+        concept = storage.load_concept(concept_id)
+        if not concept:
+            return {"error": f"Concept {concept_id} not found"}
+
+        # Find and delete the file
+        file_path = storage.find_concept_file(concept_id)
+        if file_path:
+            storage.delete_concept_file(file_path)
+
+        # Rebuild index to remove the concept from search
+        searcher.build_index()
+
+        return {
+            "concept_id": concept_id,
+            "path": concept.full_path,
+            "deleted": True,
+        }
