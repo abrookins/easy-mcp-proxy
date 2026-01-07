@@ -72,6 +72,43 @@ class TestCreateAuthProvider:
 
                 assert isinstance(result, OIDCProxy)
 
+    def test_parses_required_scopes_from_env(self):
+        """create_auth_provider parses required_scopes from env var."""
+        from mcp_proxy.auth import create_auth_provider
+
+        mock_oidc_config = {
+            "issuer": "https://test.auth0.com/",
+            "authorization_endpoint": "https://test.auth0.com/authorize",
+            "token_endpoint": "https://test.auth0.com/oauth/token",
+            "userinfo_endpoint": "https://test.auth0.com/userinfo",
+            "jwks_uri": "https://test.auth0.com/.well-known/jwks.json",
+            "response_types_supported": ["code"],
+            "subject_types_supported": ["public"],
+            "id_token_signing_alg_values_supported": ["RS256"],
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "FASTMCP_SERVER_AUTH_AUTH0_CONFIG_URL": "https://test.auth0.com/.well-known/openid-configuration",
+                "FASTMCP_SERVER_AUTH_AUTH0_CLIENT_ID": "test-client-id",
+                "FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET": "test-client-secret",
+                "FASTMCP_SERVER_AUTH_AUTH0_AUDIENCE": "https://api.test.com",
+                "FASTMCP_SERVER_AUTH_AUTH0_BASE_URL": "http://localhost:8000",
+                "FASTMCP_SERVER_AUTH_AUTH0_REQUIRED_SCOPES": "read:tools, write:tools",
+            },
+            clear=True,
+        ):
+            with patch("httpx.get") as mock_get:
+                mock_response = mock_get.return_value
+                mock_response.status_code = 200
+                mock_response.json.return_value = mock_oidc_config
+
+                result = create_auth_provider()
+                assert result is not None
+                # Verify required_scopes was parsed correctly
+                assert result.required_scopes == ["read:tools", "write:tools"]
+
 
 class TestIsAuthConfigured:
     """Tests for is_auth_configured function."""
