@@ -68,6 +68,3 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: uv run pytest
-        env:
-          PYTHONDONTWRITEBYTECODE: "1"
-
