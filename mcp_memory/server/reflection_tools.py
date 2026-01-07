@@ -20,23 +20,57 @@ def register_reflection_tools(
     """Register all reflection-related tools with the MCP server."""
 
     @mcp.tool()
-    def add_reflection(
-        text: str,
+    def upsert_reflection(
+        text: str | None = None,
+        reflection_id: str | None = None,
         project_id: str | None = None,
         thread_id: str | None = None,
         skill_id: str | None = None,
         tags: list[str] | None = None,
     ) -> dict:
-        """Record a learning or insight from an error or corrective feedback. Use when something went wrong or could be improved—describe what happened and what to do differently. Link to skill_id if related to a specific procedure. Check read_reflections() before similar tasks."""
-        reflection = Reflection(
-            text=text,
-            project_id=project_id,
-            thread_id=thread_id,
-            skill_id=skill_id,
-            tags=tags or [],
-        )
-        storage.save(reflection)
-        return {"reflection_id": reflection.reflection_id, "created": True}
+        """Create or update a reflection (learning/insight from errors or feedback). If reflection_id is provided, updates the existing reflection. If not provided, creates a new reflection. Link to skill_id if related to a specific procedure.
+
+        Args:
+            text: The reflection content (required for create, optional for update)
+            reflection_id: If provided, update this reflection; otherwise create new
+            project_id: Associate with a project
+            thread_id: Link to the conversation where this occurred
+            skill_id: Link to a skill/procedure this relates to
+            tags: Tags for categorization
+        """
+        if reflection_id:
+            # Update existing reflection
+            reflection = storage.load_reflection(reflection_id)
+            if not reflection:
+                return {"error": f"Reflection {reflection_id} not found"}
+
+            if text is not None:
+                reflection.text = text
+            if project_id is not None:
+                reflection.project_id = project_id
+            if thread_id is not None:
+                reflection.thread_id = thread_id
+            if skill_id is not None:
+                reflection.skill_id = skill_id
+            if tags is not None:
+                reflection.tags = tags
+
+            reflection.updated_at = datetime.now()
+            storage.save(reflection)
+            return {"reflection_id": reflection.reflection_id, "updated": True}
+        else:
+            # Create new reflection - text is required
+            if not text:
+                return {"error": "text is required when creating a new reflection"}
+            reflection = Reflection(
+                text=text,
+                project_id=project_id,
+                thread_id=thread_id,
+                skill_id=skill_id,
+                tags=tags or [],
+            )
+            storage.save(reflection)
+            return {"reflection_id": reflection.reflection_id, "created": True}
 
     @mcp.tool()
     def read_reflections(
@@ -58,32 +92,3 @@ def register_reflection_tools(
                 f"{r.text}\n"
             )
         return _text("\n".join(lines))
-
-    @mcp.tool()
-    def update_reflection(
-        reflection_id: str,
-        text: str | None = None,
-        project_id: str | None = None,
-        thread_id: str | None = None,
-        skill_id: str | None = None,
-        tags: list[str] | None = None,
-    ) -> dict:
-        """Modify an existing reflection's content or associations. Use to refine learnings or add context. Only provided fields are updated."""
-        reflection = storage.load_reflection(reflection_id)
-        if not reflection:
-            return {"error": f"Reflection {reflection_id} not found"}
-
-        if text is not None:
-            reflection.text = text
-        if project_id is not None:
-            reflection.project_id = project_id
-        if thread_id is not None:
-            reflection.thread_id = thread_id
-        if skill_id is not None:
-            reflection.skill_id = skill_id
-        if tags is not None:
-            reflection.tags = tags
-
-        reflection.updated_at = datetime.now()
-        storage.save(reflection)
-        return {"reflection_id": reflection.reflection_id, "updated": True}

@@ -21,6 +21,7 @@ BODY_FIELDS = {
     "Skill": {"instructions"},
     "Reflection": {"text"},
     "Artifact": {"content"},
+    "Episode": {"events"},
 }
 
 # Fields derived from file/directory structure (not stored in frontmatter)
@@ -100,6 +101,7 @@ class BaseStorage:
             "Skill": self.config.skills_dir,
             "Reflection": self.config.reflections_dir,
             "Artifact": self.config.artifacts_dir,
+            "Episode": self.config.episodes_dir,
         }
         return self.base_path / dirs[model_type]
 
@@ -109,9 +111,51 @@ class BaseStorage:
         dir_path.mkdir(parents=True, exist_ok=True)
         return dir_path
 
+    # Characters that must be translated for cross-platform filename compatibility.
+    # These are forbidden on Windows, macOS (for some), and/or Obsidian Sync.
+    # Reference: https://docs.microsoft.com/en-us/windows/win32/fileio/naming-a-file
+    FILENAME_CHAR_TRANSLATIONS = {
+        ":": "-",  # Colon - forbidden on Windows, problematic in Obsidian Sync
+        "/": "-",  # Forward slash - path separator on Unix/macOS
+        "\\": "-",  # Backslash - path separator on Windows
+        "<": "_",  # Less than - forbidden on Windows
+        ">": "_",  # Greater than - forbidden on Windows
+        '"': "'",  # Double quote - forbidden on Windows, translate to single
+        "|": "-",  # Pipe - forbidden on Windows
+        "?": "",  # Question mark - forbidden on Windows, remove entirely
+        "*": "_",  # Asterisk - forbidden on Windows
+    }
+
     def _sanitize_name(self, name: str) -> str:
-        """Sanitize a name for use as a filename."""
-        return "".join(c if c.isalnum() or c in " -_" else "_" for c in name)
+        """Sanitize a name for use as a filename.
+
+        Translates characters that are problematic for:
+        - Windows filesystems (NTFS)
+        - macOS/Unix filesystems (for path separators)
+        - Obsidian Sync (which requires cross-platform compatibility)
+
+        Translation rules (FILENAME_CHAR_TRANSLATIONS):
+        - : (colon) -> - (hyphen)
+        - / (forward slash) -> - (hyphen)
+        - \\ (backslash) -> - (hyphen)
+        - < (less than) -> _ (underscore)
+        - > (greater than) -> _ (underscore)
+        - " (double quote) -> ' (single quote)
+        - | (pipe) -> - (hyphen)
+        - ? (question mark) -> removed
+        - * (asterisk) -> _ (underscore)
+        - Any other non-alphanumeric character (except space, hyphen,
+          underscore) -> _ (underscore)
+        """
+        result = []
+        for c in name:
+            if c in self.FILENAME_CHAR_TRANSLATIONS:
+                result.append(self.FILENAME_CHAR_TRANSLATIONS[c])
+            elif c.isalnum() or c in " -_":
+                result.append(c)
+            else:
+                result.append("_")
+        return "".join(result)
 
     def _sanitize_path(self, path: str) -> str:
         """Sanitize a path (with slashes) for use as a directory path."""
@@ -135,6 +179,8 @@ class BaseStorage:
         elif model_type == "Artifact":
             safe_name = self._sanitize_name(obj.name)
             return f"{safe_name}.md"
+        elif model_type == "Episode":
+            return f"{obj.episode_id}.md"
         else:  # Reflection
             return f"{obj.reflection_id}.md"
 

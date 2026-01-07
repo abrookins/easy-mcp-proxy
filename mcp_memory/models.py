@@ -4,7 +4,7 @@ All models use YAML frontmatter for metadata and markdown body for content.
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -41,6 +41,10 @@ class Thread(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
     messages: list[Message] = Field(default_factory=list)
     summary: str | None = None  # For compacted threads
+
+    # Episode derivation tracking
+    processing_status: Literal["pending", "processing", "completed"] = "pending"
+    episode_id: str | None = None  # Link to derived episode (1:1)
 
 
 class Concept(BaseModel):
@@ -82,6 +86,8 @@ class Concept(BaseModel):
     links: list[str] = Field(default_factory=list)  # Concept names or paths
     # Common Obsidian fields we preserve
     aliases: list[str] = Field(default_factory=list)
+    # Bidirectional episode links
+    episode_ids: list[str] = Field(default_factory=list)
 
     @property
     def full_path(self) -> str:
@@ -169,6 +175,59 @@ class Artifact(BaseModel):
     content: str = ""  # Markdown body with the artifact content
 
 
+class Episode(BaseModel):
+    """An objective record of an experience derived from a raw thread.
+
+    Episodes are time-bounded records of what happened, stored as narrated
+    events with timestamps. They serve as the stable layer for conceptualization—
+    concepts are derived from episodes, and episodes can be reprocessed as
+    the concept pool grows.
+
+    The events field contains markdown-formatted narrated events:
+    - [2024-12-10T14:30:00Z] User discussed trip planning for Orcas Island.
+    - [2024-12-10T14:32:00Z] User recalled a previous visit: "Kim said it
+      felt like 'stepping into a postcard.'"
+
+    Stored as markdown with YAML frontmatter.
+    """
+
+    episode_id: str = Field(default_factory=lambda: generate_id("e"))
+
+    # Source reference (1:1 with thread)
+    source_thread_id: str
+
+    # Temporal boundaries
+    started_at: datetime
+    ended_at: datetime
+    timezone: str | None = None
+
+    # Spatial/contextual (the "where")
+    platform: str | None = None  # "chatgpt", "claude", "slack", etc.
+    source_title: str | None = None  # Title from source if available
+
+    # Qualities (objective metadata about the experience)
+    input_modalities: list[str] = Field(default_factory=list)  # ["text", "voice"]
+    output_modalities: list[str] = Field(default_factory=list)
+    voice_mode: bool = False
+    client: str | None = None  # "ios_app", "web", "api", etc.
+    model: str | None = None  # Model used if known
+
+    # Extensible qualities (key-value for platform-specific metadata)
+    qualities: dict[str, Any] = Field(default_factory=dict)
+
+    # Standard fields
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    project_id: str | None = None
+    tags: list[str] = Field(default_factory=list)
+
+    # Bidirectional concept links
+    concept_ids: list[str] = Field(default_factory=list)
+
+    # The objective record (markdown body with narrated events)
+    events: str = ""
+
+
 class MemoryConfig(BaseModel):
     """Configuration for the memory system.
 
@@ -184,6 +243,7 @@ class MemoryConfig(BaseModel):
     skills_dir: str = "Skills"  # Could be "Procedures", "How-To", etc.
     reflections_dir: str = "Reflections"
     artifacts_dir: str = "Artifacts"  # Collaborative documents
+    episodes_dir: str = "Episodes"  # Objective records of experiences
     # Search settings
     embedding_model: str = "all-MiniLM-L6-v2"  # Sentence transformer model
     index_path: str = ".memory_index"  # Where to store FAISS index

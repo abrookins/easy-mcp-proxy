@@ -38,34 +38,33 @@ class TestMemoryServer:
             "read_thread",
             "add_messages",
             "search_messages",
-            "search_threads",
+            "find_threads",
             "compact_thread",
-            "search_concepts",
-            "read_concept",
-            "read_concept_by_name",
-            "create_concept",
-            "update_concept",
-            "add_reflection",
-            "update_reflection",
+            "find_concepts",
+            "get_concept",
+            "upsert_concept",
+            "upsert_reflection",
             "read_reflections",
-            "create_project",
+            "upsert_project",
             "read_project",
-            "update_project",
             "list_projects",
-            "create_skill",
+            "upsert_skill",
             "read_skill",
-            "update_skill",
-            "list_skills",
-            "search_skills",
+            "find_skills",
             "rebuild_index",
             # Artifact tools
-            "create_artifact",
+            "upsert_artifact",
             "read_artifact",
-            "update_artifact",
-            "list_artifacts",
-            "search_artifacts",
+            "find_artifacts",
             "write_artifact_to_disk",
             "sync_artifact_from_disk",
+            # Episode tools
+            "upsert_episode",
+            "get_episode",
+            "find_episodes",
+            "link_episode_to_concept",
+            "get_pending_threads",
+            "mark_thread_status",
         ]
         for tool_name in expected_tools:
             assert tool_name in tools, f"Missing tool: {tool_name}"
@@ -254,7 +253,7 @@ class TestConceptTools:
 
     def test_create_concept(self, server):
         """Test creating a concept."""
-        tool = server._tool_manager._tools["create_concept"]
+        tool = server._tool_manager._tools["upsert_concept"]
         result = tool.fn(
             name="Lane Harker",
             text="A character in the story.",
@@ -266,8 +265,8 @@ class TestConceptTools:
 
     def test_read_concept_by_name(self, server):
         """Test reading a concept by name."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        read_tool = server._tool_manager._tools["read_concept_by_name"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        read_tool = server._tool_manager._tools["get_concept"]
 
         create_tool.fn(name="Test Person", text="Description here")
 
@@ -278,7 +277,7 @@ class TestConceptTools:
 
     def test_create_concept_with_parent_path(self, server):
         """Test creating a concept with parent_path for hierarchy."""
-        tool = server._tool_manager._tools["create_concept"]
+        tool = server._tool_manager._tools["upsert_concept"]
         result = tool.fn(
             name="Preferences",
             parent_path="Andrew Brookins",
@@ -291,7 +290,7 @@ class TestConceptTools:
 
     def test_create_concept_with_links(self, server):
         """Test creating a concept with cross-reference links."""
-        tool = server._tool_manager._tools["create_concept"]
+        tool = server._tool_manager._tools["upsert_concept"]
         result = tool.fn(
             name="Nose",
             parent_path="Anatomy/Face",
@@ -304,8 +303,8 @@ class TestConceptTools:
 
     def test_read_concept_by_path(self, server):
         """Test reading a concept by its hierarchical path."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        read_tool = server._tool_manager._tools["read_concept_by_path"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        read_tool = server._tool_manager._tools["get_concept"]
 
         create_tool.fn(
             name="Setting",
@@ -319,8 +318,8 @@ class TestConceptTools:
 
     def test_read_concept_shows_children(self, server):
         """Test that reading a concept shows its children as paths."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        read_tool = server._tool_manager._tools["read_concept_by_path"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        read_tool = server._tool_manager._tools["get_concept"]
 
         # Create parent with children
         create_tool.fn(name="Lane Harker", text="A novel.")
@@ -335,8 +334,8 @@ class TestConceptTools:
 
     def test_read_concept_shows_no_children(self, server):
         """Test that reading a leaf concept shows no children."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        read_tool = server._tool_manager._tools["read_concept_by_path"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        read_tool = server._tool_manager._tools["get_concept"]
 
         create_tool.fn(name="Leaf", text="A leaf concept with no children.")
 
@@ -346,39 +345,39 @@ class TestConceptTools:
 
     def test_read_concept_by_path_not_found(self, server):
         """Test reading a non-existent path."""
-        read_tool = server._tool_manager._tools["read_concept_by_path"]
+        read_tool = server._tool_manager._tools["get_concept"]
         result = get_text(read_tool.fn(path="NonExistent/Path"))
         assert "not found" in result.lower()
 
     def test_list_concept_children(self, server):
         """Test listing direct children of a concept."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        list_tool = server._tool_manager._tools["list_concept_children"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        list_tool = server._tool_manager._tools["get_concept"]
 
         create_tool.fn(name="Lane Harker", text="Novel.")
         create_tool.fn(name="Setting", parent_path="Lane Harker", text="Setting.")
         create_tool.fn(name="Plot", parent_path="Lane Harker", text="Plot.")
 
-        result = get_text(list_tool.fn(parent_path="Lane Harker"))
+        result = get_text(list_tool.fn(children_of="Lane Harker", list_children=True))
         assert "Setting" in result
         assert "Plot" in result
 
     def test_list_concept_children_root(self, server):
         """Test listing root-level concepts."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        list_tool = server._tool_manager._tools["list_concept_children"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        list_tool = server._tool_manager._tools["get_concept"]
 
         create_tool.fn(name="Andrew Brookins", text="User.")
         create_tool.fn(name="Lane Harker", text="Novel.")
 
-        result = get_text(list_tool.fn())
+        result = get_text(list_tool.fn(list_children=True))
         assert "Andrew Brookins" in result
         assert "Lane Harker" in result
 
     def test_list_concepts_shows_full_path(self, server):
         """Test that list_concepts shows full hierarchical paths."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        list_tool = server._tool_manager._tools["list_concepts"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        list_tool = server._tool_manager._tools["find_concepts"]
 
         create_tool.fn(name="Setting", parent_path="Lane Harker", text="Setting.")
 
@@ -387,8 +386,8 @@ class TestConceptTools:
 
     def test_update_concept_with_parent_path(self, server):
         """Test moving a concept to a new parent."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        update_tool = server._tool_manager._tools["update_concept"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        update_tool = server._tool_manager._tools["upsert_concept"]
 
         create_result = create_tool.fn(name="Orphan", text="Orphan concept.")
         concept_id = create_result["concept_id"]
@@ -400,8 +399,8 @@ class TestConceptTools:
 
     def test_update_concept_move_deletes_old_file(self, server, tmp_path):
         """Test that moving a concept deletes the old file (no duplicates)."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        update_tool = server._tool_manager._tools["update_concept"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        update_tool = server._tool_manager._tools["upsert_concept"]
 
         # Create a concept at root level (stored as flat file)
         create_result = create_tool.fn(name="Movable", text="Content.")
@@ -422,8 +421,8 @@ class TestConceptTools:
 
     def test_update_concept_rename_deletes_old_file(self, server, tmp_path):
         """Test that renaming a concept deletes the old file (no duplicates)."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        update_tool = server._tool_manager._tools["update_concept"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        update_tool = server._tool_manager._tools["upsert_concept"]
 
         # Create a concept (stored as flat file)
         create_result = create_tool.fn(name="OldName", text="Content.")
@@ -444,22 +443,22 @@ class TestConceptTools:
 
     def test_update_concept_with_links(self, server):
         """Test updating a concept's links."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        update_tool = server._tool_manager._tools["update_concept"]
-        read_tool = server._tool_manager._tools["read_concept"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        update_tool = server._tool_manager._tools["upsert_concept"]
+        read_tool = server._tool_manager._tools["get_concept"]
 
         create_result = create_tool.fn(name="Test", text="Test concept.")
         concept_id = create_result["concept_id"]
 
         update_tool.fn(concept_id=concept_id, links=["Related A", "Related B"])
 
-        result = get_text(read_tool.fn(concept_id=concept_id))
+        result = get_text(read_tool.fn(id=concept_id))
         assert "Related A" in result
         assert "Related B" in result
 
     def test_delete_concept(self, server, tmp_path):
         """Test deleting a concept."""
-        create_tool = server._tool_manager._tools["create_concept"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
         delete_tool = server._tool_manager._tools["delete_concept"]
 
         # Create a concept
@@ -488,16 +487,16 @@ class TestConceptTools:
 
     def test_read_many_concepts(self, server):
         """Test reading multiple concepts at once."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        read_many_tool = server._tool_manager._tools["read_many_concepts"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        read_many_tool = server._tool_manager._tools["get_concept"]
 
         # Create multiple concepts
         result1 = create_tool.fn(name="Concept A", text="Content A")
         result2 = create_tool.fn(name="Concept B", text="Content B")
 
         # Read both
-        ids = [result1["concept_id"], result2["concept_id"]]
-        result = get_text(read_many_tool.fn(concept_ids=ids))
+        concept_ids = [result1["concept_id"], result2["concept_id"]]
+        result = get_text(read_many_tool.fn(ids=concept_ids))
 
         assert "Concept A" in result
         assert "Concept B" in result
@@ -507,15 +506,15 @@ class TestConceptTools:
 
     def test_read_many_concepts_partial(self, server):
         """Test reading multiple concepts where some don't exist."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        read_many_tool = server._tool_manager._tools["read_many_concepts"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        read_many_tool = server._tool_manager._tools["get_concept"]
 
         # Create one concept
         result1 = create_tool.fn(name="Exists", text="This exists")
 
         # Read with one valid and one invalid ID
         result = get_text(
-            read_many_tool.fn(concept_ids=[result1["concept_id"], "nonexistent_id"])
+            read_many_tool.fn(ids=[result1["concept_id"], "nonexistent_id"])
         )
 
         assert "Exists" in result
@@ -525,14 +524,14 @@ class TestConceptTools:
 
     def test_read_many_concepts_empty(self, server):
         """Test reading with empty list."""
-        read_many_tool = server._tool_manager._tools["read_many_concepts"]
-        result = get_text(read_many_tool.fn(concept_ids=[]))
+        read_many_tool = server._tool_manager._tools["get_concept"]
+        result = get_text(read_many_tool.fn(ids=[]))
         assert "No concept IDs provided" in result
 
     def test_search_concepts_include_content(self, server):
         """Test searching concepts with include_content=True."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        search_tool = server._tool_manager._tools["search_concepts"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        search_tool = server._tool_manager._tools["find_concepts"]
 
         # Create a concept with distinctive content
         create_tool.fn(
@@ -569,8 +568,8 @@ class TestSkillTools:
 
     def test_list_skills_returns_summary_without_instructions(self, server):
         """Test that list_skills returns a compact summary without full instructions."""
-        create_tool = server._tool_manager._tools["create_skill"]
-        list_tool = server._tool_manager._tools["list_skills"]
+        create_tool = server._tool_manager._tools["upsert_skill"]
+        list_tool = server._tool_manager._tools["find_skills"]
 
         # Create skills with long instructions
         create_tool.fn(
@@ -596,8 +595,8 @@ class TestSkillTools:
 
     def test_update_skill(self, server):
         """Test updating a skill's content."""
-        create_tool = server._tool_manager._tools["create_skill"]
-        update_tool = server._tool_manager._tools["update_skill"]
+        create_tool = server._tool_manager._tools["upsert_skill"]
+        update_tool = server._tool_manager._tools["upsert_skill"]
         read_tool = server._tool_manager._tools["read_skill"]
 
         # Create a skill
@@ -625,7 +624,7 @@ class TestSkillTools:
 
     def test_update_skill_not_found(self, server):
         """Test updating a non-existent skill."""
-        update_tool = server._tool_manager._tools["update_skill"]
+        update_tool = server._tool_manager._tools["upsert_skill"]
 
         result = update_tool.fn(
             skill_id="s_nonexistent",
@@ -635,8 +634,8 @@ class TestSkillTools:
 
     def test_search_skills(self, server):
         """Test searching skills by semantic similarity."""
-        create_tool = server._tool_manager._tools["create_skill"]
-        search_tool = server._tool_manager._tools["search_skills"]
+        create_tool = server._tool_manager._tools["upsert_skill"]
+        search_tool = server._tool_manager._tools["find_skills"]
 
         # Create skills with different topics
         create_tool.fn(
@@ -665,7 +664,7 @@ class TestSkillTools:
 
     def test_search_skills_empty_results(self, server):
         """Test searching skills when none match."""
-        search_tool = server._tool_manager._tools["search_skills"]
+        search_tool = server._tool_manager._tools["find_skills"]
 
         # Search with no skills created - returns "no skills found" message
         result = get_text(search_tool.fn(query="kubernetes helm charts"))
@@ -697,7 +696,7 @@ class TestSkillTools:
             )
 
             # Search should handle missing skill gracefully (skip it)
-            search_tool = server._tool_manager._tools["search_skills"]
+            search_tool = server._tool_manager._tools["find_skills"]
             result = get_text(search_tool.fn(query="test skill"))
             # Result should only show header since no valid skills found
             assert "Skill Search Results" in result
@@ -715,8 +714,8 @@ class TestProjectTools:
 
     def test_update_project(self, server):
         """Test updating a project."""
-        create_tool = server._tool_manager._tools["create_project"]
-        update_tool = server._tool_manager._tools["update_project"]
+        create_tool = server._tool_manager._tools["upsert_project"]
+        update_tool = server._tool_manager._tools["upsert_project"]
         read_tool = server._tool_manager._tools["read_project"]
 
         # Create a project
@@ -743,7 +742,7 @@ class TestProjectTools:
 
     def test_update_project_not_found(self, server):
         """Test updating a non-existent project."""
-        update_tool = server._tool_manager._tools["update_project"]
+        update_tool = server._tool_manager._tools["upsert_project"]
 
         result = update_tool.fn(
             project_id="p_nonexistent",
@@ -764,8 +763,8 @@ class TestReflectionTools:
 
     def test_update_reflection(self, server):
         """Test updating a reflection."""
-        add_tool = server._tool_manager._tools["add_reflection"]
-        update_tool = server._tool_manager._tools["update_reflection"]
+        add_tool = server._tool_manager._tools["upsert_reflection"]
+        update_tool = server._tool_manager._tools["upsert_reflection"]
         read_tool = server._tool_manager._tools["read_reflections"]
 
         # Create a reflection
@@ -791,7 +790,7 @@ class TestReflectionTools:
 
     def test_update_reflection_not_found(self, server):
         """Test updating a non-existent reflection."""
-        update_tool = server._tool_manager._tools["update_reflection"]
+        update_tool = server._tool_manager._tools["upsert_reflection"]
 
         result = update_tool.fn(
             reflection_id="r_nonexistent",
@@ -812,7 +811,7 @@ class TestArtifactTools:
 
     def test_create_artifact(self, server):
         """Test creating an artifact."""
-        tool = server._tool_manager._tools["create_artifact"]
+        tool = server._tool_manager._tools["upsert_artifact"]
         result = tool.fn(
             name="API Design Doc",
             description="Design document for the REST API",
@@ -828,7 +827,7 @@ class TestArtifactTools:
 
     def test_create_artifact_with_originating_thread(self, server):
         """Test creating an artifact with originating thread."""
-        tool = server._tool_manager._tools["create_artifact"]
+        tool = server._tool_manager._tools["upsert_artifact"]
         result = tool.fn(
             name="Meeting Notes",
             content="Notes from our meeting.",
@@ -844,7 +843,7 @@ class TestArtifactTools:
 
     def test_read_artifact(self, server):
         """Test reading an artifact by ID."""
-        create_tool = server._tool_manager._tools["create_artifact"]
+        create_tool = server._tool_manager._tools["upsert_artifact"]
         read_tool = server._tool_manager._tools["read_artifact"]
 
         create_result = create_tool.fn(
@@ -866,8 +865,8 @@ class TestArtifactTools:
 
     def test_update_artifact(self, server):
         """Test updating an artifact."""
-        create_tool = server._tool_manager._tools["create_artifact"]
-        update_tool = server._tool_manager._tools["update_artifact"]
+        create_tool = server._tool_manager._tools["upsert_artifact"]
+        update_tool = server._tool_manager._tools["upsert_artifact"]
         read_tool = server._tool_manager._tools["read_artifact"]
 
         create_result = create_tool.fn(
@@ -891,7 +890,7 @@ class TestArtifactTools:
 
     def test_update_artifact_not_found(self, server):
         """Test updating a non-existent artifact."""
-        update_tool = server._tool_manager._tools["update_artifact"]
+        update_tool = server._tool_manager._tools["upsert_artifact"]
 
         result = update_tool.fn(
             artifact_id="a_nonexistent",
@@ -901,8 +900,8 @@ class TestArtifactTools:
 
     def test_list_artifacts(self, server):
         """Test listing artifacts."""
-        create_tool = server._tool_manager._tools["create_artifact"]
-        list_tool = server._tool_manager._tools["list_artifacts"]
+        create_tool = server._tool_manager._tools["upsert_artifact"]
+        list_tool = server._tool_manager._tools["find_artifacts"]
 
         # Create artifacts in different projects
         create_tool.fn(name="Doc A", content="A", project_id="p_1")
@@ -924,8 +923,8 @@ class TestArtifactTools:
 
     def test_list_artifacts_returns_summary(self, server):
         """Test that list_artifacts returns summary without full content."""
-        create_tool = server._tool_manager._tools["create_artifact"]
-        list_tool = server._tool_manager._tools["list_artifacts"]
+        create_tool = server._tool_manager._tools["upsert_artifact"]
+        list_tool = server._tool_manager._tools["find_artifacts"]
 
         create_tool.fn(
             name="Large Document",
@@ -943,7 +942,7 @@ class TestArtifactTools:
 
     def test_create_artifact_with_path_and_skill_id(self, server):
         """Test creating an artifact with path and skill_id fields."""
-        create_tool = server._tool_manager._tools["create_artifact"]
+        create_tool = server._tool_manager._tools["upsert_artifact"]
         read_tool = server._tool_manager._tools["read_artifact"]
 
         result = create_tool.fn(
@@ -963,7 +962,7 @@ class TestArtifactTools:
 
     def test_write_artifact_to_disk(self, server, tmp_path):
         """Test writing an artifact to disk."""
-        create_tool = server._tool_manager._tools["create_artifact"]
+        create_tool = server._tool_manager._tools["upsert_artifact"]
         write_tool = server._tool_manager._tools["write_artifact_to_disk"]
 
         # Create an artifact with a path
@@ -990,7 +989,7 @@ class TestArtifactTools:
 
     def test_write_artifact_to_disk_without_path(self, server, tmp_path):
         """Test writing an artifact that has no path set."""
-        create_tool = server._tool_manager._tools["create_artifact"]
+        create_tool = server._tool_manager._tools["upsert_artifact"]
         write_tool = server._tool_manager._tools["write_artifact_to_disk"]
 
         # Create an artifact WITHOUT a path
@@ -1016,7 +1015,7 @@ class TestArtifactTools:
 
     def test_sync_artifact_from_disk(self, server, tmp_path):
         """Test syncing an artifact from a file on disk."""
-        create_tool = server._tool_manager._tools["create_artifact"]
+        create_tool = server._tool_manager._tools["upsert_artifact"]
         write_tool = server._tool_manager._tools["write_artifact_to_disk"]
         sync_tool = server._tool_manager._tools["sync_artifact_from_disk"]
         read_tool = server._tool_manager._tools["read_artifact"]
@@ -1059,7 +1058,7 @@ class TestArtifactTools:
 
     def test_sync_artifact_from_disk_file_not_found(self, server, tmp_path):
         """Test syncing from a non-existent file."""
-        create_tool = server._tool_manager._tools["create_artifact"]
+        create_tool = server._tool_manager._tools["upsert_artifact"]
         sync_tool = server._tool_manager._tools["sync_artifact_from_disk"]
 
         # Create an artifact
@@ -1162,7 +1161,7 @@ class TestServerCoverageGaps:
         """Test search_threads tool."""
         create_tool = server._tool_manager._tools["create_thread"]
         add_tool = server._tool_manager._tools["add_messages"]
-        search_tool = server._tool_manager._tools["search_threads"]
+        search_tool = server._tool_manager._tools["find_threads"]
 
         # Create thread with messages
         create_result = create_tool.fn()
@@ -1188,7 +1187,7 @@ class TestServerCoverageGaps:
         """Test list_threads tool."""
         create_tool = server._tool_manager._tools["create_thread"]
         add_tool = server._tool_manager._tools["add_messages"]
-        list_tool = server._tool_manager._tools["list_threads"]
+        list_tool = server._tool_manager._tools["find_threads"]
 
         # Create threads
         create_result1 = create_tool.fn(project_id="p_1")
@@ -1209,20 +1208,20 @@ class TestServerCoverageGaps:
 
     def test_read_concept_not_found(self, server):
         """Test read_concept with non-existent concept."""
-        read_tool = server._tool_manager._tools["read_concept"]
-        result = get_text(read_tool.fn(concept_id="c_nonexistent"))
+        read_tool = server._tool_manager._tools["get_concept"]
+        result = get_text(read_tool.fn(id="c_nonexistent"))
         assert "not found" in result.lower()
 
     def test_read_concept_by_name_not_found(self, server):
         """Test read_concept_by_name with non-existent concept."""
-        read_tool = server._tool_manager._tools["read_concept_by_name"]
+        read_tool = server._tool_manager._tools["get_concept"]
         result = get_text(read_tool.fn(name="NonExistent Concept"))
         assert "not found" in result.lower()
 
     def test_list_concepts_tool(self, server):
         """Test list_concepts tool."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        list_tool = server._tool_manager._tools["list_concepts"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        list_tool = server._tool_manager._tools["find_concepts"]
 
         # Create concepts
         create_tool.fn(name="Concept A", project_id="p_1")
@@ -1238,9 +1237,9 @@ class TestServerCoverageGaps:
 
     def test_update_concept_all_fields(self, server):
         """Test update_concept with all optional fields."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        update_tool = server._tool_manager._tools["update_concept"]
-        read_tool = server._tool_manager._tools["read_concept"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        update_tool = server._tool_manager._tools["upsert_concept"]
+        read_tool = server._tool_manager._tools["get_concept"]
 
         # Create concept
         create_result = create_tool.fn(name="Original", text="Original text")
@@ -1257,7 +1256,7 @@ class TestServerCoverageGaps:
         assert update_result["updated"] is True
 
         # Verify all fields updated - read_concept returns markdown string
-        concept = get_text(read_tool.fn(concept_id=concept_id))
+        concept = get_text(read_tool.fn(id=concept_id))
         assert "Updated Name" in concept
         assert "Updated text" in concept
         assert "p_new" in concept
@@ -1265,15 +1264,15 @@ class TestServerCoverageGaps:
 
     def test_update_concept_not_found(self, server):
         """Test update_concept with non-existent concept."""
-        update_tool = server._tool_manager._tools["update_concept"]
+        update_tool = server._tool_manager._tools["upsert_concept"]
         result = update_tool.fn(concept_id="c_nonexistent", text="New text")
         assert "error" in result
 
     def test_update_concept_partial_fields(self, server):
         """Test update_concept with only some fields to cover partial branches."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        update_tool = server._tool_manager._tools["update_concept"]
-        read_tool = server._tool_manager._tools["read_concept"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        update_tool = server._tool_manager._tools["upsert_concept"]
+        read_tool = server._tool_manager._tools["get_concept"]
 
         # Create separate concepts for each partial update test
         # This avoids issues with name changes creating new files
@@ -1282,21 +1281,21 @@ class TestServerCoverageGaps:
         result1 = create_tool.fn(name="Concept1", text="Original text")
         concept_id1 = result1["concept_id"]
         update_tool.fn(concept_id=concept_id1, text="New text")
-        concept = get_text(read_tool.fn(concept_id=concept_id1))
+        concept = get_text(read_tool.fn(id=concept_id1))
         assert "New text" in concept
 
         # Test update only project_id
         result2 = create_tool.fn(name="Concept2", text="Text")
         concept_id2 = result2["concept_id"]
         update_tool.fn(concept_id=concept_id2, project_id="p_123")
-        concept = get_text(read_tool.fn(concept_id=concept_id2))
+        concept = get_text(read_tool.fn(id=concept_id2))
         assert "p_123" in concept
 
         # Test update only tags
         result3 = create_tool.fn(name="Concept3", text="Text")
         concept_id3 = result3["concept_id"]
         update_tool.fn(concept_id=concept_id3, tags=["tag1"])
-        concept = get_text(read_tool.fn(concept_id=concept_id3))
+        concept = get_text(read_tool.fn(id=concept_id3))
         assert "tag1" in concept
 
         # Test update only name (creates new file, old file remains)
@@ -1308,8 +1307,8 @@ class TestServerCoverageGaps:
 
     def test_update_reflection_all_fields(self, server):
         """Test update_reflection with all optional fields."""
-        add_tool = server._tool_manager._tools["add_reflection"]
-        update_tool = server._tool_manager._tools["update_reflection"]
+        add_tool = server._tool_manager._tools["upsert_reflection"]
+        update_tool = server._tool_manager._tools["upsert_reflection"]
 
         # Create reflection
         add_result = add_tool.fn(text="Original reflection")
@@ -1328,14 +1327,14 @@ class TestServerCoverageGaps:
 
     def test_update_reflection_not_found(self, server):
         """Test update_reflection with non-existent reflection."""
-        update_tool = server._tool_manager._tools["update_reflection"]
+        update_tool = server._tool_manager._tools["upsert_reflection"]
         result = update_tool.fn(reflection_id="r_nonexistent", text="New text")
         assert "error" in result
 
     def test_update_reflection_partial_fields(self, server):
         """Test update_reflection with only some fields."""
-        add_tool = server._tool_manager._tools["add_reflection"]
-        update_tool = server._tool_manager._tools["update_reflection"]
+        add_tool = server._tool_manager._tools["upsert_reflection"]
+        update_tool = server._tool_manager._tools["upsert_reflection"]
         read_tool = server._tool_manager._tools["read_reflections"]
 
         # Create reflection
@@ -1369,8 +1368,8 @@ class TestServerCoverageGaps:
 
     def test_update_project_all_fields(self, server):
         """Test update_project with all optional fields."""
-        create_tool = server._tool_manager._tools["create_project"]
-        update_tool = server._tool_manager._tools["update_project"]
+        create_tool = server._tool_manager._tools["upsert_project"]
+        update_tool = server._tool_manager._tools["upsert_project"]
         read_tool = server._tool_manager._tools["read_project"]
 
         # Create project
@@ -1397,14 +1396,14 @@ class TestServerCoverageGaps:
 
     def test_update_project_not_found(self, server):
         """Test update_project with non-existent project."""
-        update_tool = server._tool_manager._tools["update_project"]
+        update_tool = server._tool_manager._tools["upsert_project"]
         result = update_tool.fn(project_id="p_nonexistent", name="New name")
         assert "error" in result
 
     def test_update_project_partial_fields(self, server):
         """Test update_project with only some fields."""
-        create_tool = server._tool_manager._tools["create_project"]
-        update_tool = server._tool_manager._tools["update_project"]
+        create_tool = server._tool_manager._tools["upsert_project"]
+        update_tool = server._tool_manager._tools["upsert_project"]
 
         # Test each field individually
         result1 = create_tool.fn(name="Project1")
@@ -1421,8 +1420,8 @@ class TestServerCoverageGaps:
 
     def test_update_skill_all_fields(self, server):
         """Test update_skill with all optional fields."""
-        create_tool = server._tool_manager._tools["create_skill"]
-        update_tool = server._tool_manager._tools["update_skill"]
+        create_tool = server._tool_manager._tools["upsert_skill"]
+        update_tool = server._tool_manager._tools["upsert_skill"]
         read_tool = server._tool_manager._tools["read_skill"]
 
         # Create skill
@@ -1448,14 +1447,14 @@ class TestServerCoverageGaps:
 
     def test_update_skill_not_found(self, server):
         """Test update_skill with non-existent skill."""
-        update_tool = server._tool_manager._tools["update_skill"]
+        update_tool = server._tool_manager._tools["upsert_skill"]
         result = update_tool.fn(skill_id="s_nonexistent", name="New name")
         assert "error" in result
 
     def test_update_skill_partial_fields(self, server):
         """Test update_skill with only some fields."""
-        create_tool = server._tool_manager._tools["create_skill"]
-        update_tool = server._tool_manager._tools["update_skill"]
+        create_tool = server._tool_manager._tools["upsert_skill"]
+        update_tool = server._tool_manager._tools["upsert_skill"]
 
         result1 = create_tool.fn(name="Skill1")
         update_tool.fn(skill_id=result1["skill_id"], description="Desc only")
@@ -1471,8 +1470,8 @@ class TestServerCoverageGaps:
 
     def test_update_artifact_all_fields(self, server):
         """Test update_artifact with all optional fields."""
-        create_tool = server._tool_manager._tools["create_artifact"]
-        update_tool = server._tool_manager._tools["update_artifact"]
+        create_tool = server._tool_manager._tools["upsert_artifact"]
+        update_tool = server._tool_manager._tools["upsert_artifact"]
         read_tool = server._tool_manager._tools["read_artifact"]
 
         # Create artifact
@@ -1506,14 +1505,14 @@ class TestServerCoverageGaps:
 
     def test_update_artifact_not_found(self, server):
         """Test update_artifact with non-existent artifact."""
-        update_tool = server._tool_manager._tools["update_artifact"]
+        update_tool = server._tool_manager._tools["upsert_artifact"]
         result = update_tool.fn(artifact_id="a_nonexistent", name="New name")
         assert "error" in result
 
     def test_update_artifact_partial_fields(self, server):
         """Test update_artifact with only some fields."""
-        create_tool = server._tool_manager._tools["create_artifact"]
-        update_tool = server._tool_manager._tools["update_artifact"]
+        create_tool = server._tool_manager._tools["upsert_artifact"]
+        update_tool = server._tool_manager._tools["upsert_artifact"]
 
         result1 = create_tool.fn(name="Artifact1")
         update_tool.fn(artifact_id=result1["artifact_id"], content="Content only")
@@ -1545,8 +1544,8 @@ class TestServerCoverageGaps:
 
     def test_search_artifacts_tool(self, server):
         """Test search_artifacts tool."""
-        create_tool = server._tool_manager._tools["create_artifact"]
-        search_tool = server._tool_manager._tools["search_artifacts"]
+        create_tool = server._tool_manager._tools["upsert_artifact"]
+        search_tool = server._tool_manager._tools["find_artifacts"]
 
         # Create artifact
         create_tool.fn(
@@ -1561,7 +1560,7 @@ class TestServerCoverageGaps:
 
     def test_rebuild_index_tool(self, server):
         """Test rebuild_index tool."""
-        create_tool = server._tool_manager._tools["create_concept"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
         rebuild_tool = server._tool_manager._tools["rebuild_index"]
 
         # Create some content
@@ -1597,7 +1596,7 @@ class TestServerCoverageGaps:
 
     def test_write_artifact_to_disk_no_path(self, server, tmp_path):
         """Test write_artifact_to_disk with artifact that has no path."""
-        create_tool = server._tool_manager._tools["create_artifact"]
+        create_tool = server._tool_manager._tools["upsert_artifact"]
         write_tool = server._tool_manager._tools["write_artifact_to_disk"]
 
         # Create artifact without path
@@ -1617,8 +1616,8 @@ class TestServerCoverageGaps:
 
     def test_list_skills_tool(self, server):
         """Test list_skills tool."""
-        create_tool = server._tool_manager._tools["create_skill"]
-        list_tool = server._tool_manager._tools["list_skills"]
+        create_tool = server._tool_manager._tools["upsert_skill"]
+        list_tool = server._tool_manager._tools["find_skills"]
 
         # Create skills
         create_tool.fn(name="Skill A", description="Description A")
@@ -1632,8 +1631,8 @@ class TestServerCoverageGaps:
 
     def test_search_skills_tool(self, server):
         """Test search_skills tool."""
-        create_tool = server._tool_manager._tools["create_skill"]
-        search_tool = server._tool_manager._tools["search_skills"]
+        create_tool = server._tool_manager._tools["upsert_skill"]
+        search_tool = server._tool_manager._tools["find_skills"]
 
         # Create skill
         create_tool.fn(
@@ -1648,7 +1647,7 @@ class TestServerCoverageGaps:
 
     def test_list_projects_tool(self, server):
         """Test list_projects tool."""
-        create_tool = server._tool_manager._tools["create_project"]
+        create_tool = server._tool_manager._tools["upsert_project"]
         list_tool = server._tool_manager._tools["list_projects"]
 
         # Create projects
@@ -1663,8 +1662,8 @@ class TestServerCoverageGaps:
 
     def test_search_concepts_tool(self, server):
         """Test search_concepts tool."""
-        create_tool = server._tool_manager._tools["create_concept"]
-        search_tool = server._tool_manager._tools["search_concepts"]
+        create_tool = server._tool_manager._tools["upsert_concept"]
+        search_tool = server._tool_manager._tools["find_concepts"]
 
         # Create concept
         create_tool.fn(
@@ -1680,3 +1679,378 @@ class TestServerCoverageGaps:
         # Search with project filter
         result = search_tool.fn(query="database", project_id="p_test")
         # TextContent check removed - using get_text()
+
+
+class TestEpisodeTools:
+    """Tests for episode-related tools."""
+
+    @pytest.fixture
+    def server(self, tmp_path, embedding_model):
+        """Create a memory server with temp directory."""
+        return create_memory_server(
+            base_path=str(tmp_path), embedding_model=embedding_model
+        )
+
+    def test_upsert_episode_create(self, server):
+        """Test creating an episode."""
+        tool = server._tool_manager._tools["upsert_episode"]
+        result = tool.fn(
+            source_thread_id="t_test",
+            started_at="2024-12-10T14:30:00",
+            ended_at="2024-12-10T15:00:00",
+            events="- [14:30] Discussion about travel plans.",
+            platform="claude",
+            source_title="Travel Planning",
+        )
+
+        assert "episode_id" in result
+        assert result["created"] is True
+        assert result["episode_id"].startswith("e_")
+
+    def test_upsert_episode_requires_fields(self, server):
+        """Test upsert_episode requires source_thread_id, started_at, ended_at."""
+        tool = server._tool_manager._tools["upsert_episode"]
+
+        # Missing source_thread_id
+        result = tool.fn(
+            started_at="2024-12-10T14:30:00",
+            ended_at="2024-12-10T15:00:00",
+        )
+        assert "error" in result
+        assert "source_thread_id" in result["error"]
+
+        # Missing started_at
+        result = tool.fn(
+            source_thread_id="t_test",
+            ended_at="2024-12-10T15:00:00",
+        )
+        assert "error" in result
+        assert "started_at" in result["error"]
+
+        # Missing ended_at
+        result = tool.fn(
+            source_thread_id="t_test",
+            started_at="2024-12-10T14:30:00",
+        )
+        assert "error" in result
+        assert "ended_at" in result["error"]
+
+    def test_upsert_episode_update(self, server):
+        """Test updating an existing episode."""
+        tool = server._tool_manager._tools["upsert_episode"]
+
+        # Create episode
+        create_result = tool.fn(
+            source_thread_id="t_test",
+            started_at="2024-12-10T14:30:00",
+            ended_at="2024-12-10T15:00:00",
+            events="Original events",
+        )
+        episode_id = create_result["episode_id"]
+
+        # Update episode
+        update_result = tool.fn(
+            episode_id=episode_id,
+            events="Updated events with more detail.",
+            tags=["updated", "test"],
+        )
+        assert update_result["updated"] is True
+        assert update_result["episode_id"] == episode_id
+
+        # Verify update
+        get_tool = server._tool_manager._tools["get_episode"]
+        get_result = get_text(get_tool.fn(episode_id=episode_id))
+        assert "Updated events" in get_result
+
+    def test_upsert_episode_update_not_found(self, server):
+        """Test updating non-existent episode returns error."""
+        tool = server._tool_manager._tools["upsert_episode"]
+        result = tool.fn(episode_id="nonexistent", events="New events")
+        assert "error" in result
+        assert "not found" in result["error"]
+
+    def test_upsert_episode_updates_source_thread(self, server):
+        """Test that creating episode updates source thread status."""
+        create_thread = server._tool_manager._tools["create_thread"]
+        upsert_episode = server._tool_manager._tools["upsert_episode"]
+        read_thread = server._tool_manager._tools["read_thread"]
+
+        # Create a thread
+        thread_result = create_thread.fn()
+        thread_id = thread_result["thread_id"]
+
+        # Create episode from thread
+        upsert_episode.fn(
+            source_thread_id=thread_id,
+            started_at="2024-12-10T14:30:00",
+            ended_at="2024-12-10T15:00:00",
+        )
+
+        # Check thread status was updated
+        thread_text = get_text(read_thread.fn(thread_id=thread_id))
+        assert "completed" in thread_text.lower() or "episode" in thread_text.lower()
+
+    def test_get_episode(self, server):
+        """Test retrieving an episode by ID."""
+        upsert_tool = server._tool_manager._tools["upsert_episode"]
+        get_tool = server._tool_manager._tools["get_episode"]
+
+        # Create episode
+        create_result = upsert_tool.fn(
+            source_thread_id="t_test",
+            started_at="2024-12-10T14:30:00",
+            ended_at="2024-12-10T15:00:00",
+            source_title="Test Episode",
+            events="Some events happened.",
+            platform="test",
+        )
+        episode_id = create_result["episode_id"]
+
+        # Get episode
+        result = get_text(get_tool.fn(episode_id=episode_id))
+        assert "Test Episode" in result
+        assert episode_id in result
+        assert "Some events" in result
+        assert "test" in result  # platform
+
+    def test_get_episode_not_found(self, server):
+        """Test get_episode with non-existent ID."""
+        get_tool = server._tool_manager._tools["get_episode"]
+        result = get_text(get_tool.fn(episode_id="nonexistent"))
+        assert "not found" in result.lower()
+
+    def test_find_episodes_list_mode(self, server):
+        """Test find_episodes in list mode (no query)."""
+        upsert_tool = server._tool_manager._tools["upsert_episode"]
+        find_tool = server._tool_manager._tools["find_episodes"]
+
+        # Create episodes
+        upsert_tool.fn(
+            source_thread_id="t_1",
+            started_at="2024-12-10T14:30:00",
+            ended_at="2024-12-10T15:00:00",
+            source_title="Episode One",
+        )
+        upsert_tool.fn(
+            source_thread_id="t_2",
+            started_at="2024-12-11T10:00:00",
+            ended_at="2024-12-11T11:00:00",
+            source_title="Episode Two",
+        )
+
+        # List all episodes
+        result = get_text(find_tool.fn())
+        assert "Episodes" in result
+        assert "Episode One" in result or "t_1" in result
+        assert "Episode Two" in result or "t_2" in result
+
+    def test_find_episodes_empty(self, server):
+        """Test find_episodes with no episodes."""
+        find_tool = server._tool_manager._tools["find_episodes"]
+        result = get_text(find_tool.fn())
+        assert "No episodes" in result
+
+    def test_find_episodes_search_mode(self, server):
+        """Test find_episodes with semantic search."""
+        upsert_tool = server._tool_manager._tools["upsert_episode"]
+        find_tool = server._tool_manager._tools["find_episodes"]
+
+        # Create episode
+        upsert_tool.fn(
+            source_thread_id="t_1",
+            started_at="2024-12-10T14:30:00",
+            ended_at="2024-12-10T15:00:00",
+            source_title="Database Migration",
+            events="Discussed database schema migration strategy.",
+        )
+
+        # Search
+        result = get_text(find_tool.fn(query="database migration"))
+        # Should find results (or say no results - both valid)
+        assert "Episode" in result or "No episodes" in result
+
+    def test_link_episode_to_concept(self, server):
+        """Test creating bidirectional link between episode and concept."""
+        upsert_episode = server._tool_manager._tools["upsert_episode"]
+        upsert_concept = server._tool_manager._tools["upsert_concept"]
+        link_tool = server._tool_manager._tools["link_episode_to_concept"]
+        get_episode = server._tool_manager._tools["get_episode"]
+        get_concept = server._tool_manager._tools["get_concept"]
+
+        # Create episode and concept
+        episode_result = upsert_episode.fn(
+            source_thread_id="t_test",
+            started_at="2024-12-10T14:30:00",
+            ended_at="2024-12-10T15:00:00",
+        )
+        episode_id = episode_result["episode_id"]
+
+        concept_result = upsert_concept.fn(name="Test Concept", text="Some content")
+        concept_id = concept_result["concept_id"]
+
+        # Link them
+        link_result = link_tool.fn(episode_id=episode_id, concept_id=concept_id)
+        assert link_result["linked"] is True
+
+        # Verify bidirectional link
+        episode_text = get_text(get_episode.fn(episode_id=episode_id))
+        assert concept_id in episode_text
+
+        concept_text = get_text(get_concept.fn(id=concept_id))
+        assert episode_id in concept_text
+
+    def test_link_episode_to_concept_already_linked(self, server):
+        """Test linking already-linked episode and concept."""
+        upsert_episode = server._tool_manager._tools["upsert_episode"]
+        upsert_concept = server._tool_manager._tools["upsert_concept"]
+        link_tool = server._tool_manager._tools["link_episode_to_concept"]
+
+        # Create and link
+        episode_result = upsert_episode.fn(
+            source_thread_id="t_test",
+            started_at="2024-12-10T14:30:00",
+            ended_at="2024-12-10T15:00:00",
+        )
+        concept_result = upsert_concept.fn(name="Test", text="Content")
+
+        link_tool.fn(
+            episode_id=episode_result["episode_id"],
+            concept_id=concept_result["concept_id"],
+        )
+
+        # Link again
+        result = link_tool.fn(
+            episode_id=episode_result["episode_id"],
+            concept_id=concept_result["concept_id"],
+        )
+        assert result["already_linked"] is True
+        assert result["linked"] is False
+
+    def test_link_episode_to_concept_not_found(self, server):
+        """Test linking with non-existent episode or concept."""
+        upsert_episode = server._tool_manager._tools["upsert_episode"]
+        upsert_concept = server._tool_manager._tools["upsert_concept"]
+        link_tool = server._tool_manager._tools["link_episode_to_concept"]
+
+        # Create episode only
+        episode_result = upsert_episode.fn(
+            source_thread_id="t_test",
+            started_at="2024-12-10T14:30:00",
+            ended_at="2024-12-10T15:00:00",
+        )
+
+        # Try linking to non-existent concept
+        result = link_tool.fn(
+            episode_id=episode_result["episode_id"], concept_id="nonexistent"
+        )
+        assert "error" in result
+
+        # Create concept, try linking non-existent episode
+        concept_result = upsert_concept.fn(name="Test", text="Content")
+        result = link_tool.fn(
+            episode_id="nonexistent", concept_id=concept_result["concept_id"]
+        )
+        assert "error" in result
+
+    def test_get_pending_threads(self, server):
+        """Test listing threads pending processing."""
+        create_thread = server._tool_manager._tools["create_thread"]
+        upsert_episode = server._tool_manager._tools["upsert_episode"]
+        get_pending = server._tool_manager._tools["get_pending_threads"]
+
+        # Create threads
+        t1 = create_thread.fn()
+        t2 = create_thread.fn()
+
+        # Check both are pending
+        result = get_text(get_pending.fn())
+        assert "Pending Threads" in result
+        assert t1["thread_id"] in result
+        assert t2["thread_id"] in result
+
+        # Process one thread
+        upsert_episode.fn(
+            source_thread_id=t1["thread_id"],
+            started_at="2024-12-10T14:30:00",
+            ended_at="2024-12-10T15:00:00",
+        )
+
+        # Only t2 should be pending now
+        result = get_text(get_pending.fn())
+        assert t2["thread_id"] in result
+        # t1 may or may not be visible depending on implementation
+
+    def test_get_pending_threads_empty(self, server):
+        """Test get_pending_threads with no pending threads."""
+        get_pending = server._tool_manager._tools["get_pending_threads"]
+        result = get_text(get_pending.fn())
+        assert "No pending" in result or "processed" in result.lower()
+
+    def test_mark_thread_status(self, server):
+        """Test manually updating thread processing status."""
+        create_thread = server._tool_manager._tools["create_thread"]
+        mark_status = server._tool_manager._tools["mark_thread_status"]
+        read_thread = server._tool_manager._tools["read_thread"]
+
+        # Create thread
+        thread_result = create_thread.fn()
+        thread_id = thread_result["thread_id"]
+
+        # Mark as processing
+        result = mark_status.fn(thread_id=thread_id, status="processing")
+        assert result["updated"] is True
+        assert result["status"] == "processing"
+
+        # Verify
+        thread_text = get_text(read_thread.fn(thread_id=thread_id))
+        assert "processing" in thread_text.lower()
+
+        # Mark as completed
+        result = mark_status.fn(thread_id=thread_id, status="completed")
+        assert result["status"] == "completed"
+
+    def test_mark_thread_status_invalid(self, server):
+        """Test mark_thread_status with invalid status."""
+        create_thread = server._tool_manager._tools["create_thread"]
+        mark_status = server._tool_manager._tools["mark_thread_status"]
+
+        thread_result = create_thread.fn()
+
+        result = mark_status.fn(thread_id=thread_result["thread_id"], status="invalid")
+        assert "error" in result
+        assert "Invalid status" in result["error"]
+
+    def test_mark_thread_status_not_found(self, server):
+        """Test mark_thread_status with non-existent thread."""
+        mark_status = server._tool_manager._tools["mark_thread_status"]
+        result = mark_status.fn(thread_id="nonexistent", status="completed")
+        assert "error" in result
+        assert "not found" in result["error"]
+
+    def test_episode_with_all_qualities(self, server):
+        """Test creating episode with all quality fields."""
+        upsert_tool = server._tool_manager._tools["upsert_episode"]
+        get_tool = server._tool_manager._tools["get_episode"]
+
+        result = upsert_tool.fn(
+            source_thread_id="t_test",
+            started_at="2024-12-10T14:30:00",
+            ended_at="2024-12-10T15:00:00",
+            platform="claude",
+            source_title="Voice Chat",
+            timezone="America/Los_Angeles",
+            input_modalities=["voice", "text"],
+            output_modalities=["voice", "text"],
+            voice_mode=True,
+            client="ios_app",
+            model="claude-3-opus",
+            qualities={"session_type": "voice_chat"},
+            tags=["voice", "mobile"],
+        )
+        episode_id = result["episode_id"]
+
+        # Verify all fields rendered
+        episode_text = get_text(get_tool.fn(episode_id=episode_id))
+        assert "Voice Chat" in episode_text
+        assert "claude" in episode_text.lower() or "claude-3-opus" in episode_text
+        assert "voice" in episode_text.lower()

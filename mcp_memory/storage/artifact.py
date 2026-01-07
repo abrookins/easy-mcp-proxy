@@ -18,7 +18,7 @@ class ArtifactStorageMixin:
     def load_artifact_by_name(self: "BaseStorage", name: str) -> Artifact | None:
         """Load an artifact by name."""
         dir_path = self._get_dir("Artifact")
-        safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in name)
+        safe_name = self._sanitize_name(name)
         file_path = dir_path / f"{safe_name}.md"
         if not file_path.exists():
             return None

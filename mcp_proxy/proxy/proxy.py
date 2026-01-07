@@ -138,6 +138,10 @@ class MCPProxy:
         """Check if there's an active connection to the specified server."""
         return self._client_manager.has_active_connection(server_name)
 
+    async def reconnect_client(self, server_name: str) -> None:
+        """Attempt to reconnect a failed upstream client."""
+        await self._client_manager._reconnect_client(server_name)
+
     async def call_upstream_tool(
         self, server_name: str, tool_name: str, args: dict[str, Any]
     ) -> Any:
@@ -193,8 +197,24 @@ class MCPProxy:
         @asynccontextmanager
         async def proxy_lifespan(mcp: FastMCP):
             """Initialize upstream connections on server startup."""
-            await self.initialize()
-            yield
+            # Connect to upstream servers (spawns processes, keeps connections alive)
+            await self.connect_clients(fetch_tools=True)
+
+            # Initialize views with active clients
+            for view_name, view in self.views.items():
+                await view.initialize(
+                    self.upstream_clients,
+                    get_client=self.get_active_client,
+                    reconnect_client=self.reconnect_client,
+                )
+                view_tools = self.get_view_tools(view_name)
+                view.update_tool_mapping(view_tools)
+
+            self._initialized = True
+            try:
+                yield
+            finally:
+                await self.disconnect_clients()
 
         return proxy_lifespan
 
@@ -244,7 +264,9 @@ class MCPProxy:
 
         for view_name, view in self.views.items():
             await view.initialize(
-                self.upstream_clients, get_client=self.get_active_client
+                self.upstream_clients,
+                get_client=self.get_active_client,
+                reconnect_client=self.reconnect_client,
             )
             # Update tool mapping for dynamically discovered tools
             view_tools = self.get_view_tools(view_name)
@@ -301,7 +323,9 @@ class MCPProxy:
                 lifespan=self._create_lifespan(),
             )
             default_tools = self.get_view_tools(None)
-            self._register_tools_on_mcp(stdio_server, default_tools)
+            # Use "default" view if it exists (for custom tools, hooks, etc.)
+            default_view = self.views.get("default")
+            self._register_tools_on_mcp(stdio_server, default_tools, view=default_view)
             self._register_instructions_tool(stdio_server)
             stdio_server.run(transport="stdio")
         else:
@@ -357,11 +381,20 @@ class MCPProxy:
         uvicorn.run(app, host="0.0.0.0", port=port, ws="wsproto")
 
     def get_view_tools(self, view_name: str | None) -> list[ToolInfo]:
-        """Get the list of tools for a specific view."""
+        """Get the list of tools for a specific view.
+
+        If view_name is None and a "default" view exists, that view's tools
+        are returned (including custom tools). This ensures the root /mcp
+        endpoint uses the default view configuration.
+        """
         tools: list[ToolInfo] = []
 
         if view_name is None:
-            # Default view: return all tools from mcp_servers
+            # Use "default" view if it exists, otherwise return raw mcp_servers
+            if "default" in self.views:
+                return self.get_view_tools("default")
+
+            # No default view: return all tools from mcp_servers directly
             for server_name, server_config in self.config.mcp_servers.items():
                 upstream_tools = self._upstream_tools.get(server_name, [])
                 if server_config.tools:
@@ -739,16 +772,43 @@ class MCPProxy:
             aggregated_instructions = self.get_aggregated_instructions()
             default_mcp.instructions = aggregated_instructions
 
-            # Default path uses mcp_servers directly (no view)
-            default_tools = self.get_view_tools(None)
-            self._register_tools_on_mcp(default_mcp, default_tools)
+            # Root path uses "default" view if it exists (custom tools, hooks)
+            default_view = self.views.get("default")
+            if default_view:
+                await default_view.initialize(
+                    self.upstream_clients,
+                    get_client=self.get_active_client,
+                    reconnect_client=self.reconnect_client,
+                )
+                # get_view_tools(None) returns "default" view tools
+                default_tools = self.get_view_tools(None)
+                default_view.update_tool_mapping(default_tools)
+                self._register_tools_on_mcp(
+                    default_mcp, default_tools, view=default_view
+                )
+            else:
+                default_tools = self.get_view_tools(None)
+                self._register_tools_on_mcp(default_mcp, default_tools)
             self._register_instructions_tool(default_mcp)
 
             for view_name, view_mcp in view_mcps.items():
+                # Skip "default" view - already initialized above for root
+                if view_name == "default" and default_view:
+                    view_tools = self.get_view_tools(view_name)
+                    if default_view.config.exposure_mode == "search":
+                        self._register_search_tool(view_mcp, view_name)
+                    else:
+                        self._register_tools_on_mcp(
+                            view_mcp, view_tools, view=default_view
+                        )
+                    self._register_instructions_tool(view_mcp)
+                    continue
                 view_mcp.instructions = aggregated_instructions
                 view = self.views[view_name]
                 await view.initialize(
-                    self.upstream_clients, get_client=self.get_active_client
+                    self.upstream_clients,
+                    get_client=self.get_active_client,
+                    reconnect_client=self.reconnect_client,
                 )
                 # Always update tool mapping (needed for view.call_tool to work)
                 view_tools = self.get_view_tools(view_name)

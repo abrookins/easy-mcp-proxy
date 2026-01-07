@@ -1994,3 +1994,348 @@ class TestConceptFlatAndFolderFormats:
         # Load and verify parent_path
         loaded = storage.load_concept(child.concept_id)
         assert loaded.parent_path == "Grandparent/Parent"
+
+
+class TestEpisodeStorage:
+    """Tests for Episode storage and model."""
+
+    @pytest.fixture
+    def storage(self, tmp_path):
+        """Create a storage instance with temp directory."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        return MemoryStorage(config)
+
+    def test_episode_model_defaults(self):
+        """Test Episode model generates defaults correctly."""
+        from datetime import datetime
+
+        from mcp_memory.models import Episode
+
+        now = datetime.now()
+        episode = Episode(
+            source_thread_id="t_123",
+            started_at=now,
+            ended_at=now,
+        )
+        assert episode.episode_id.startswith("e_")
+        assert episode.source_thread_id == "t_123"
+        assert episode.events == ""
+        assert episode.concept_ids == []
+        assert episode.tags == []
+
+    def test_episode_model_with_all_fields(self):
+        """Test Episode model with all fields populated."""
+        from datetime import datetime
+
+        from mcp_memory.models import Episode
+
+        start = datetime(2024, 12, 10, 14, 30)
+        end = datetime(2024, 12, 10, 15, 0)
+        episode = Episode(
+            source_thread_id="t_abc",
+            started_at=start,
+            ended_at=end,
+            timezone="America/Los_Angeles",
+            platform="claude",
+            source_title="Trip Planning",
+            input_modalities=["text"],
+            output_modalities=["text"],
+            voice_mode=False,
+            client="web",
+            model="claude-3-opus",
+            qualities={"custom_key": "value"},
+            project_id="p_123",
+            tags=["travel", "planning"],
+            concept_ids=["c_1", "c_2"],
+            events="- [14:30] User asked about Orcas Island.\n",
+        )
+        assert episode.timezone == "America/Los_Angeles"
+        assert episode.platform == "claude"
+        assert episode.source_title == "Trip Planning"
+        assert episode.model == "claude-3-opus"
+        assert episode.qualities == {"custom_key": "value"}
+        assert "travel" in episode.tags
+
+    def test_save_and_load_episode(self, storage):
+        """Test saving and loading an episode."""
+        from datetime import datetime
+
+        from mcp_memory.models import Episode
+
+        start = datetime(2024, 12, 10, 14, 30)
+        end = datetime(2024, 12, 10, 15, 0)
+        episode = Episode(
+            source_thread_id="t_test",
+            started_at=start,
+            ended_at=end,
+            platform="claude",
+            source_title="Test Episode",
+            events="- [14:30] Something happened.\n- [14:35] Another thing.",
+            tags=["test"],
+        )
+
+        path = storage.save(episode)
+        assert path.exists()
+        assert path.suffix == ".md"
+        assert episode.episode_id in path.name
+
+        loaded = storage.load_episode(episode.episode_id)
+        assert loaded is not None
+        assert loaded.episode_id == episode.episode_id
+        assert loaded.source_thread_id == "t_test"
+        assert loaded.platform == "claude"
+        assert loaded.source_title == "Test Episode"
+        assert "Something happened" in loaded.events
+        assert "test" in loaded.tags
+
+    def test_load_episode_not_found(self, storage):
+        """Test loading non-existent episode returns None."""
+        result = storage.load_episode("nonexistent")
+        assert result is None
+
+    def test_list_episodes(self, storage):
+        """Test listing episodes."""
+        from datetime import datetime
+
+        from mcp_memory.models import Episode
+
+        now = datetime.now()
+        e1 = Episode(source_thread_id="t_1", started_at=now, ended_at=now)
+        e2 = Episode(source_thread_id="t_2", started_at=now, ended_at=now)
+        e3 = Episode(source_thread_id="t_3", started_at=now, ended_at=now)
+
+        storage.save(e1)
+        storage.save(e2)
+        storage.save(e3)
+
+        all_episodes = storage.list_episodes()
+        assert len(all_episodes) == 3
+
+    def test_list_episodes_filter_by_project(self, storage):
+        """Test filtering episodes by project."""
+        from datetime import datetime
+
+        from mcp_memory.models import Episode
+
+        now = datetime.now()
+        e1 = Episode(
+            source_thread_id="t_1", started_at=now, ended_at=now, project_id="p_1"
+        )
+        e2 = Episode(
+            source_thread_id="t_2", started_at=now, ended_at=now, project_id="p_1"
+        )
+        e3 = Episode(
+            source_thread_id="t_3", started_at=now, ended_at=now, project_id="p_2"
+        )
+
+        storage.save(e1)
+        storage.save(e2)
+        storage.save(e3)
+
+        project_episodes = storage.list_episodes(project_id="p_1")
+        assert len(project_episodes) == 2
+
+    def test_list_episodes_filter_by_source_thread(self, storage):
+        """Test filtering episodes by source thread."""
+        from datetime import datetime
+
+        from mcp_memory.models import Episode
+
+        now = datetime.now()
+        e1 = Episode(source_thread_id="t_abc", started_at=now, ended_at=now)
+        e2 = Episode(source_thread_id="t_def", started_at=now, ended_at=now)
+
+        storage.save(e1)
+        storage.save(e2)
+
+        result = storage.list_episodes(source_thread_id="t_abc")
+        assert len(result) == 1
+        assert result[0].source_thread_id == "t_abc"
+
+    def test_list_episodes_empty_dir(self, storage):
+        """Test listing episodes when directory doesn't exist."""
+        result = storage.list_episodes()
+        assert result == []
+
+
+class TestThreadProcessingStatus:
+    """Tests for Thread processing status and episode linkage."""
+
+    @pytest.fixture
+    def storage(self, tmp_path):
+        """Create a storage instance with temp directory."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        return MemoryStorage(config)
+
+    def test_thread_default_processing_status(self):
+        """Test Thread has default processing_status of 'pending'."""
+        thread = Thread()
+        assert thread.processing_status == "pending"
+        assert thread.episode_id is None
+
+    def test_thread_processing_status_values(self):
+        """Test Thread accepts valid processing_status values."""
+        t1 = Thread(processing_status="pending")
+        t2 = Thread(processing_status="processing")
+        t3 = Thread(processing_status="completed")
+
+        assert t1.processing_status == "pending"
+        assert t2.processing_status == "processing"
+        assert t3.processing_status == "completed"
+
+    def test_thread_with_episode_id(self):
+        """Test Thread with episode_id linkage."""
+        thread = Thread(episode_id="e_test123")
+        assert thread.episode_id == "e_test123"
+
+    def test_save_and_load_thread_processing_status(self, storage):
+        """Test saving and loading thread with processing status."""
+        thread = Thread(processing_status="completed", episode_id="e_test")
+        storage.save(thread)
+
+        loaded = storage.load_thread(thread.thread_id)
+        assert loaded is not None
+        assert loaded.processing_status == "completed"
+        assert loaded.episode_id == "e_test"
+
+
+class TestConceptEpisodeLinks:
+    """Tests for bidirectional Concept-Episode linking."""
+
+    @pytest.fixture
+    def storage(self, tmp_path):
+        """Create a storage instance with temp directory."""
+        config = MemoryConfig(base_path=str(tmp_path))
+        return MemoryStorage(config)
+
+    def test_concept_has_episode_ids(self):
+        """Test Concept model has episode_ids field."""
+        concept = Concept(name="Test", episode_ids=["e_1", "e_2"])
+        assert concept.episode_ids == ["e_1", "e_2"]
+
+    def test_concept_default_episode_ids(self):
+        """Test Concept defaults to empty episode_ids."""
+        concept = Concept(name="Test")
+        assert concept.episode_ids == []
+
+    def test_save_and_load_concept_with_episode_ids(self, storage):
+        """Test saving and loading concept with episode_ids."""
+        concept = Concept(name="Test Concept", episode_ids=["e_abc", "e_def"])
+        storage.save(concept)
+
+        loaded = storage.load_concept(concept.concept_id)
+        assert loaded is not None
+        assert loaded.episode_ids == ["e_abc", "e_def"]
+
+
+class TestEpisodeULID:
+    """Tests for Episode ULID generation."""
+
+    import re
+
+    ULID_PATTERN = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
+
+    def test_episode_id_is_ulid(self):
+        """Test Episode ID uses ULID format."""
+        from datetime import datetime
+
+        from mcp_memory.models import Episode
+
+        now = datetime.now()
+        episode = Episode(source_thread_id="t_1", started_at=now, ended_at=now)
+
+        assert episode.episode_id.startswith("e_")
+        ulid_part = episode.episode_id[2:]
+        assert self.ULID_PATTERN.match(ulid_part), f"Not a ULID: {ulid_part}"
+
+
+class TestEpisodeSearch:
+    """Tests for Episode search functionality."""
+
+    def test_search_episodes(self, tmp_path, embedding_model):
+        """Test searching episodes by content."""
+        from datetime import datetime
+
+        from mcp_memory.models import Episode
+        from mcp_memory.search import MemorySearcher
+
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
+
+        now = datetime.now()
+        episode = Episode(
+            source_thread_id="t_1",
+            started_at=now,
+            ended_at=now,
+            source_title="Orcas Island Trip",
+            events="User discussed travel plans for Orcas Island in Washington.",
+            tags=["travel", "washington"],
+        )
+        storage.save(episode)
+
+        searcher.build_index()
+        results = searcher.search_episodes("Orcas Island travel")
+        assert len(results) > 0
+        assert results[0]["id"] == episode.episode_id
+
+    def test_search_episodes_filter_by_project(self, tmp_path, embedding_model):
+        """Test filtering episode search by project."""
+        from datetime import datetime
+
+        from mcp_memory.models import Episode
+        from mcp_memory.search import MemorySearcher
+
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
+
+        now = datetime.now()
+        e1 = Episode(
+            source_thread_id="t_1",
+            started_at=now,
+            ended_at=now,
+            events="Database schema design discussion",
+            project_id="p_proj1",
+        )
+        e2 = Episode(
+            source_thread_id="t_2",
+            started_at=now,
+            ended_at=now,
+            events="Database migration planning",
+            project_id="p_proj2",
+        )
+        storage.save(e1)
+        storage.save(e2)
+
+        searcher.build_index()
+        results = searcher.search_episodes("database", project_id="p_proj1")
+        assert len(results) == 1
+        assert results[0]["id"] == e1.episode_id
+
+    def test_episode_indexed_with_tags(self, tmp_path, embedding_model):
+        """Test that episode tags are included in search index."""
+        from datetime import datetime
+
+        from mcp_memory.models import Episode
+        from mcp_memory.search import MemorySearcher
+
+        config = MemoryConfig(base_path=str(tmp_path))
+        storage = MemoryStorage(config)
+        searcher = MemorySearcher(storage, config, model=embedding_model)
+
+        now = datetime.now()
+        episode = Episode(
+            source_thread_id="t_1",
+            started_at=now,
+            ended_at=now,
+            events="General discussion",
+            tags=["kubernetes", "devops", "infrastructure"],
+        )
+        storage.save(episode)
+
+        searcher.build_index()
+        # Search by tag content
+        results = searcher.search_episodes("kubernetes devops")
+        assert len(results) > 0
+        assert results[0]["id"] == episode.episode_id

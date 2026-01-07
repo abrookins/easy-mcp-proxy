@@ -27,6 +27,7 @@ class ToolView:
         self._tool_to_original_name: dict[str, str] = {}  # renamed -> original
         self._upstream_clients: dict[str, Any] = {}
         self._get_client: Callable[[str], Any | None] | None = None  # Get active client
+        self._reconnect_client: Callable[[str], Any] | None = None  # Reconnect callback
         self.composite_tools: dict[str, ParallelTool] = {}
         self.custom_tools: dict[str, Callable] = {}
 
@@ -62,6 +63,7 @@ class ToolView:
         self,
         upstream_clients: dict[str, Any],
         get_client: Callable[[str], Any | None] | None = None,
+        reconnect_client: Callable[[str], Any] | None = None,
     ) -> None:
         """Initialize the view with upstream clients.
 
@@ -72,9 +74,12 @@ class ToolView:
                 for a server name. If provided and returns a client, that
                 client will be used directly. Otherwise falls back to stored
                 clients.
+            reconnect_client: Optional async function to reconnect a failed client.
+                Called with server_name when an active client fails.
         """
         self._upstream_clients = upstream_clients
         self._get_client = get_client
+        self._reconnect_client = reconnect_client
         self._load_hooks()
 
         # Verify we have clients for all referenced servers
@@ -179,8 +184,28 @@ class ToolView:
         # Try to get an active (connected) client first
         active_client = self._get_client(server_name) if self._get_client else None
         if active_client:
-            # Use the active client directly (no context manager needed)
-            result = await active_client.call_tool(original_name, args)
+            try:
+                # Use the active client directly (no context manager needed)
+                result = await active_client.call_tool(original_name, args)
+            except Exception:
+                # Connection may have died - try to reconnect
+                if self._reconnect_client:
+                    try:
+                        await self._reconnect_client(server_name)
+                        active_client = (
+                            self._get_client(server_name) if self._get_client else None
+                        )
+                        if active_client:
+                            result = await active_client.call_tool(original_name, args)
+                        else:
+                            raise
+                    except Exception:
+                        # Reconnect failed, fall through to fresh client
+                        client = self._upstream_clients[server_name]
+                        async with client:
+                            result = await client.call_tool(original_name, args)
+                else:
+                    raise
         else:
             # Fall back to stored client with context manager
             client = self._upstream_clients[server_name]

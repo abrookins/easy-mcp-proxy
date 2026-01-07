@@ -51,6 +51,9 @@ def _format_concept(
         lines.append(f"**Tags:** {', '.join(concept.tags)}")
     if concept.links:
         lines.append(f"**Links:** {', '.join(concept.links)}")
+    if concept.episode_ids:
+        ep_list = ", ".join(f"`{e}`" for e in concept.episode_ids)
+        lines.append(f"**Episodes:** {ep_list}")
 
     # Include children information if provided
     if child_paths is not None:

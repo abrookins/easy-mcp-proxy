@@ -20,21 +20,61 @@ def register_project_tools(
     """Register all project-related tools with the MCP server."""
 
     @mcp.tool()
-    def create_project(
-        name: str,
-        description: str = "",
-        instructions: str = "",
+    def upsert_project(
+        name: str | None = None,
+        project_id: str | None = None,
+        description: str | None = None,
+        instructions: str | None = None,
         tags: list[str] | None = None,
     ) -> dict:
-        """Create a project to group related threads, concepts, and artifacts. Use to mirror project configuration from your IDE or workspace into persistent memory. Check list_projects() first to avoid duplicates."""
-        project = Project(
-            name=name,
-            description=description,
-            instructions=instructions,
-            tags=tags or [],
-        )
-        storage.save(project)
-        return {"project_id": project.project_id, "created": True}
+        """Create or update a project. If project_id is provided, updates the existing project. If not provided, creates a new project. Use to mirror project configuration from your IDE or workspace into persistent memory.
+
+        Args:
+            name: Project name (required for create, optional for update)
+            project_id: If provided, update this project; otherwise create new
+            description: Project description
+            instructions: Project-specific guidelines and context
+            tags: Tags for categorization
+        """
+        if project_id:
+            # Update existing project
+            project = storage.load_project(project_id)
+            if not project:
+                return {"error": f"Project {project_id} not found"}
+
+            old_name = project.name
+            old_file_path = storage._find_file_by_id(
+                "Project", "project_id", project_id
+            )
+
+            if name is not None:
+                project.name = name
+            if description is not None:
+                project.description = description
+            if instructions is not None:
+                project.instructions = instructions
+            if tags is not None:
+                project.tags = tags
+
+            project.updated_at = datetime.now()
+
+            if name is not None and name != old_name and old_file_path:
+                storage._delete_file(old_file_path)
+
+            storage.save(project)
+            return {"project_id": project.project_id, "updated": True}
+        else:
+            # Create new project - name is required
+            if not name:
+                return {"error": "name is required when creating a new project"}
+            project = Project(
+                name=name,
+                description=description or "",
+                instructions=instructions or "",
+                tags=tags or [],
+            )
+            storage.save(project)
+            return {"project_id": project.project_id, "created": True}
 
     @mcp.tool()
     def read_project(project_id: str) -> TextContent:
@@ -67,38 +107,3 @@ def register_project_tools(
             tags_info = f" ({', '.join(p.tags)})" if p.tags else ""
             lines.append(f"- `{p.project_id}` **{p.name}**{tags_info}{desc}")
         return _text("\n".join(lines))
-
-    @mcp.tool()
-    def update_project(
-        project_id: str,
-        name: str | None = None,
-        description: str | None = None,
-        instructions: str | None = None,
-        tags: list[str] | None = None,
-    ) -> dict:
-        """Modify a project's details. Use to sync changes from IDE or workspace configuration. Only provided fields are updated—omit fields to keep current values."""
-        project = storage.load_project(project_id)
-        if not project:
-            return {"error": f"Project {project_id} not found"}
-
-        # Track if we need to delete old file (name changed means new filename)
-        old_name = project.name
-        old_file_path = storage._find_file_by_id("Project", "project_id", project_id)
-
-        if name is not None:
-            project.name = name
-        if description is not None:
-            project.description = description
-        if instructions is not None:
-            project.instructions = instructions
-        if tags is not None:
-            project.tags = tags
-
-        project.updated_at = datetime.now()
-
-        # Delete old file if name changed (new file will be created with new name)
-        if name is not None and name != old_name and old_file_path:
-            storage._delete_file(old_file_path)
-
-        storage.save(project)
-        return {"project_id": project.project_id, "updated": True}

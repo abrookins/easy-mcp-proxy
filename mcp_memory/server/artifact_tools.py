@@ -21,47 +21,101 @@ def register_artifact_tools(
     """Register all artifact-related tools with the MCP server."""
 
     @mcp.tool()
-    def create_artifact(
-        name: str,
-        content: str = "",
-        description: str = "",
-        content_type: str = "markdown",
+    def upsert_artifact(
+        name: str | None = None,
+        artifact_id: str | None = None,
+        content: str | None = None,
+        description: str | None = None,
+        content_type: str | None = None,
         path: str | None = None,
         skill_id: str | None = None,
         project_id: str | None = None,
         originating_thread_id: str | None = None,
         tags: list[str] | None = None,
     ) -> dict:
-        """Store a collaborative document that evolves through conversation—specs, code, designs, research. Set path (e.g., "scripts/helper.py") for file-based artifacts that can be written to disk. Link to skill_id to associate code with a procedure. Unlike concepts (knowledge), artifacts are work products."""
-        artifact = Artifact(
-            name=name,
-            content=content,
-            description=description,
-            content_type=content_type,
-            path=path,
-            skill_id=skill_id,
-            project_id=project_id,
-            originating_thread_id=originating_thread_id,
-            tags=tags or [],
-        )
-        storage.save(artifact)
-        # Add to search index (include path and tags for better discovery)
-        index_parts = [name, description, content]
-        if path:
-            index_parts.insert(0, path)
-        if tags:
-            index_parts.append(" ".join(tags))
-        searcher.add_to_index(
-            "artifact",
-            "\n".join(index_parts),
-            {
-                "id": artifact.artifact_id,
-                "name": name,
-                "path": path,
-                "project_id": project_id,
-            },
-        )
-        return {"artifact_id": artifact.artifact_id, "created": True}
+        """Create or update a collaborative document (specs, code, designs, research). If artifact_id is provided, updates the existing artifact. If not provided, creates a new artifact. Set path (e.g., "scripts/helper.py") for file-based artifacts. Link to skill_id to associate code with a procedure.
+
+        Args:
+            name: Artifact name (required for create, optional for update)
+            artifact_id: If provided, update this artifact; otherwise create new
+            content: The artifact content
+            description: Description of the artifact
+            content_type: Type of content (markdown, python, etc.)
+            path: File path for disk export (e.g., "scripts/helper.py")
+            skill_id: Link to a skill that uses this artifact
+            project_id: Associate with a project
+            originating_thread_id: Thread where this artifact was created
+            tags: Tags for categorization
+        """
+        if artifact_id:
+            # Update existing artifact
+            artifact = storage.load_artifact(artifact_id)
+            if not artifact:
+                return {"error": f"Artifact {artifact_id} not found"}
+
+            old_name = artifact.name
+            old_file_path = storage._find_file_by_id(
+                "Artifact", "artifact_id", artifact_id
+            )
+
+            if name is not None:
+                artifact.name = name
+            if content is not None:
+                artifact.content = content
+            if description is not None:
+                artifact.description = description
+            if content_type is not None:
+                artifact.content_type = content_type
+            if path is not None:
+                artifact.path = path
+            if skill_id is not None:
+                artifact.skill_id = skill_id
+            if project_id is not None:
+                artifact.project_id = project_id
+            if tags is not None:
+                artifact.tags = tags
+
+            artifact.updated_at = datetime.now()
+
+            if name is not None and name != old_name and old_file_path:
+                storage._delete_file(old_file_path)
+
+            storage.save(artifact)
+            searcher.build_index()
+            return {"artifact_id": artifact.artifact_id, "updated": True}
+        else:
+            # Create new artifact - name is required
+            if not name:
+                return {"error": "name is required when creating a new artifact"}
+            artifact = Artifact(
+                name=name,
+                content=content or "",
+                description=description or "",
+                content_type=content_type or "markdown",
+                path=path,
+                skill_id=skill_id,
+                project_id=project_id,
+                originating_thread_id=originating_thread_id,
+                tags=tags or [],
+            )
+            storage.save(artifact)
+            # Add to search index (include path and tags for better discovery)
+            index_parts = [name, description or "", content or ""]
+            if path:
+                index_parts.insert(0, path)
+            if tags:
+                index_parts.append(" ".join(tags))
+            searcher.add_to_index(
+                "artifact",
+                "\n".join(index_parts),
+                {
+                    "id": artifact.artifact_id,
+                    "name": name,
+                    "path": path,
+                    "project_id": project_id,
+                },
+            )
+            return {"artifact_id": artifact.artifact_id, "created": True}
 
     @mcp.tool()
     def read_artifact(artifact_id: str) -> TextContent:
@@ -93,83 +147,45 @@ def register_artifact_tools(
         return _text("\n".join(lines))
 
     @mcp.tool()
-    def update_artifact(
-        artifact_id: str,
-        name: str | None = None,
-        content: str | None = None,
-        description: str | None = None,
-        content_type: str | None = None,
-        path: str | None = None,
-        skill_id: str | None = None,
-        project_id: str | None = None,
-        tags: list[str] | None = None,
-    ) -> dict:
-        """Modify an artifact's content or metadata. Use to persist changes as you collaborate on documents. For code files edited on disk, use sync_artifact_from_disk() instead. Only provided fields are updated."""
-        artifact = storage.load_artifact(artifact_id)
-        if not artifact:
-            return {"error": f"Artifact {artifact_id} not found"}
-
-        # Track if we need to delete old file (name changed means new filename)
-        old_name = artifact.name
-        old_file_path = storage._find_file_by_id("Artifact", "artifact_id", artifact_id)
-
-        if name is not None:
-            artifact.name = name
-        if content is not None:
-            artifact.content = content
-        if description is not None:
-            artifact.description = description
-        if content_type is not None:
-            artifact.content_type = content_type
-        if path is not None:
-            artifact.path = path
-        if skill_id is not None:
-            artifact.skill_id = skill_id
-        if project_id is not None:
-            artifact.project_id = project_id
-        if tags is not None:
-            artifact.tags = tags
-
-        artifact.updated_at = datetime.now()
-
-        # Delete old file if name changed (new file will be created with new name)
-        if name is not None and name != old_name and old_file_path:
-            storage._delete_file(old_file_path)
-
-        storage.save(artifact)
-        # Rebuild index to update embeddings
-        searcher.build_index()
-        return {"artifact_id": artifact.artifact_id, "updated": True}
-
-    @mcp.tool()
-    def list_artifacts(project_id: str | None = None) -> TextContent:
-        """Browse all collaborative documents. Use when starting a project session to show available artifacts the user can continue working on. Returns artifact IDs—use read_artifact() for full content."""
-        artifacts = storage.list_artifacts(project_id=project_id)
-        if not artifacts:
-            return _text("No artifacts found")
-        lines = [f"# Artifacts ({len(artifacts)})\n"]
-        for a in artifacts:
-            desc = f" - {a.description}" if a.description else ""
-            path_info = f" [`{a.path}`]" if a.path else ""
-            lines.append(
-                f"- `{a.artifact_id}` **{a.name}**{path_info} ({a.content_type}){desc}"
-            )
-        return _text("\n".join(lines))
-
-    @mcp.tool()
-    def search_artifacts(
-        query: str,
-        project_id: str | None = None,
-        limit: int = 10,
+    def find_artifacts(
+        query: str | None = None, project_id: str | None = None, limit: int = 10
     ) -> TextContent:
-        """Find collaborative documents by their content using semantic search. Returns artifact IDs—use read_artifact() to get the full document."""
-        results = searcher.search_artifacts(query, limit=limit, project_id=project_id)
-        if not results:
-            return _text(f"No artifacts found for query: {query}")
-        lines = [f"# Artifact Search Results ({len(results)})\n"]
-        for r in results:
-            lines.append(f"- `{r['id']}` **{r['name']}** (score: {r['score']:.2f})")
-        return _text("\n".join(lines))
+        """Find or list artifacts. With query: semantic search. Without: list all.
+
+        Args:
+            query: Semantic search query. If None, lists all artifacts.
+            project_id: Filter by project.
+            limit: Max results for search (default 10).
+
+        Examples:
+            find_artifacts()  # List all artifacts
+            find_artifacts(project_id="proj_123")  # List artifacts in project
+            find_artifacts(query="database schema")  # Search artifacts
+        """
+        if query:
+            # Semantic search mode
+            results = searcher.search_artifacts(
+                query, limit=limit, project_id=project_id
+            )
+            if not results:
+                return _text(f"No artifacts found for query: {query}")
+            lines = [f"# Artifact Search Results ({len(results)})\n"]
+            for r in results:
+                lines.append(f"- `{r['id']}` **{r['name']}** (score: {r['score']:.2f})")
+            return _text("\n".join(lines))
+        else:
+            # List mode
+            artifacts = storage.list_artifacts(project_id=project_id)
+            if not artifacts:
+                return _text("No artifacts found")
+            lines = [f"# Artifacts ({len(artifacts)})\n"]
+            for a in artifacts:
+                desc = f" - {a.description}" if a.description else ""
+                path_info = f" [`{a.path}`]" if a.path else ""
+                lines.append(
+                    f"- `{a.artifact_id}` **{a.name}**{path_info} ({a.content_type}){desc}"
+                )
+            return _text("\n".join(lines))
 
     @mcp.tool()
     def write_artifact_to_disk(

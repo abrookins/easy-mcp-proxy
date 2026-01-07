@@ -28,16 +28,31 @@ Because all data is stored as local files, you maintain complete ownership and c
 
 ## Memory Types
 
-The system provides six entity types, each stored in its own directory:
+The system provides seven entity types, each stored in its own directory:
 
 ### Threads (`Threads/*.yaml`)
 Conversation continuity across sessions. Store both user and assistant messages to resume conversations later. The LLM should call `add_messages()` frequently during conversations—not just at the end.
+
+Threads have a `processing_status` field (`pending`, `processing`, `completed`) that tracks whether the conversation has been processed into an Episode.
+
+### Episodes (`Episodes/*.md`)
+Objective records of experiences derived from Threads. Episodes serve as a stable intermediate layer between raw conversation data and conceptualized knowledge:
+
+- **1:1 relationship with Threads** — Each Episode is derived from exactly one Thread
+- **Bidirectional links with Concepts** — Episodes track which concepts were derived from them; Concepts track which episodes they came from
+- **Temporal boundaries** — `started_at`, `ended_at`, `timezone`
+- **Contextual metadata** — `platform`, `client`, `model`, `voice_mode`, `input_modalities`, `output_modalities`
+- **Narrated events** — The body contains timestamped events describing what happened
+
+Episodes enable conceptualization workflows where raw threads are processed into stable records, then concepts are extracted and linked back. This allows reprocessing as the concept pool grows.
 
 ### Concepts (`Concepts/*.md`)
 Knowledge about users, topics, and entities. Use for:
 - User preferences and communication style
 - Facts about people, projects, or domains
 - Background information worth remembering
+
+Concepts can be linked bidirectionally to Episodes via `episode_ids`, tracking where knowledge was derived from.
 
 ### Skills (`Skills/*.md`)
 Reusable procedures and workflows stored as markdown instructions. Good for:
@@ -115,6 +130,7 @@ This creates the directory structure:
 ```
 /path/to/vault/
 ├── Threads/
+├── Episodes/
 ├── Concepts/
 ├── Projects/
 ├── Skills/

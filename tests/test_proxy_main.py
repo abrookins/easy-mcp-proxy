@@ -2640,11 +2640,20 @@ class TestProxyConnectionManagement:
 
         lifespan = proxy._create_lifespan()
 
-        # Mock the initialize method
-        with patch.object(proxy, "initialize", new_callable=AsyncMock) as mock_init:
+        # Mock connect_clients and disconnect_clients (the new lifespan behavior)
+        with (
+            patch.object(
+                proxy, "connect_clients", new_callable=AsyncMock
+            ) as mock_connect,
+            patch.object(
+                proxy, "disconnect_clients", new_callable=AsyncMock
+            ) as mock_disconnect,
+        ):
             # Use the lifespan context manager
             async with lifespan(None):
-                mock_init.assert_called_once()
+                mock_connect.assert_called_once_with(fetch_tools=True)
+            # disconnect should be called on exit
+            mock_disconnect.assert_called_once()
 
     async def test_initialize_skips_existing_clients(self):
         """initialize should skip creating clients that already exist."""

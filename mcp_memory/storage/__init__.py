@@ -14,6 +14,7 @@ from mcp_memory.storage.base import (
     reconstruct_client_frontmatter,
 )
 from mcp_memory.storage.concept import ConceptStorageMixin
+from mcp_memory.storage.episode import EpisodeStorageMixin
 from mcp_memory.storage.project import ProjectStorageMixin
 from mcp_memory.storage.reflection import ReflectionStorageMixin
 from mcp_memory.storage.skill import SkillStorageMixin
@@ -27,6 +28,7 @@ class MemoryStorage(
     SkillStorageMixin,
     ReflectionStorageMixin,
     ArtifactStorageMixin,
+    EpisodeStorageMixin,
     BaseStorage,
 ):
     """File-based storage for memory objects.
@@ -51,4 +53,5 @@ __all__ = [
     "SkillStorageMixin",
     "ReflectionStorageMixin",
     "ArtifactStorageMixin",
+    "EpisodeStorageMixin",
 ]

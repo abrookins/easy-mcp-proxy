@@ -80,6 +80,11 @@ class MemorySearcher:
         if skills_dir.exists():
             files.extend(skills_dir.glob("*.md"))
 
+        # Episode files
+        episodes_dir = base / self.config.episodes_dir
+        if episodes_dir.exists():
+            files.extend(episodes_dir.glob("*.md"))
+
         return files
 
     def _get_current_mtimes(self) -> dict[str, float]:
@@ -180,6 +185,22 @@ class MemorySearcher:
                     "type": "skill",
                     "id": skill.skill_id,
                     "name": skill.name,
+                }
+            )
+
+        # Index episodes (include title, events, and tags)
+        for episode in self.storage.list_episodes():
+            parts = [episode.source_title or "", episode.events]
+            if episode.tags:
+                parts.append(" ".join(episode.tags))
+            text = "\n".join(parts)
+            texts.append(text)
+            id_map.append(
+                {
+                    "type": "episode",
+                    "id": episode.episode_id,
+                    "source_thread_id": episode.source_thread_id,
+                    "project_id": episode.project_id,
                 }
             )
 
@@ -312,6 +333,16 @@ class MemorySearcher:
         self.ensure_index()
         return self._search(query, "skill", limit)
 
+    def search_episodes(
+        self,
+        query: str,
+        limit: int = 10,
+        project_id: str | None = None,
+    ) -> list[dict]:
+        """Search episodes by semantic similarity."""
+        self.ensure_index()
+        return self._search(query, "episode", limit, project_id=project_id)
+
     def _search(
         self,
         query: str,
@@ -349,7 +380,7 @@ class MemorySearcher:
                 continue
 
             # Deduplicate by ID or thread_id+message_index (for messages)
-            if item_type in ("concept", "artifact"):
+            if item_type in ("concept", "artifact", "skill", "episode"):
                 item_id = item.get("id")
             else:
                 # For messages, use composite key

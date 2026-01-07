@@ -20,30 +20,70 @@ def register_skill_tools(
     """Register all skill-related tools with the MCP server."""
 
     @mcp.tool()
-    def create_skill(
-        name: str,
-        description: str = "",
-        instructions: str = "",
+    def upsert_skill(
+        name: str | None = None,
+        skill_id: str | None = None,
+        description: str | None = None,
+        instructions: str | None = None,
         tags: list[str] | None = None,
     ) -> dict:
-        """Store a reusable procedure or workflow as markdown instructions. Use for recurring tasks, project-specific processes, or step-by-step guides. For large code (100+ lines), create linked Artifacts instead of embedding in instructions. Check search_skills() first to avoid duplicates."""
-        skill = Skill(
-            name=name,
-            description=description,
-            instructions=instructions,
-            tags=tags or [],
-        )
-        storage.save(skill)
-        # Add to search index (include tags for better discovery)
-        index_parts = [name, description, instructions]
-        if tags:
-            index_parts.append(" ".join(tags))
-        searcher.add_to_index(
-            "skill",
-            "\n".join(index_parts),
-            {"id": skill.skill_id, "name": name},
-        )
-        return {"skill_id": skill.skill_id, "created": True}
+        """Create or update a skill (reusable procedure/workflow). If skill_id is provided, updates the existing skill. If not provided, creates a new skill. For large code (100+ lines), create linked Artifacts instead of embedding in instructions.
+
+        Args:
+            name: Skill name (required for create, optional for update)
+            skill_id: If provided, update this skill; otherwise create new
+            description: Description of what this skill does
+            instructions: Markdown instructions for the procedure
+            tags: Tags for categorization
+        """
+        if skill_id:
+            # Update existing skill
+            skill = storage.load_skill(skill_id)
+            if not skill:
+                return {"error": f"Skill {skill_id} not found"}
+
+            old_name = skill.name
+            old_file_path = storage._find_file_by_id("Skill", "skill_id", skill_id)
+
+            if name is not None:
+                skill.name = name
+            if description is not None:
+                skill.description = description
+            if instructions is not None:
+                skill.instructions = instructions
+            if tags is not None:
+                skill.tags = tags
+
+            skill.updated_at = datetime.now()
+
+            if name is not None and name != old_name and old_file_path:
+                storage._delete_file(old_file_path)
+
+            storage.save(skill)
+            # Rebuild index to update embeddings
+            searcher.build_index()
+            return {"skill_id": skill.skill_id, "updated": True}
+        else:
+            # Create new skill - name is required
+            if not name:
+                return {"error": "name is required when creating a new skill"}
+            skill = Skill(
+                name=name,
+                description=description or "",
+                instructions=instructions or "",
+                tags=tags or [],
+            )
+            storage.save(skill)
+            # Add to search index (include tags for better discovery)
+            index_parts = [name, description or "", instructions or ""]
+            if tags:
+                index_parts.append(" ".join(tags))
+            searcher.add_to_index(
+                "skill",
+                "\n".join(index_parts),
+                {"id": skill.skill_id, "name": name},
+            )
+            return {"skill_id": skill.skill_id, "created": True}
 
     @mcp.tool()
     def read_skill(skill_id: str) -> TextContent:
@@ -65,68 +105,39 @@ def register_skill_tools(
         return _text("\n".join(lines))
 
     @mcp.tool()
-    def list_skills() -> TextContent:
-        """Browse all stored procedures and workflows. Returns skill names, descriptions, and IDs—use read_skill() to get full instructions."""
-        skills = storage.list_skills()
-        if not skills:
-            return _text("No skills found")
-        lines = [f"# Skills ({len(skills)})\n"]
-        for s in skills:
-            desc = f" - {s.description}" if s.description else ""
-            tags_info = f" ({', '.join(s.tags)})" if s.tags else ""
-            lines.append(f"- `{s.skill_id}` **{s.name}**{tags_info}{desc}")
-        return _text("\n".join(lines))
+    def find_skills(query: str | None = None, limit: int = 10) -> TextContent:
+        """Find or list skills. With query: semantic search. Without: list all.
 
-    @mcp.tool()
-    def search_skills(
-        query: str,
-        limit: int = 10,
-    ) -> TextContent:
-        """Find procedures and workflows using semantic search. Use when you need a skill for a specific task. Returns skill IDs—use read_skill() for full instructions."""
-        results = searcher.search_skills(query, limit=limit)
-        if not results:
-            return _text(f"No skills found for query: {query}")
-        lines = [f"# Skill Search Results ({len(results)})\n"]
-        for r in results:
-            skill = storage.load_skill(r["id"])
-            if skill:
-                desc = f" - {skill.description}" if skill.description else ""
-                lines.append(
-                    f"- `{r['id']}` **{skill.name}** (score: {r['score']:.2f}){desc}"
-                )
-        return _text("\n".join(lines))
+        Args:
+            query: Semantic search query. If None, lists all skills.
+            limit: Max results for search (default 10).
 
-    @mcp.tool()
-    def update_skill(
-        skill_id: str,
-        name: str | None = None,
-        description: str | None = None,
-        instructions: str | None = None,
-        tags: list[str] | None = None,
-    ) -> dict:
-        """Modify a skill's instructions or metadata. Use to improve procedures based on experience. For code stored in linked Artifacts, use sync_artifact_from_disk() instead. Only provided fields are updated."""
-        skill = storage.load_skill(skill_id)
-        if not skill:
-            return {"error": f"Skill {skill_id} not found"}
-
-        # Track if we need to delete old file (name changed means new filename)
-        old_name = skill.name
-        old_file_path = storage._find_file_by_id("Skill", "skill_id", skill_id)
-
-        if name is not None:
-            skill.name = name
-        if description is not None:
-            skill.description = description
-        if instructions is not None:
-            skill.instructions = instructions
-        if tags is not None:
-            skill.tags = tags
-
-        skill.updated_at = datetime.now()
-
-        # Delete old file if name changed (new file will be created with new name)
-        if name is not None and name != old_name and old_file_path:
-            storage._delete_file(old_file_path)
-
-        storage.save(skill)
-        return {"skill_id": skill.skill_id, "updated": True}
+        Examples:
+            find_skills()  # List all skills
+            find_skills(query="deploy to production")  # Search skills
+        """
+        if query:
+            # Semantic search mode
+            results = searcher.search_skills(query, limit=limit)
+            if not results:
+                return _text(f"No skills found for query: {query}")
+            lines = [f"# Skill Search Results ({len(results)})\n"]
+            for r in results:
+                skill = storage.load_skill(r["id"])
+                if skill:
+                    desc = f" - {skill.description}" if skill.description else ""
+                    lines.append(
+                        f"- `{r['id']}` **{skill.name}** (score: {r['score']:.2f}){desc}"
+                    )
+            return _text("\n".join(lines))
+        else:
+            # List mode
+            skills = storage.list_skills()
+            if not skills:
+                return _text("No skills found")
+            lines = [f"# Skills ({len(skills)})\n"]
+            for s in skills:
+                desc = f" - {s.description}" if s.description else ""
+                tags_info = f" ({', '.join(s.tags)})" if s.tags else ""
+                lines.append(f"- `{s.skill_id}` **{s.name}**{tags_info}{desc}")
+            return _text("\n".join(lines))

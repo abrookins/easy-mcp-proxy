@@ -53,6 +53,10 @@ def register_thread_tools(
         ]
         if thread.project_id:
             lines.append(f"**Project:** `{thread.project_id}`")
+        if thread.processing_status != "pending":
+            lines.append(f"**Status:** {thread.processing_status}")
+        if thread.episode_id:
+            lines.append(f"**Episode:** `{thread.episode_id}`")
         if thread.summary:
             lines.append(f"\n**Summary:** {thread.summary}")
         lines.append(f"\n## Messages ({len(messages)})\n")
@@ -119,16 +123,50 @@ def register_thread_tools(
         return _text("\n".join(lines))
 
     @mcp.tool()
-    def search_threads(query: str, limit: int = 10) -> TextContent:
-        """Find conversation threads by their message content using semantic search. Use this to locate past conversations on a topic. Returns thread IDs—use read_thread() to get the full conversation."""
-        results = searcher.search_threads(query, limit=limit)
-        if not results:
-            return _text(f"No threads found for query: {query}")
-        lines = [f"# Thread Search Results ({len(results)})\n"]
-        for r in results:
-            title = r.get("title", "Untitled")
-            lines.append(f"- `{r['thread_id']}` **{title}** (score: {r['score']:.2f})")
-        return _text("\n".join(lines))
+    def find_threads(
+        query: str | None = None, project_id: str | None = None, limit: int = 50
+    ) -> TextContent:
+        """Find or list threads. With query: semantic search. Without: list all.
+
+        Args:
+            query: Semantic search query. If None, lists all threads.
+            project_id: Filter by project (list mode only).
+            limit: Max results (default 50 for list, 10 for search).
+
+        Examples:
+            find_threads()  # List all threads
+            find_threads(project_id="proj_123")  # List threads in project
+            find_threads(query="authentication bug")  # Search threads
+        """
+        if query:
+            # Semantic search mode
+            search_limit = min(limit, 10)  # Default search limit is smaller
+            results = searcher.search_threads(query, limit=search_limit)
+            if not results:
+                return _text(f"No threads found for query: {query}")
+            lines = [f"# Thread Search Results ({len(results)})\n"]
+            for r in results:
+                title = r.get("title", "Untitled")
+                lines.append(
+                    f"- `{r['thread_id']}` **{title}** (score: {r['score']:.2f})"
+                )
+            return _text("\n".join(lines))
+        else:
+            # List mode
+            threads = storage.list_threads(project_id=project_id)
+            threads.sort(key=lambda t: t.updated_at, reverse=True)
+            threads = threads[:limit]
+            if not threads:
+                return _text("No threads found")
+            lines = [f"# Threads ({len(threads)})\n"]
+            for t in threads:
+                project_info = f" [project: `{t.project_id}`]" if t.project_id else ""
+                summary_mark = " 📝" if t.summary else ""
+                lines.append(
+                    f"- `{t.thread_id}` **{t.title or 'Untitled'}**{project_info}\n"
+                    f"  {len(t.messages)} msgs, updated {t.updated_at:%Y-%m-%d}{summary_mark}"
+                )
+            return _text("\n".join(lines))
 
     @mcp.tool()
     def compact_thread(thread_id: str, summary: str) -> dict:
@@ -142,21 +180,3 @@ def register_thread_tools(
         thread.updated_at = datetime.now()
         storage.save(thread)
         return {"thread_id": thread_id, "compacted": True}
-
-    @mcp.tool()
-    def list_threads(project_id: str | None = None, limit: int = 50) -> TextContent:
-        """Browse all conversation threads, sorted by most recently updated. Use to find threads when you don't have a specific search query. Filter by project_id to see only threads for a specific project."""
-        threads = storage.list_threads(project_id=project_id)
-        threads.sort(key=lambda t: t.updated_at, reverse=True)
-        threads = threads[:limit]
-        if not threads:
-            return _text("No threads found")
-        lines = [f"# Threads ({len(threads)})\n"]
-        for t in threads:
-            project_info = f" [project: `{t.project_id}`]" if t.project_id else ""
-            summary_mark = " 📝" if t.summary else ""
-            lines.append(
-                f"- `{t.thread_id}` **{t.title or 'Untitled'}**{project_info}\n"
-                f"  {len(t.messages)} msgs, updated {t.updated_at:%Y-%m-%d}{summary_mark}"
-            )
-        return _text("\n".join(lines))

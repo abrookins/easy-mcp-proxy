@@ -167,6 +167,8 @@ class ClientManager:
                 # Enter the client context - this starts the connection/subprocess
                 await self._exit_stack.enter_async_context(client)
                 self._active_clients[server_name] = client
+                # Also populate upstream_clients for fallback/compatibility
+                self.upstream_clients[server_name] = client
             except Exception as e:
                 # Log but continue - some servers may be unavailable
                 logger.warning("Failed to connect to server %s: %s", server_name, e)
@@ -184,6 +186,7 @@ class ClientManager:
             await self._exit_stack.__aexit__(None, None, None)
             self._exit_stack = None
             self._active_clients.clear()
+            self.upstream_clients.clear()
 
     def get_active_client(self, server_name: str) -> Client | None:
         """Get an active (connected) client for a server."""
@@ -196,16 +199,62 @@ class ClientManager:
     async def call_upstream_tool(
         self, server_name: str, tool_name: str, args: dict[str, Any]
     ) -> Any:
-        """Call a tool on an upstream server."""
+        """Call a tool on an upstream server.
+
+        If the active client connection has failed, attempts to reconnect
+        once before falling back to a fresh client for each call.
+        """
         if server_name not in self.config.mcp_servers:
             raise ValueError(f"No client for server '{server_name}'")
 
         # Use active client if available (connection pooling)
         active_client = self._active_clients.get(server_name)
         if active_client:
-            return await active_client.call_tool(tool_name, args)
+            try:
+                return await active_client.call_tool(tool_name, args)
+            except Exception as e:
+                # Connection may have died - try to reconnect
+                logger.warning(
+                    "Active client for %s failed, attempting reconnect: %s",
+                    server_name,
+                    e,
+                )
+                try:
+                    await self._reconnect_client(server_name)
+                    active_client = self._active_clients.get(server_name)
+                    if active_client:
+                        return await active_client.call_tool(tool_name, args)
+                except Exception as reconnect_error:
+                    logger.warning(
+                        "Reconnect to %s failed: %s", server_name, reconnect_error
+                    )
+                # Fall through to fresh client
 
         # Fall back to creating a fresh client for each call
         client = self.create_client_from_config(self.config.mcp_servers[server_name])
         async with client:
             return await client.call_tool(tool_name, args)
+
+    async def _reconnect_client(self, server_name: str) -> None:
+        """Attempt to reconnect a single upstream client.
+
+        This removes the old client from _active_clients and creates
+        a new connection.
+        """
+        if self._exit_stack is None:
+            # No exit stack means connect_clients was never called
+            return
+
+        # Remove old client reference
+        self._active_clients.pop(server_name, None)
+
+        try:
+            # Create and connect a new client
+            client = self.create_client_from_config(
+                self.config.mcp_servers[server_name]
+            )
+            await self._exit_stack.enter_async_context(client)
+            self._active_clients[server_name] = client
+            logger.info("Successfully reconnected to %s", server_name)
+        except Exception as e:
+            logger.warning("Failed to reconnect to %s: %s", server_name, e)

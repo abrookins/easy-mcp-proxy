@@ -169,11 +169,20 @@ class TestProxyConnectionManagement:
 
         lifespan = proxy._create_lifespan()
 
-        # Mock the initialize method
-        with patch.object(proxy, "initialize", new_callable=AsyncMock) as mock_init:
+        # Mock connect_clients and disconnect_clients (the new lifespan behavior)
+        with (
+            patch.object(
+                proxy, "connect_clients", new_callable=AsyncMock
+            ) as mock_connect,
+            patch.object(
+                proxy, "disconnect_clients", new_callable=AsyncMock
+            ) as mock_disconnect,
+        ):
             # Use the lifespan context manager
             async with lifespan(None):
-                mock_init.assert_called_once()
+                mock_connect.assert_called_once_with(fetch_tools=True)
+            # disconnect should be called on exit
+            mock_disconnect.assert_called_once()
 
     async def test_initialize_skips_existing_clients(self):
         """initialize should skip creating clients that already exist."""
@@ -532,3 +541,229 @@ class TestProxyGetServerInstructions:
             result = await client.call_tool("get_server_instructions", {})
             text_content = result.content[0].text
             assert "No server instructions available" in text_content
+
+
+class TestReconnectionLogic:
+    """Tests for automatic reconnection when upstream connections fail."""
+
+    async def test_reconnect_client_creates_new_connection(self):
+        """_reconnect_client should create a new connection after failure."""
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Mock client creation
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        with patch.object(
+            proxy._client_manager, "create_client_from_config", return_value=mock_client
+        ):
+            # First connect
+            await proxy.connect_clients()
+            assert proxy.has_active_connection("server")
+
+            # Simulate connection failure by removing the client
+            proxy._client_manager._active_clients.pop("server")
+            assert not proxy.has_active_connection("server")
+
+            # Reconnect
+            await proxy.reconnect_client("server")
+            assert proxy.has_active_connection("server")
+
+    async def test_call_upstream_tool_reconnects_on_failure(self):
+        """call_upstream_tool should attempt reconnection when active client fails."""
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Create a mock client that fails on first call, succeeds on second
+        call_count = 0
+
+        async def mock_call_tool(name, args):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Exception("Connection lost")
+            return {"result": "success"}
+
+        mock_client = AsyncMock()
+        mock_client.call_tool = mock_call_tool
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        with patch.object(
+            proxy._client_manager, "create_client_from_config", return_value=mock_client
+        ):
+            await proxy.connect_clients()
+
+            # Call should fail, trigger reconnect, then succeed
+            result = await proxy.call_upstream_tool("server", "test_tool", {})
+            assert result == {"result": "success"}
+            assert call_count == 2  # First call failed, second succeeded
+
+    async def test_call_upstream_tool_falls_back_to_fresh_client(self):
+        """call_upstream_tool should fall back to fresh client if reconnect fails."""
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Create a mock client that always fails when used as active client
+        failing_client = AsyncMock()
+        failing_client.call_tool = AsyncMock(side_effect=Exception("Connection lost"))
+        failing_client.__aenter__ = AsyncMock(return_value=failing_client)
+        failing_client.__aexit__ = AsyncMock()
+
+        # Create a fresh client that succeeds
+        fresh_client = AsyncMock()
+        fresh_client.call_tool = AsyncMock(return_value={"result": "fresh"})
+        fresh_client.__aenter__ = AsyncMock(return_value=fresh_client)
+        fresh_client.__aexit__ = AsyncMock()
+
+        clients = [failing_client, failing_client, fresh_client]
+        client_index = 0
+
+        def get_client(*args):
+            nonlocal client_index
+            client = clients[client_index]
+            client_index += 1
+            return client
+
+        with patch.object(
+            proxy._client_manager, "create_client_from_config", side_effect=get_client
+        ):
+            await proxy.connect_clients()
+
+            # Call should fail, reconnect should fail, then fall back to fresh client
+            result = await proxy.call_upstream_tool("server", "test_tool", {})
+            assert result == {"result": "fresh"}
+
+    async def test_reconnect_client_no_exit_stack(self):
+        """_reconnect_client should return early when no exit stack exists."""
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Don't call connect_clients, so _exit_stack will be None
+        # This should not raise, just return early
+        await proxy.reconnect_client("server")
+
+        # Verify no client was added
+        assert not proxy.has_active_connection("server")
+
+    async def test_reconnect_client_handles_connection_failure(self):
+        """_reconnect_client should handle connection failures gracefully."""
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # First connect successfully
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        with patch.object(
+            proxy._client_manager, "create_client_from_config", return_value=mock_client
+        ):
+            await proxy.connect_clients()
+            assert proxy.has_active_connection("server")
+
+        # Now simulate reconnect failing
+        failing_client = AsyncMock()
+        failing_client.__aenter__ = AsyncMock(
+            side_effect=Exception("Connection failed")
+        )
+        failing_client.__aexit__ = AsyncMock()
+
+        with patch.object(
+            proxy._client_manager,
+            "create_client_from_config",
+            return_value=failing_client,
+        ):
+            # Remove old client to simulate failure
+            proxy._client_manager._active_clients.pop("server")
+
+            # Reconnect should fail but not raise
+            await proxy.reconnect_client("server")
+
+            # Should still have no connection
+            assert not proxy.has_active_connection("server")
+
+    async def test_lifespan_initializes_views_with_reconnect(self):
+        """_create_lifespan should initialize views with reconnect callback."""
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={"myview": {"description": "Test view"}},
+        )
+        proxy = MCPProxy(config)
+
+        lifespan = proxy._create_lifespan()
+
+        with (
+            patch.object(
+                proxy, "connect_clients", new_callable=AsyncMock
+            ) as mock_connect,
+            patch.object(proxy, "disconnect_clients", new_callable=AsyncMock),
+        ):
+            async with lifespan(None):
+                mock_connect.assert_called_once_with(fetch_tools=True)
+                # Verify the view was initialized
+                assert proxy._initialized
+
+    async def test_call_upstream_tool_reconnect_no_client_falls_back(self):
+        """call_upstream_tool should fall back when reconnect doesn't add client."""
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Create a mock client that fails on first call
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(side_effect=Exception("Connection lost"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        # Fresh client that succeeds
+        fresh_client = AsyncMock()
+        fresh_client.call_tool = AsyncMock(return_value={"result": "fresh"})
+        fresh_client.__aenter__ = AsyncMock(return_value=fresh_client)
+        fresh_client.__aexit__ = AsyncMock()
+
+        call_count = 0
+
+        def get_client(cfg):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return mock_client
+            return fresh_client
+
+        with patch.object(
+            proxy._client_manager, "create_client_from_config", side_effect=get_client
+        ):
+            await proxy.connect_clients()
+
+            # Mock _reconnect_client to succeed but NOT add a client
+            async def mock_reconnect(server_name):
+                # Remove the client but don't add a new one
+                proxy._client_manager._active_clients.pop(server_name, None)
+
+            with patch.object(
+                proxy._client_manager, "_reconnect_client", side_effect=mock_reconnect
+            ):
+                # Call should fail, reconnect should "succeed" but no client,
+                # then fall back to fresh client
+                result = await proxy.call_upstream_tool("server", "test_tool", {})
+                assert result == {"result": "fresh"}

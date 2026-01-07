@@ -51,6 +51,48 @@ tool_views:
 class TestDefaultViewIncludesAllUpstreamTools:
     """Tests for default view including all tools from servers without tools config."""
 
+    async def test_get_view_tools_none_uses_default_view_when_exists(self):
+        """get_view_tools(None) should use 'default' view if it exists."""
+        from mcp_proxy.custom_tools import custom_tool
+
+        # Create a custom tool for the default view
+        @custom_tool(name="my_custom_tool", description="A custom tool")
+        async def my_custom_tool(query: str) -> dict:
+            return {"result": query}
+
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={
+                "default": {
+                    "include_all": True,
+                    "custom_tools": [],  # We'll add custom tool to view directly
+                }
+            },
+        )
+        proxy = MCPProxy(config)
+
+        # Add custom tool to the default view
+        proxy.views["default"].custom_tools["my_custom_tool"] = my_custom_tool
+
+        # Mock upstream tools
+        mock_tool = MagicMock()
+        mock_tool.name = "upstream_tool"
+        mock_tool.description = "An upstream tool"
+        mock_tool.inputSchema = {"type": "object"}
+
+        mock_client = AsyncMock()
+        mock_client.list_tools.return_value = [mock_tool]
+        proxy.upstream_clients = {"server": mock_client}
+
+        await proxy.fetch_upstream_tools("server")
+
+        # get_view_tools(None) should now return tools from "default" view
+        tools = proxy.get_view_tools(None)
+
+        tool_names = [t.name for t in tools]
+        assert "upstream_tool" in tool_names
+        assert "my_custom_tool" in tool_names  # Custom tool from default view
+
     async def test_default_view_includes_all_tools_when_no_tools_config(self):
         """Default view should include ALL tools from servers without 'tools' config."""
         # Server has NO 'tools' key - should include all tools from upstream

@@ -13,6 +13,7 @@ from mcp_memory.storage import MemoryStorage
 
 from .artifact_tools import register_artifact_tools
 from .concept_tools import register_concept_tools
+from .episode_tools import register_episode_tools
 from .instructions import SERVER_INSTRUCTIONS
 from .project_tools import register_project_tools
 from .reflection_tools import register_reflection_tools
@@ -44,6 +45,7 @@ def create_memory_server(
     # Register all tool groups
     register_thread_tools(mcp, storage, searcher)
     register_concept_tools(mcp, storage, searcher)
+    register_episode_tools(mcp, storage, searcher)
     register_reflection_tools(mcp, storage, searcher)
     register_project_tools(mcp, storage, searcher)
     register_skill_tools(mcp, storage, searcher)
