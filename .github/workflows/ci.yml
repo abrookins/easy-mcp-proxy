@@ -65,5 +65,9 @@ jobs:
         run: uv sync --dev
 
       - name: Run tests with coverage
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
         run: uv run pytest
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
 
