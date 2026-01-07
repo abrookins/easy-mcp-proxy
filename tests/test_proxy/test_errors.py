@@ -95,12 +95,16 @@ class TestMCPProxyErrorHandling:
         config = ProxyConfig(**sample_config_dict)
         proxy = MCPProxy(config)
 
-        # First initialization
-        await proxy.initialize()
-        first_clients = dict(proxy.upstream_clients)
+        # Mock client creation and tool refresh to avoid actual connections
+        mock_client = AsyncMock()
+        with patch.object(proxy, "_create_client", return_value=mock_client):
+            with patch.object(proxy, "refresh_upstream_tools", new_callable=AsyncMock):
+                # First initialization
+                await proxy.initialize()
+                first_clients = dict(proxy.upstream_clients)
 
-        # Second initialization should be a no-op
-        await proxy.initialize()
+                # Second initialization should be a no-op
+                await proxy.initialize()
 
         assert proxy.upstream_clients == first_clients
 
@@ -149,3 +153,20 @@ class TestMCPProxyErrorHandling:
         await proxy.refresh_upstream_tools()
 
         mock_client.list_tools.assert_called()
+
+    async def test_refresh_upstream_tools_handles_errors(self):
+        """refresh_upstream_tools should continue when fetch_upstream_tools fails."""
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")}, tool_views={}
+        )
+        proxy = MCPProxy(config)
+
+        # Register a client so the loop runs
+        proxy.upstream_clients = {"server": AsyncMock()}
+
+        # Make fetch_upstream_tools raise an error
+        with patch.object(
+            proxy, "fetch_upstream_tools", side_effect=ConnectionError("Failed")
+        ):
+            # Should not raise - errors are caught and swallowed
+            await proxy.refresh_upstream_tools()
