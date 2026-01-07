@@ -95,12 +95,16 @@ class TestMCPProxyErrorHandling:
         config = ProxyConfig(**sample_config_dict)
         proxy = MCPProxy(config)
 
-        # First initialization
-        await proxy.initialize()
-        first_clients = dict(proxy.upstream_clients)
+        # Mock client creation and tool refresh to avoid actual connections
+        mock_client = AsyncMock()
+        with patch.object(proxy, "_create_client", return_value=mock_client):
+            with patch.object(proxy, "refresh_upstream_tools", new_callable=AsyncMock):
+                # First initialization
+                await proxy.initialize()
+                first_clients = dict(proxy.upstream_clients)
 
-        # Second initialization should be a no-op
-        await proxy.initialize()
+                # Second initialization should be a no-op
+                await proxy.initialize()
 
         assert proxy.upstream_clients == first_clients
 
