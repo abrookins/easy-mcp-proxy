@@ -33,10 +33,10 @@ class TestCreateAuthProvider:
             assert result is None
 
     def test_returns_provider_when_all_env_vars_set(self):
-        """create_auth_provider returns Auth0Provider when all env vars are set."""
+        """create_auth_provider returns OIDCProxy when all env vars are set."""
         from mcp_proxy.auth import create_auth_provider
 
-        # Mock the OIDC configuration fetch since Auth0Provider tries to fetch it
+        # Mock the OIDC configuration fetch since OIDCProxy fetches it on init
         mock_oidc_config = {
             "issuer": "https://test.auth0.com/",
             "authorization_endpoint": "https://test.auth0.com/authorize",
@@ -66,10 +66,11 @@ class TestCreateAuthProvider:
 
                 result = create_auth_provider()
                 assert result is not None
-                # Verify it's an Auth0Provider
-                from fastmcp.server.auth.providers.auth0 import Auth0Provider
+                # Verify it's an OIDCProxy (we use this instead of Auth0Provider
+                # to work around FastMCP's default scope behavior)
+                from fastmcp.server.auth.oidc_proxy import OIDCProxy
 
-                assert isinstance(result, Auth0Provider)
+                assert isinstance(result, OIDCProxy)
 
 
 class TestIsAuthConfigured:
