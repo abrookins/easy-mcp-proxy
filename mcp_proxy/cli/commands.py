@@ -279,25 +279,19 @@ def validate(config: str | None, check_connections: bool):
     type=click.Path(),
     help="Path to .env file (default: .env)",
 )
+@click.option(
+    "--access-log/--no-access-log",
+    default=True,
+    help="Enable/disable access logging (HTTP only, default: enabled)",
+)
 def serve(
     config: str | None,
     transport: str,
     port: int,
     env_file: str,
+    access_log: bool,
 ):  # pragma: no cover
-    """Start the MCP proxy server.
-
-    For Auth0 authentication (HTTP only), set these environment variables:
-
-    \b
-      FASTMCP_SERVER_AUTH_AUTH0_CONFIG_URL  - Auth0 OIDC config URL
-      FASTMCP_SERVER_AUTH_AUTH0_CLIENT_ID   - Auth0 client ID
-      FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET - Auth0 client secret
-      FASTMCP_SERVER_AUTH_AUTH0_AUDIENCE    - Auth0 API audience
-      FASTMCP_SERVER_AUTH_AUTH0_BASE_URL    - Public URL of your proxy
-
-    See https://gofastmcp.com/integrations/auth0 for setup details.
-    """
+    """Start the MCP proxy server."""
     from dotenv import load_dotenv
 
     from mcp_proxy.proxy import MCPProxy
@@ -307,7 +301,7 @@ def serve(
 
     cfg = load_config(str(get_config_path(config)))
     proxy = MCPProxy(cfg)
-    proxy.run(transport=transport, port=port)
+    proxy.run(transport=transport, port=port, access_log=access_log)
 
 
 @click.command()

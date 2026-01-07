@@ -310,7 +310,10 @@ class MCPProxy:
         return wrapped
 
     def run(
-        self, transport: str = "stdio", port: int | None = None
+        self,
+        transport: str = "stdio",
+        port: int | None = None,
+        access_log: bool = True,
     ) -> None:  # pragma: no cover
         """Run the proxy server."""
         if transport == "stdio":
@@ -333,7 +336,13 @@ class MCPProxy:
 
             # http_app() handles its own tool fetching
             app = self.http_app()
-            uvicorn.run(app, host="0.0.0.0", port=port or 8000, ws="wsproto")
+            uvicorn.run(
+                app,
+                host="0.0.0.0",
+                port=port or 8000,
+                ws="wsproto",
+                access_log=access_log,
+            )
 
     def get_view_tools(self, view_name: str | None) -> list[ToolInfo]:
         """Get the list of tools for a specific view.
