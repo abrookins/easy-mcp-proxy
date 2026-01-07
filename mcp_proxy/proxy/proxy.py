@@ -335,51 +335,6 @@ class MCPProxy:
             app = self.http_app()
             uvicorn.run(app, host="0.0.0.0", port=port or 8000, ws="wsproto")
 
-    def run_with_static_auth(
-        self,
-        client_id: str,
-        client_secret: str,
-        port: int = 8000,
-        issuer_url: str | None = None,
-    ) -> None:  # pragma: no cover
-        """Run the proxy server with simple static token authentication.
-
-        Implements a minimal OAuth 2.0 server that accepts client credentials
-        and returns tokens, allowing OAuth-expecting clients (like Claude) to
-        authenticate while internally using simple static credential validation.
-
-        Args:
-            client_id: Client ID for authentication
-            client_secret: Client secret for authentication
-            port: Port to listen on
-            issuer_url: Base URL for OAuth discovery (defaults to http://localhost:port)
-        """
-        import uvicorn
-
-        from mcp_proxy.auth import AuthMiddleware, StaticAuthProvider
-
-        if issuer_url is None:
-            issuer_url = f"http://localhost:{port}"
-
-        # Create auth provider with OAuth-compatible endpoints
-        auth_provider = StaticAuthProvider(
-            client_id=client_id,
-            client_secret=client_secret,
-            issuer_url=issuer_url,
-            debug=True,
-        )
-
-        # Pass OAuth routes to http_app so they're included with proper lifespan
-        app = self.http_app(extra_routes=auth_provider.get_routes())
-
-        app = AuthMiddleware(
-            app,
-            auth_provider.get_validator(),
-            exclude_paths=auth_provider.get_excluded_paths(),
-            resource_metadata_url=auth_provider.get_resource_metadata_url(),
-        )
-        uvicorn.run(app, host="0.0.0.0", port=port, ws="wsproto")
-
     def get_view_tools(self, view_name: str | None) -> list[ToolInfo]:
         """Get the list of tools for a specific view.
 
@@ -748,11 +703,19 @@ class MCPProxy:
         """
         from contextlib import asynccontextmanager
 
+        from mcp_proxy.auth import create_auth_provider
+
+        # Create auth provider from environment variables (if configured)
+        auth_provider = create_auth_provider()
+
         # Create FastMCP instances - tools will be registered in the lifespan
-        default_mcp = FastMCP("MCP Proxy - Default")
+        # Pass auth to each instance so FastMCP handles OAuth endpoints and validation
+        default_mcp = FastMCP("MCP Proxy - Default", auth=auth_provider)
         view_mcps: dict[str, FastMCP] = {}
         for view_name in self.views:
-            view_mcps[view_name] = FastMCP(f"MCP Proxy - {view_name}")
+            view_mcps[view_name] = FastMCP(
+                f"MCP Proxy - {view_name}", auth=auth_provider
+            )
 
         default_mcp_app = default_mcp.http_app(path="/mcp")
 
@@ -882,39 +845,4 @@ class MCPProxy:
         else:
             routes.append(Mount("/", app=default_mcp_app))
 
-        app = Starlette(routes=routes, lifespan=combined_lifespan)
-
-        # Add auth middleware if auth is configured
-        if self.config.auth:
-            from mcp_proxy.auth import AuthMiddleware, OAuthProvider, StaticAuthProvider
-
-            resource_metadata_url: str | None = None
-
-            if self.config.auth.token_url:
-                # Full OAuth validation against an external identity provider
-                auth_provider = OAuthProvider(
-                    client_id=self.config.auth.client_id,
-                    client_secret=self.config.auth.client_secret,
-                    token_url=self.config.auth.token_url,
-                    scopes=self.config.auth.scopes,
-                    audience=self.config.auth.audience,
-                )
-            else:
-                # Static credential validation with OAuth-compatible endpoints
-                issuer_url = self.config.auth.issuer_url or ""
-                auth_provider = StaticAuthProvider(
-                    client_id=self.config.auth.client_id,
-                    client_secret=self.config.auth.client_secret,
-                    issuer_url=issuer_url,
-                )
-                if issuer_url:
-                    resource_metadata_url = auth_provider.get_resource_metadata_url()
-
-            app = AuthMiddleware(
-                app,
-                auth_provider.get_validator(),
-                exclude_paths=[f"{path}/health"] + auth_provider.get_excluded_paths(),
-                resource_metadata_url=resource_metadata_url,
-            )
-
-        return app
+        return Starlette(routes=routes, lifespan=combined_lifespan)

@@ -279,105 +279,33 @@ def validate(config: str | None, check_connections: bool):
     type=click.Path(),
     help="Path to .env file (default: .env)",
 )
-@click.option(
-    "--auth/--no-auth",
-    default=False,
-    help="Enable auth using MCP_PROXY_AUTH_CLIENT_ID and MCP_PROXY_AUTH_CLIENT_SECRET",
-)
-@click.option(
-    "--oauth-client-id",
-    envvar="MCP_PROXY_OAUTH_CLIENT_ID",
-    help="OAuth client ID for HTTP auth (or set MCP_PROXY_OAUTH_CLIENT_ID)",
-)
-@click.option(
-    "--oauth-client-secret",
-    envvar="MCP_PROXY_OAUTH_CLIENT_SECRET",
-    help="OAuth client secret for HTTP auth (or set MCP_PROXY_OAUTH_CLIENT_SECRET)",
-)
-@click.option(
-    "--oauth-token-url",
-    envvar="MCP_PROXY_OAUTH_TOKEN_URL",
-    help="OAuth token URL for HTTP auth (or set MCP_PROXY_OAUTH_TOKEN_URL)",
-)
-@click.option(
-    "--oauth-audience",
-    envvar="MCP_PROXY_OAUTH_AUDIENCE",
-    help="OAuth audience for HTTP auth (or set MCP_PROXY_OAUTH_AUDIENCE)",
-)
-@click.option(
-    "--issuer-url",
-    envvar="MCP_PROXY_ISSUER_URL",
-    help="Public URL for OAuth discovery (or MCP_PROXY_ISSUER_URL). For --auth.",
-)
 def serve(
     config: str | None,
     transport: str,
     port: int,
     env_file: str,
-    auth: bool,
-    oauth_client_id: str | None,
-    oauth_client_secret: str | None,
-    oauth_token_url: str | None,
-    oauth_audience: str | None,
-    issuer_url: str | None,
 ):  # pragma: no cover
     """Start the MCP proxy server.
 
-    For simple authentication (HTTP only), use --auth and set:
-      MCP_PROXY_AUTH_CLIENT_ID     - Client ID
-      MCP_PROXY_AUTH_CLIENT_SECRET - Client secret
+    For Auth0 authentication (HTTP only), set these environment variables:
 
-    Clients authenticate with Bearer token (base64 client_id:client_secret)
-    or HTTP Basic auth.
+    \b
+      FASTMCP_SERVER_AUTH_AUTH0_CONFIG_URL  - Auth0 OIDC config URL
+      FASTMCP_SERVER_AUTH_AUTH0_CLIENT_ID   - Auth0 client ID
+      FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET - Auth0 client secret
+      FASTMCP_SERVER_AUTH_AUTH0_AUDIENCE    - Auth0 API audience
+      FASTMCP_SERVER_AUTH_AUTH0_BASE_URL    - Public URL of your proxy
+
+    See https://gofastmcp.com/integrations/auth0 for setup details.
     """
-    import os
-
     from dotenv import load_dotenv
 
-    from mcp_proxy.models import OAuthConfig
     from mcp_proxy.proxy import MCPProxy
 
     # Load environment variables from .env file
     load_dotenv(env_file)
 
     cfg = load_config(str(get_config_path(config)))
-
-    # Simple auth mode - use StaticTokenValidator
-    if auth:
-        if transport != "http":
-            raise click.ClickException("--auth requires --transport http")
-
-        client_id = os.environ.get("MCP_PROXY_AUTH_CLIENT_ID")
-        client_secret = os.environ.get("MCP_PROXY_AUTH_CLIENT_SECRET")
-
-        if not client_id or not client_secret:
-            raise click.ClickException(
-                "--auth requires environment variables:\n"
-                "  MCP_PROXY_AUTH_CLIENT_ID\n"
-                "  MCP_PROXY_AUTH_CLIENT_SECRET"
-            )
-
-        # Get issuer_url from env if not passed via CLI (since dotenv loads after click)
-        actual_issuer_url = issuer_url or os.environ.get("MCP_PROXY_ISSUER_URL")
-
-        proxy = MCPProxy(cfg)
-        proxy.run_with_static_auth(
-            client_id=client_id,
-            client_secret=client_secret,
-            port=port,
-            issuer_url=actual_issuer_url,
-        )
-        return
-
-    # Override auth config from CLI options if provided (full OAuth flow)
-    if oauth_client_id and oauth_client_secret and oauth_token_url:
-        cfg.auth = OAuthConfig(
-            client_id=oauth_client_id,
-            client_secret=oauth_client_secret,
-            token_url=oauth_token_url,
-            audience=oauth_audience,
-        )
-
     proxy = MCPProxy(cfg)
     proxy.run(transport=transport, port=port)
 

@@ -3,7 +3,6 @@
 from mcp_proxy.config import load_config
 from mcp_proxy.models import (
     HooksConfig,
-    OAuthConfig,
     ProxyConfig,
     ServerToolsConfig,
     ToolConfig,
@@ -168,66 +167,3 @@ class TestProxyConfig:
         config = load_config(sample_config_yaml)
         assert "test-server" in config.mcp_servers
         assert "test-view" in config.tool_views
-
-    def test_proxy_config_with_auth(self):
-        """ProxyConfig should accept OAuth auth configuration."""
-        config = ProxyConfig(
-            mcp_servers={"server1": {"command": "echo"}},
-            auth={
-                "client_id": "my-client",
-                "client_secret": "my-secret",
-                "token_url": "https://auth.example.com/token",
-            },
-        )
-        assert config.auth is not None
-        assert config.auth.client_id == "my-client"
-
-    def test_proxy_config_auth_is_optional(self):
-        """ProxyConfig should allow auth to be None."""
-        config = ProxyConfig(mcp_servers={})
-        assert config.auth is None
-
-
-class TestOAuthConfig:
-    """Tests for OAuthConfig model."""
-
-    def test_oauth_config_required_fields(self):
-        """OAuthConfig requires client_id, client_secret, and token_url."""
-        config = OAuthConfig(
-            client_id="my-client",
-            client_secret="my-secret",
-            token_url="https://auth.example.com/token",
-        )
-        assert config.client_id == "my-client"
-        assert config.client_secret == "my-secret"
-        assert config.token_url == "https://auth.example.com/token"
-
-    def test_oauth_config_defaults(self):
-        """OAuthConfig should have sensible defaults for optional fields."""
-        config = OAuthConfig(
-            client_id="my-client",
-            client_secret="my-secret",
-            token_url="https://auth.example.com/token",
-        )
-        assert config.scopes == []
-        assert config.audience is None
-
-    def test_oauth_config_with_scopes(self):
-        """OAuthConfig should accept scopes list."""
-        config = OAuthConfig(
-            client_id="my-client",
-            client_secret="my-secret",
-            token_url="https://auth.example.com/token",
-            scopes=["read", "write"],
-        )
-        assert config.scopes == ["read", "write"]
-
-    def test_oauth_config_with_audience(self):
-        """OAuthConfig should accept audience."""
-        config = OAuthConfig(
-            client_id="my-client",
-            client_secret="my-secret",
-            token_url="https://auth.example.com/token",
-            audience="https://api.example.com",
-        )
-        assert config.audience == "https://api.example.com"
