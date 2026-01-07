@@ -84,11 +84,13 @@ class TestUpstreamConnections:
         )
         proxy = MCPProxy(config)
 
-        # Mock refresh_upstream_tools to avoid actual connection attempts
-        # (echo is not a valid MCP server and would hang on Linux)
-        with patch.object(proxy, "refresh_upstream_tools", new_callable=AsyncMock):
-            # After initialize, proxy should have clients for all servers
-            await proxy.initialize()
+        # Mock _create_client and refresh_upstream_tools to avoid actual
+        # connection attempts (echo is not a valid MCP server and would hang)
+        mock_client = AsyncMock()
+        with patch.object(proxy, "_create_client", return_value=mock_client):
+            with patch.object(proxy, "refresh_upstream_tools", new_callable=AsyncMock):
+                # After initialize, proxy should have clients for all servers
+                await proxy.initialize()
 
         assert "server-a" in proxy.upstream_clients
         assert "server-b" in proxy.upstream_clients
