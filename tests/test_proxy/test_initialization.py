@@ -1,5 +1,7 @@
 """Tests for MCPProxy initialization and client creation."""
 
+from unittest.mock import AsyncMock, patch
+
 from mcp_proxy.models import ProxyConfig, UpstreamServerConfig
 from mcp_proxy.proxy import MCPProxy
 
@@ -24,12 +26,15 @@ class TestMCPProxyInitialization:
         assert proxy.server.name == "MCP Tool View Proxy"
 
     async def test_proxy_initialize_connects_upstreams(self, sample_config_dict):
-        """MCPProxy.initialize() should connect to upstream servers."""
+        """MCPProxy.initialize() should register clients for all servers."""
         config = ProxyConfig(**sample_config_dict)
         proxy = MCPProxy(config)
 
-        # Initialize creates clients for all servers (doesn't connect yet)
-        await proxy.initialize()
+        # Mock client creation and tool refresh to avoid actual connections
+        mock_client = AsyncMock()
+        with patch.object(proxy, "_create_client", return_value=mock_client):
+            with patch.object(proxy, "refresh_upstream_tools", new_callable=AsyncMock):
+                await proxy.initialize()
 
         # Should have clients registered for all servers in config
         assert "test-server" in proxy.upstream_clients
