@@ -1060,7 +1060,7 @@ class TestStaticAuthProviderOAuthFlows:
 class TestStaticTokenValidatorDebug:
     """Tests for StaticTokenValidator debug mode."""
 
-    def test_validate_with_debug(self):
+    async def test_validate_with_debug(self):
         """Validator should work with debug mode enabled."""
         import base64
 
@@ -1071,10 +1071,7 @@ class TestStaticTokenValidatorDebug:
         )
         token = base64.b64encode(b"test-client:test-secret").decode()
 
-        # Run in async context
-        import asyncio
-
-        result = asyncio.run(validator.validate_token(token))
+        result = await validator.validate_token(token)
         assert result is True
 
     def test_extract_token_with_debug(self):

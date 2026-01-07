@@ -32,12 +32,13 @@ format-check:
 check: lint format-check
 
 # Run tests with coverage
+# PYTHONDONTWRITEBYTECODE prevents stale .pyc files that can cause test hangs
 test:
-	uv run pytest
+	PYTHONDONTWRITEBYTECODE=1 uv run pytest
 
 # Run tests with HTML coverage report
 coverage:
-	uv run pytest --cov-report=html
+	PYTHONDONTWRITEBYTECODE=1 uv run pytest --cov-report=html
 	@echo "Coverage report generated in htmlcov/"
 
 # Clean build artifacts

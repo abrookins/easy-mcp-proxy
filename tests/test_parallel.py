@@ -58,14 +58,16 @@ class TestParallelToolExecution:
 
     async def test_parallel_executes_concurrently(self):
         """Parallel tool should execute all steps concurrently."""
+        import time
+
         from mcp_proxy.parallel import ParallelTool
 
         execution_times = {}
 
         async def mock_call(tool_name, **kwargs):
-            start = asyncio.get_event_loop().time()
+            start = time.perf_counter()
             await asyncio.sleep(0.1)  # Simulate network delay
-            execution_times[tool_name] = asyncio.get_event_loop().time() - start
+            execution_times[tool_name] = time.perf_counter() - start
             return {"tool": tool_name, "args": kwargs}
 
         config = {
@@ -80,9 +82,9 @@ class TestParallelToolExecution:
         parallel_tool = ParallelTool.from_config("test", config)
         parallel_tool._call_tool_fn = mock_call
 
-        start = asyncio.get_event_loop().time()
+        start = time.perf_counter()
         result = await parallel_tool.execute({"query": "test"})
-        total_time = asyncio.get_event_loop().time() - start
+        total_time = time.perf_counter() - start
 
         # If parallel, total time should be ~0.1s, not ~0.3s
         assert total_time < 0.25  # Allow some overhead
