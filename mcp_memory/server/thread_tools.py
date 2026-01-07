@@ -180,3 +180,34 @@ def register_thread_tools(
         thread.updated_at = datetime.now()
         storage.save(thread)
         return {"thread_id": thread_id, "compacted": True}
+
+    @mcp.tool()
+    def delete_thread(thread_id: str) -> dict:
+        """Delete a thread by its ID.
+
+        This permanently removes the thread and all its messages from storage
+        and the search index. Use with caution—this action cannot be undone.
+
+        Args:
+            thread_id: The ID of the thread to delete.
+
+        Returns:
+            A dict with deleted=True on success, or error message on failure.
+        """
+        thread = storage.load_thread(thread_id)
+        if not thread:
+            return {"error": f"Thread {thread_id} not found"}
+
+        # Delete the thread file
+        file_path = storage._get_dir("Thread") / f"{thread_id}.yaml"
+        if file_path.exists():
+            file_path.unlink()
+
+        # Rebuild index to remove the thread and messages from search
+        searcher.build_index()
+
+        return {
+            "thread_id": thread_id,
+            "title": thread.title,
+            "deleted": True,
+        }

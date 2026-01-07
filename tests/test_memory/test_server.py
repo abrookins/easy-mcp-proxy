@@ -240,6 +240,35 @@ class TestThreadTools:
         read_result = get_text(read_tool.fn(thread_id=thread_id))
         assert "My Custom Title" in read_result
 
+    def test_delete_thread(self, server, tmp_path):
+        """Test deleting a thread."""
+        create_tool = server._tool_manager._tools["create_thread"]
+        delete_tool = server._tool_manager._tools["delete_thread"]
+
+        # Create a thread
+        create_result = create_tool.fn(title="ToDelete")
+        thread_id = create_result["thread_id"]
+
+        # Verify file exists
+        file_path = tmp_path / "Threads" / f"{thread_id}.yaml"
+        assert file_path.exists()
+
+        # Delete the thread
+        delete_result = delete_tool.fn(thread_id=thread_id)
+
+        assert delete_result["deleted"] is True
+        assert delete_result["thread_id"] == thread_id
+        assert delete_result["title"] == "ToDelete"
+        # File should be gone
+        assert not file_path.exists()
+
+    def test_delete_thread_not_found(self, server):
+        """Test deleting a non-existent thread."""
+        delete_tool = server._tool_manager._tools["delete_thread"]
+        result = delete_tool.fn(thread_id="nonexistent_id")
+        assert "error" in result
+        assert "not found" in result["error"]
+
 
 class TestConceptTools:
     """Tests for concept-related tools."""
@@ -485,6 +514,30 @@ class TestConceptTools:
         assert "error" in result
         assert "not found" in result["error"]
 
+    def test_delete_concept_without_id_in_frontmatter(self, server, tmp_path):
+        """Test deleting a concept file that has no concept_id in frontmatter.
+
+        This tests Obsidian compatibility where files may not have explicit IDs.
+        The ID is derived from the filename in this case.
+        """
+        delete_tool = server._tool_manager._tools["delete_concept"]
+
+        # Create a concept file directly without concept_id in frontmatter
+        concepts_dir = tmp_path / "Concepts"
+        concepts_dir.mkdir(parents=True, exist_ok=True)
+        file_path = concepts_dir / "ObsidianNote.md"
+        file_path.write_text(
+            "---\nname: Obsidian Note\ntags: [test]\n---\n\nSome content here."
+        )
+
+        # The ID is derived from filename: "ObsidianNote"
+        delete_result = delete_tool.fn(concept_id="ObsidianNote")
+
+        assert delete_result["deleted"] is True
+        assert delete_result["concept_id"] == "ObsidianNote"
+        # File should be gone
+        assert not file_path.exists()
+
     def test_read_many_concepts(self, server):
         """Test reading multiple concepts at once."""
         create_tool = server._tool_manager._tools["upsert_concept"]
@@ -701,6 +754,35 @@ class TestSkillTools:
             # Result should only show header since no valid skills found
             assert "Skill Search Results" in result
 
+    def test_delete_skill(self, server, tmp_path):
+        """Test deleting a skill."""
+        create_tool = server._tool_manager._tools["upsert_skill"]
+        delete_tool = server._tool_manager._tools["delete_skill"]
+
+        # Create a skill
+        create_result = create_tool.fn(name="ToDelete", instructions="To be deleted")
+        skill_id = create_result["skill_id"]
+
+        # Verify file exists
+        file_path = tmp_path / "Skills" / "ToDelete.md"
+        assert file_path.exists()
+
+        # Delete the skill
+        delete_result = delete_tool.fn(skill_id=skill_id)
+
+        assert delete_result["deleted"] is True
+        assert delete_result["skill_id"] == skill_id
+        assert delete_result["name"] == "ToDelete"
+        # File should be gone
+        assert not file_path.exists()
+
+    def test_delete_skill_not_found(self, server):
+        """Test deleting a non-existent skill."""
+        delete_tool = server._tool_manager._tools["delete_skill"]
+        result = delete_tool.fn(skill_id="nonexistent_id")
+        assert "error" in result
+        assert "not found" in result["error"]
+
 
 class TestProjectTools:
     """Tests for project-related tools."""
@@ -750,6 +832,35 @@ class TestProjectTools:
         )
         assert result["error"] is not None
 
+    def test_delete_project(self, server, tmp_path):
+        """Test deleting a project."""
+        create_tool = server._tool_manager._tools["upsert_project"]
+        delete_tool = server._tool_manager._tools["delete_project"]
+
+        # Create a project
+        create_result = create_tool.fn(name="ToDelete", description="To be deleted")
+        project_id = create_result["project_id"]
+
+        # Verify file exists
+        file_path = tmp_path / "Projects" / "ToDelete.md"
+        assert file_path.exists()
+
+        # Delete the project
+        delete_result = delete_tool.fn(project_id=project_id)
+
+        assert delete_result["deleted"] is True
+        assert delete_result["project_id"] == project_id
+        assert delete_result["name"] == "ToDelete"
+        # File should be gone
+        assert not file_path.exists()
+
+    def test_delete_project_not_found(self, server):
+        """Test deleting a non-existent project."""
+        delete_tool = server._tool_manager._tools["delete_project"]
+        result = delete_tool.fn(project_id="nonexistent_id")
+        assert "error" in result
+        assert "not found" in result["error"]
+
 
 class TestReflectionTools:
     """Tests for reflection-related tools."""
@@ -797,6 +908,36 @@ class TestReflectionTools:
             text="New text",
         )
         assert result["error"] is not None
+
+    def test_delete_reflection(self, server, tmp_path):
+        """Test deleting a reflection."""
+        create_tool = server._tool_manager._tools["upsert_reflection"]
+        delete_tool = server._tool_manager._tools["delete_reflection"]
+
+        # Create a reflection
+        create_result = create_tool.fn(text="To be deleted")
+        reflection_id = create_result["reflection_id"]
+
+        # Verify file exists - reflections use ID as filename
+        reflections_dir = tmp_path / "Reflections"
+        files = list(reflections_dir.glob("*.md"))
+        assert len(files) == 1
+
+        # Delete the reflection
+        delete_result = delete_tool.fn(reflection_id=reflection_id)
+
+        assert delete_result["deleted"] is True
+        assert delete_result["reflection_id"] == reflection_id
+        # File should be gone
+        files = list(reflections_dir.glob("*.md"))
+        assert len(files) == 0
+
+    def test_delete_reflection_not_found(self, server):
+        """Test deleting a non-existent reflection."""
+        delete_tool = server._tool_manager._tools["delete_reflection"]
+        result = delete_tool.fn(reflection_id="nonexistent_id")
+        assert "error" in result
+        assert "not found" in result["error"]
 
 
 class TestArtifactTools:
@@ -1680,6 +1821,35 @@ class TestServerCoverageGaps:
         result = search_tool.fn(query="database", project_id="p_test")
         # TextContent check removed - using get_text()
 
+    def test_delete_artifact(self, server, tmp_path):
+        """Test deleting an artifact."""
+        create_tool = server._tool_manager._tools["upsert_artifact"]
+        delete_tool = server._tool_manager._tools["delete_artifact"]
+
+        # Create an artifact
+        create_result = create_tool.fn(name="ToDelete", content="To be deleted")
+        artifact_id = create_result["artifact_id"]
+
+        # Verify file exists
+        file_path = tmp_path / "Artifacts" / "ToDelete.md"
+        assert file_path.exists()
+
+        # Delete the artifact
+        delete_result = delete_tool.fn(artifact_id=artifact_id)
+
+        assert delete_result["deleted"] is True
+        assert delete_result["artifact_id"] == artifact_id
+        assert delete_result["name"] == "ToDelete"
+        # File should be gone
+        assert not file_path.exists()
+
+    def test_delete_artifact_not_found(self, server):
+        """Test deleting a non-existent artifact."""
+        delete_tool = server._tool_manager._tools["delete_artifact"]
+        result = delete_tool.fn(artifact_id="nonexistent_id")
+        assert "error" in result
+        assert "not found" in result["error"]
+
 
 class TestEpisodeTools:
     """Tests for episode-related tools."""
@@ -2054,3 +2224,40 @@ class TestEpisodeTools:
         assert "Voice Chat" in episode_text
         assert "claude" in episode_text.lower() or "claude-3-opus" in episode_text
         assert "voice" in episode_text.lower()
+
+    def test_delete_episode(self, server, tmp_path):
+        """Test deleting an episode."""
+        upsert_tool = server._tool_manager._tools["upsert_episode"]
+        delete_tool = server._tool_manager._tools["delete_episode"]
+
+        # Create an episode
+        create_result = upsert_tool.fn(
+            source_thread_id="t_test",
+            started_at="2024-12-10T14:30:00",
+            ended_at="2024-12-10T15:00:00",
+            events="Test events",
+            source_title="ToDelete",
+        )
+        episode_id = create_result["episode_id"]
+
+        # Verify file exists
+        episodes_dir = tmp_path / "Episodes"
+        files = list(episodes_dir.glob("*.md"))
+        assert len(files) == 1
+
+        # Delete the episode
+        delete_result = delete_tool.fn(episode_id=episode_id)
+
+        assert delete_result["deleted"] is True
+        assert delete_result["episode_id"] == episode_id
+        assert delete_result["source_title"] == "ToDelete"
+        # File should be gone
+        files = list(episodes_dir.glob("*.md"))
+        assert len(files) == 0
+
+    def test_delete_episode_not_found(self, server):
+        """Test deleting a non-existent episode."""
+        delete_tool = server._tool_manager._tools["delete_episode"]
+        result = delete_tool.fn(episode_id="nonexistent_id")
+        assert "error" in result
+        assert "not found" in result["error"]

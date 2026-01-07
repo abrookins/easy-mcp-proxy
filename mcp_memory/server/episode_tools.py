@@ -331,3 +331,34 @@ def register_episode_tools(
         thread.updated_at = datetime.now()
         storage.save(thread)
         return {"thread_id": thread_id, "status": status, "updated": True}
+
+    @mcp.tool()
+    def delete_episode(episode_id: str) -> dict:
+        """Delete an episode by its ID.
+
+        This permanently removes the episode from storage and the search index.
+        Use with caution—this action cannot be undone.
+
+        Args:
+            episode_id: The ID of the episode to delete.
+
+        Returns:
+            A dict with deleted=True on success, or error message on failure.
+        """
+        episode = storage.load_episode(episode_id)
+        if not episode:
+            return {"error": f"Episode {episode_id} not found"}
+
+        # Find and delete the file
+        file_path = storage._find_file_by_id("Episode", "episode_id", episode_id)
+        if file_path:
+            storage._delete_file(file_path)
+
+        # Rebuild index to remove the episode from search
+        searcher.build_index()
+
+        return {
+            "episode_id": episode_id,
+            "source_title": episode.source_title,
+            "deleted": True,
+        }

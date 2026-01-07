@@ -228,3 +228,34 @@ def register_artifact_tools(
         searcher.build_index()
 
         return {"synced": True, "artifact_id": artifact_id}
+
+    @mcp.tool()
+    def delete_artifact(artifact_id: str) -> dict:
+        """Delete an artifact by its ID.
+
+        This permanently removes the artifact from storage and the search index.
+        Use with caution—this action cannot be undone.
+
+        Args:
+            artifact_id: The ID of the artifact to delete.
+
+        Returns:
+            A dict with deleted=True on success, or error message on failure.
+        """
+        artifact = storage.load_artifact(artifact_id)
+        if not artifact:
+            return {"error": f"Artifact {artifact_id} not found"}
+
+        # Find and delete the file
+        file_path = storage._find_file_by_id("Artifact", "artifact_id", artifact_id)
+        if file_path:
+            storage._delete_file(file_path)
+
+        # Rebuild index to remove the artifact from search
+        searcher.build_index()
+
+        return {
+            "artifact_id": artifact_id,
+            "name": artifact.name,
+            "deleted": True,
+        }

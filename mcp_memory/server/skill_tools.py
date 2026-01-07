@@ -141,3 +141,34 @@ def register_skill_tools(
                 tags_info = f" ({', '.join(s.tags)})" if s.tags else ""
                 lines.append(f"- `{s.skill_id}` **{s.name}**{tags_info}{desc}")
             return _text("\n".join(lines))
+
+    @mcp.tool()
+    def delete_skill(skill_id: str) -> dict:
+        """Delete a skill by its ID.
+
+        This permanently removes the skill from storage and the search index.
+        Use with caution—this action cannot be undone.
+
+        Args:
+            skill_id: The ID of the skill to delete.
+
+        Returns:
+            A dict with deleted=True on success, or error message on failure.
+        """
+        skill = storage.load_skill(skill_id)
+        if not skill:
+            return {"error": f"Skill {skill_id} not found"}
+
+        # Find and delete the file
+        file_path = storage._find_file_by_id("Skill", "skill_id", skill_id)
+        if file_path:
+            storage._delete_file(file_path)
+
+        # Rebuild index to remove the skill from search
+        searcher.build_index()
+
+        return {
+            "skill_id": skill_id,
+            "name": skill.name,
+            "deleted": True,
+        }

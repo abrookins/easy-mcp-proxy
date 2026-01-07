@@ -92,3 +92,32 @@ def register_reflection_tools(
                 f"{r.text}\n"
             )
         return _text("\n".join(lines))
+
+    @mcp.tool()
+    def delete_reflection(reflection_id: str) -> dict:
+        """Delete a reflection by its ID.
+
+        This permanently removes the reflection from storage.
+        Use with caution—this action cannot be undone.
+
+        Args:
+            reflection_id: The ID of the reflection to delete.
+
+        Returns:
+            A dict with deleted=True on success, or error message on failure.
+        """
+        reflection = storage.load_reflection(reflection_id)
+        if not reflection:
+            return {"error": f"Reflection {reflection_id} not found"}
+
+        # Find and delete the file
+        file_path = storage._find_file_by_id(
+            "Reflection", "reflection_id", reflection_id
+        )
+        if file_path:
+            storage._delete_file(file_path)
+
+        return {
+            "reflection_id": reflection_id,
+            "deleted": True,
+        }

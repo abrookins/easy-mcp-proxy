@@ -22,6 +22,10 @@ class ConceptStorageMixin:
 
         Returns the path to the file containing the concept, or None if not found.
         Used when updating concepts to detect if the file needs to be moved.
+
+        Handles both:
+        - Files with explicit concept_id in frontmatter
+        - Files where concept_id is derived from filename (Obsidian compatibility)
         """
         base_dir = self._get_dir("Concept")
         if not base_dir.exists():
@@ -30,7 +34,14 @@ class ConceptStorageMixin:
         for file_path in base_dir.glob("**/*.md"):
             content = file_path.read_text(encoding="utf-8")
             frontmatter, _ = parse_frontmatter(content)
-            if frontmatter.get("concept_id") == concept_id:
+
+            # Get ID from frontmatter, or derive from filename if missing
+            # This matches the logic in _load_by_id
+            file_id = frontmatter.get("concept_id")
+            if not file_id:
+                file_id = file_path.stem
+
+            if file_id == concept_id:
                 return file_path
         return None
 

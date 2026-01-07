@@ -107,3 +107,35 @@ def register_project_tools(
             tags_info = f" ({', '.join(p.tags)})" if p.tags else ""
             lines.append(f"- `{p.project_id}` **{p.name}**{tags_info}{desc}")
         return _text("\n".join(lines))
+
+    @mcp.tool()
+    def delete_project(project_id: str) -> dict:
+        """Delete a project by its ID.
+
+        This permanently removes the project from storage.
+        Use with caution—this action cannot be undone.
+
+        Note: This does not delete threads, concepts, or other entities
+        associated with this project. Consider updating or removing
+        those associations separately.
+
+        Args:
+            project_id: The ID of the project to delete.
+
+        Returns:
+            A dict with deleted=True on success, or error message on failure.
+        """
+        project = storage.load_project(project_id)
+        if not project:
+            return {"error": f"Project {project_id} not found"}
+
+        # Find and delete the file
+        file_path = storage._find_file_by_id("Project", "project_id", project_id)
+        if file_path:
+            storage._delete_file(file_path)
+
+        return {
+            "project_id": project_id,
+            "name": project.name,
+            "deleted": True,
+        }
