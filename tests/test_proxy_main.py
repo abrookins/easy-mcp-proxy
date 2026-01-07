@@ -1,5 +1,7 @@
 """Tests for the main MCPProxy class."""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from mcp_proxy.hooks import HookResult
@@ -64,12 +66,15 @@ class TestMCPProxyInitialization:
         assert proxy.server.name == "MCP Tool View Proxy"
 
     async def test_proxy_initialize_connects_upstreams(self, sample_config_dict):
-        """MCPProxy.initialize() should connect to upstream servers."""
+        """MCPProxy.initialize() should register clients for all servers."""
         config = ProxyConfig(**sample_config_dict)
         proxy = MCPProxy(config)
 
-        # Initialize creates clients for all servers (doesn't connect yet)
-        await proxy.initialize()
+        # Mock client creation and tool refresh to avoid actual connections
+        mock_client = AsyncMock()
+        with patch.object(proxy, "_create_client", return_value=mock_client):
+            with patch.object(proxy, "refresh_upstream_tools", new_callable=AsyncMock):
+                await proxy.initialize()
 
         # Should have clients registered for all servers in config
         assert "test-server" in proxy.upstream_clients
@@ -764,12 +769,16 @@ class TestMCPProxyErrorHandling:
         config = ProxyConfig(**sample_config_dict)
         proxy = MCPProxy(config)
 
-        # First initialization
-        await proxy.initialize()
-        first_clients = dict(proxy.upstream_clients)
+        # Mock client creation and tool refresh to avoid actual connections
+        mock_client = AsyncMock()
+        with patch.object(proxy, "_create_client", return_value=mock_client):
+            with patch.object(proxy, "refresh_upstream_tools", new_callable=AsyncMock):
+                # First initialization
+                await proxy.initialize()
+                first_clients = dict(proxy.upstream_clients)
 
-        # Second initialization should be a no-op
-        await proxy.initialize()
+                # Second initialization should be a no-op
+                await proxy.initialize()
 
         assert proxy.upstream_clients == first_clients
 
