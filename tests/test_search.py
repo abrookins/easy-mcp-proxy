@@ -219,3 +219,172 @@ class TestSearchModeCallThrough:
         # Call with unknown tool name should raise
         with pytest.raises(ValueError, match="Unknown tool 'nonexistent'"):
             await call_tool_fn(tool_name="nonexistent", arguments={})
+
+
+class TestSearchPerServerMode:
+    """Tests for search_per_server exposure mode."""
+
+    async def test_search_per_server_creates_tools_for_each_server(self):
+        """search_per_server should create search/call pairs for each server."""
+        from mcp_proxy.models import ProxyConfig, ToolViewConfig, UpstreamServerConfig
+        from mcp_proxy.proxy import MCPProxy
+
+        config = ProxyConfig(
+            mcp_servers={
+                "github": UpstreamServerConfig(command="echo"),
+                "memory": UpstreamServerConfig(command="echo"),
+            },
+            tool_views={
+                "all": ToolViewConfig(
+                    exposure_mode="search_per_server",
+                    tools={
+                        "github": {"search_code": {}, "list_issues": {}},
+                        "memory": {"search_memories": {}, "create_memory": {}},
+                    },
+                )
+            },
+        )
+        proxy = MCPProxy(config)
+        view_mcp = proxy.get_view_mcp("all")
+
+        tool_names = [t.name for t in view_mcp._tool_manager._tools.values()]
+
+        # Should have search/call for each server
+        assert "github_search_tools" in tool_names
+        assert "github_call_tool" in tool_names
+        assert "memory_search_tools" in tool_names
+        assert "memory_call_tool" in tool_names
+
+        # Should NOT have individual tools
+        assert "search_code" not in tool_names
+        assert "list_issues" not in tool_names
+        assert "search_memories" not in tool_names
+
+    async def test_search_per_server_search_returns_server_tools_only(self):
+        """Each server's search tool should only return that server's tools."""
+        import json
+
+        from fastmcp import Client
+
+        from mcp_proxy.models import ProxyConfig, ToolViewConfig, UpstreamServerConfig
+        from mcp_proxy.proxy import MCPProxy
+
+        config = ProxyConfig(
+            mcp_servers={
+                "github": UpstreamServerConfig(
+                    command="echo",
+                    tools={
+                        "search_code": {"description": "Search GitHub code"},
+                        "list_issues": {"description": "List GitHub issues"},
+                    },
+                ),
+                "memory": UpstreamServerConfig(
+                    command="echo",
+                    tools={
+                        "search_memories": {"description": "Search memories"},
+                    },
+                ),
+            },
+            tool_views={
+                "all": ToolViewConfig(
+                    exposure_mode="search_per_server",
+                    tools={
+                        "github": {"search_code": {}, "list_issues": {}},
+                        "memory": {"search_memories": {}},
+                    },
+                )
+            },
+        )
+        proxy = MCPProxy(config)
+        view_mcp = proxy.get_view_mcp("all")
+
+        async with Client(view_mcp) as client:
+            # Search github tools
+            result = await client.call_tool("github_search_tools", {"query": ""})
+            content = result.content[0].text if result.content else "{}"
+            data = json.loads(content)
+
+            # Should only return github tools
+            assert len(data["tools"]) == 2
+            tool_names = [t["name"] for t in data["tools"]]
+            assert "search_code" in tool_names
+            assert "list_issues" in tool_names
+            assert "search_memories" not in tool_names
+
+    async def test_search_per_server_call_tool_validates_server(self):
+        """Each server's call_tool should only accept that server's tools."""
+        from mcp_proxy.models import ProxyConfig, ToolViewConfig, UpstreamServerConfig
+        from mcp_proxy.proxy import MCPProxy
+
+        config = ProxyConfig(
+            mcp_servers={
+                "github": UpstreamServerConfig(command="echo"),
+                "memory": UpstreamServerConfig(command="echo"),
+            },
+            tool_views={
+                "all": ToolViewConfig(
+                    exposure_mode="search_per_server",
+                    tools={
+                        "github": {"search_code": {}},
+                        "memory": {"search_memories": {}},
+                    },
+                )
+            },
+        )
+        proxy = MCPProxy(config)
+        view_mcp = proxy.get_view_mcp("all")
+
+        # Find github's call_tool function
+        github_call_fn = None
+        for tool in view_mcp._tool_manager._tools.values():
+            if tool.name == "github_call_tool":
+                github_call_fn = tool.fn
+                break
+
+        assert github_call_fn is not None
+
+        # Should reject memory tools
+        with pytest.raises(ValueError, match="Unknown tool 'search_memories'"):
+            await github_call_fn(tool_name="search_memories", arguments={})
+
+    async def test_search_per_server_with_include_all(self):
+        """search_per_server should work with include_all: true."""
+        from unittest.mock import MagicMock
+
+        from mcp_proxy.models import ProxyConfig, ToolViewConfig, UpstreamServerConfig
+        from mcp_proxy.proxy import MCPProxy
+
+        config = ProxyConfig(
+            mcp_servers={
+                "github": UpstreamServerConfig(command="echo"),
+                "memory": UpstreamServerConfig(command="echo"),
+            },
+            tool_views={
+                "all": ToolViewConfig(
+                    exposure_mode="search_per_server",
+                    include_all=True,
+                )
+            },
+        )
+        proxy = MCPProxy(config)
+
+        # Simulate upstream tools being discovered
+        mock_github_tool = MagicMock()
+        mock_github_tool.name = "search_code"
+        mock_github_tool.description = "Search code"
+
+        mock_memory_tool = MagicMock()
+        mock_memory_tool.name = "search_memories"
+        mock_memory_tool.description = "Search memories"
+
+        proxy._upstream_tools = {
+            "github": [mock_github_tool],
+            "memory": [mock_memory_tool],
+        }
+
+        view_mcp = proxy.get_view_mcp("all")
+        tool_names = [t.name for t in view_mcp._tool_manager._tools.values()]
+
+        # Should have per-server search tools
+        assert "github_search_tools" in tool_names
+        assert "memory_search_tools" in tool_names

@@ -2,12 +2,10 @@
 
 # ruff: noqa: E501
 
-from datetime import datetime
-
 from fastmcp import FastMCP
 from mcp.types import TextContent
 
-from mcp_memory.models import Project
+from mcp_memory.models import Project, utc_now
 from mcp_memory.search import MemorySearcher
 from mcp_memory.storage import MemoryStorage
 
@@ -56,7 +54,7 @@ def register_project_tools(
             if tags is not None:
                 project.tags = tags
 
-            project.updated_at = datetime.now()
+            project.updated_at = utc_now()
 
             if name is not None and name != old_name and old_file_path:
                 storage._delete_file(old_file_path)

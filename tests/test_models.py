@@ -71,6 +71,11 @@ class TestToolViewConfig:
         config = ToolViewConfig(exposure_mode="search")
         assert config.exposure_mode == "search"
 
+    def test_tool_view_config_search_per_server_mode(self):
+        """ToolViewConfig can be set to search_per_server exposure mode."""
+        config = ToolViewConfig(exposure_mode="search_per_server")
+        assert config.exposure_mode == "search_per_server"
+
     def test_tool_view_config_with_tools(self):
         """ToolViewConfig should nest server/tool configs."""
         config = ToolViewConfig(

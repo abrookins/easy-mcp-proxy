@@ -328,7 +328,17 @@ class MCPProxy:
             default_tools = self.get_view_tools(None)
             # Use "default" view if it exists (for custom tools, hooks, etc.)
             default_view = self.views.get("default")
-            self._register_tools_on_mcp(stdio_server, default_tools, view=default_view)
+
+            # Respect exposure_mode for stdio transport
+            if default_view and default_view.config.exposure_mode == "search":
+                default_view.update_tool_mapping(default_tools)
+                self._register_search_tool(stdio_server, "default")
+            elif default_view and default_view.config.exposure_mode == "search_per_server":
+                default_view.update_tool_mapping(default_tools)
+                self._register_per_server_search_tools(stdio_server, "default")
+            else:
+                self._register_tools_on_mcp(stdio_server, default_tools, view=default_view)
+
             self._register_instructions_tool(stdio_server)
             stdio_server.run(transport="stdio")
         else:
@@ -439,6 +449,8 @@ class MCPProxy:
 
         if view_config.exposure_mode == "search":
             self._register_search_tool(mcp, view_name)
+        elif view_config.exposure_mode == "search_per_server":
+            self._register_per_server_search_tools(mcp, view_name)
         else:
             self._register_tools_on_mcp(mcp, view_tools, view=view)
 
@@ -527,6 +539,80 @@ class MCPProxy:
                 f"Use {view_name}_search_tools first to find available tools."
             ),
         )(call_wrapper)
+
+    def _register_per_server_search_tools(self, mcp: FastMCP, view_name: str) -> None:
+        """Register search and call meta-tools for each upstream server."""
+        from mcp_proxy.search import ToolSearcher
+
+        view = self.views[view_name]
+        view_tools = self.get_view_tools(view_name)
+
+        # Group tools by server
+        tools_by_server: dict[str, list[ToolInfo]] = {}
+        for tool in view_tools:
+            server = tool.server or "_custom"
+            if server not in tools_by_server:
+                tools_by_server[server] = []
+            tools_by_server[server].append(tool)
+
+        # Create search/call pairs for each server
+        for server_name, server_tools in tools_by_server.items():
+            tools_data = [
+                {"name": t.name, "description": t.description} for t in server_tools
+            ]
+            searcher = ToolSearcher(view_name=server_name, tools=tools_data)
+            search_tool = searcher.create_search_tool()
+
+            # Use server name with _proxy suffix to avoid conflicts
+            search_name = f"{server_name}_search_tools"
+
+            # Create closure properly
+            def create_search_func(st: Any, sn: str, srv: str) -> Callable:
+                async def search_func(query: str = "", limit: int = 10) -> dict:
+                    return await st(query=query, limit=limit)
+
+                search_func.__name__ = sn
+                search_func.__doc__ = f"Search for tools from the {srv} server"
+                return search_func
+
+            search_func = create_search_func(search_tool, search_name, server_name)
+            desc = f"Search for tools from the {server_name} server."
+
+            mcp.tool(name=search_name, description=desc)(search_func)
+
+            # Create call tool for this server
+            call_name = f"{server_name}_call_tool"
+            tool_names_list = [t.name for t in server_tools]
+
+            def make_call_tool_wrapper(
+                v: ToolView, valid_tools: list[str], srv_name: str
+            ) -> Callable[..., Any]:
+                async def call_tool_wrapper(
+                    tool_name: str, arguments: dict | None = None
+                ) -> Any:
+                    if tool_name not in valid_tools:
+                        raise ValueError(
+                            f"Unknown tool '{tool_name}'. "
+                            f"Use {srv_name}_search_tools to find available tools."
+                        )
+                    return await v.call_tool(tool_name, arguments or {})
+
+                return call_tool_wrapper
+
+            call_wrapper = make_call_tool_wrapper(view, tool_names_list, server_name)
+            call_wrapper.__name__ = call_name
+            call_wrapper.__doc__ = (
+                f"Call a tool from the {server_name} server by name. "
+                f"Use {server_name}_search_tools first to find available tools."
+            )
+
+            mcp.tool(
+                name=call_name,
+                description=(
+                    f"Call a tool from the {server_name} server by name. "
+                    f"Use {server_name}_search_tools first to find available tools."
+                ),
+            )(call_wrapper)
 
     def _register_tools_on_mcp(
         self, mcp: FastMCP, tools: list[ToolInfo], view: ToolView | None = None
@@ -755,9 +841,15 @@ class MCPProxy:
                 # get_view_tools(None) returns "default" view tools
                 default_tools = self.get_view_tools(None)
                 default_view.update_tool_mapping(default_tools)
-                self._register_tools_on_mcp(
-                    default_mcp, default_tools, view=default_view
-                )
+                # Respect exposure_mode for root path
+                if default_view.config.exposure_mode == "search":
+                    self._register_search_tool(default_mcp, "default")
+                elif default_view.config.exposure_mode == "search_per_server":
+                    self._register_per_server_search_tools(default_mcp, "default")
+                else:
+                    self._register_tools_on_mcp(
+                        default_mcp, default_tools, view=default_view
+                    )
             else:
                 default_tools = self.get_view_tools(None)
                 self._register_tools_on_mcp(default_mcp, default_tools)
@@ -769,6 +861,8 @@ class MCPProxy:
                     view_tools = self.get_view_tools(view_name)
                     if default_view.config.exposure_mode == "search":
                         self._register_search_tool(view_mcp, view_name)
+                    elif default_view.config.exposure_mode == "search_per_server":
+                        self._register_per_server_search_tools(view_mcp, view_name)
                     else:
                         self._register_tools_on_mcp(
                             view_mcp, view_tools, view=default_view
@@ -788,6 +882,8 @@ class MCPProxy:
 
                 if view.config.exposure_mode == "search":
                     self._register_search_tool(view_mcp, view_name)
+                elif view.config.exposure_mode == "search_per_server":
+                    self._register_per_server_search_tools(view_mcp, view_name)
                 else:
                     self._register_tools_on_mcp(view_mcp, view_tools, view=view)
                 self._register_instructions_tool(view_mcp)
@@ -819,6 +915,11 @@ class MCPProxy:
 
             if view.config.exposure_mode == "search":
                 tools_list = [{"name": f"{view_name}_search_tools"}]
+            elif view.config.exposure_mode == "search_per_server":
+                # List search tools for each server
+                tools = self.get_view_tools(view_name)
+                servers = set(t.server or "_custom" for t in tools)
+                tools_list = [{"name": f"{s}_search_tools"} for s in sorted(servers)]
             else:
                 tools = self.get_view_tools(view_name)
                 tools_list = [{"name": t.name} for t in tools] if tools else []

@@ -2,17 +2,28 @@
 
 # ruff: noqa: E501
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from fastmcp import FastMCP
 from mcp.types import TextContent
 
-from mcp_memory.models import Episode
+from mcp_memory.models import Episode, utc_now
 from mcp_memory.search import MemorySearcher
 from mcp_memory.storage import MemoryStorage
 
 from .utils import _text
+
+
+def _parse_datetime(dt_string: str) -> datetime:
+    """Parse an ISO datetime string, ensuring timezone-aware result.
+
+    If the string has no timezone info, UTC is assumed.
+    """
+    dt = datetime.fromisoformat(dt_string)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _format_episode(episode: Episode) -> str:
@@ -107,9 +118,9 @@ def register_episode_tools(
             if source_thread_id is not None:
                 episode.source_thread_id = source_thread_id
             if started_at is not None:
-                episode.started_at = datetime.fromisoformat(started_at)
+                episode.started_at = _parse_datetime(started_at)
             if ended_at is not None:
-                episode.ended_at = datetime.fromisoformat(ended_at)
+                episode.ended_at = _parse_datetime(ended_at)
             if events is not None:
                 episode.events = events
             if platform is not None:
@@ -137,7 +148,7 @@ def register_episode_tools(
             if qualities is not None:
                 episode.qualities = qualities
 
-            episode.updated_at = datetime.now()
+            episode.updated_at = utc_now()
             storage.save(episode)
             searcher.build_index()
             return {"episode_id": episode_id, "updated": True}
@@ -152,8 +163,8 @@ def register_episode_tools(
 
             episode = Episode(
                 source_thread_id=source_thread_id,
-                started_at=datetime.fromisoformat(started_at),
-                ended_at=datetime.fromisoformat(ended_at),
+                started_at=_parse_datetime(started_at),
+                ended_at=_parse_datetime(ended_at),
                 events=events or "",
                 platform=platform,
                 source_title=source_title,
@@ -175,7 +186,7 @@ def register_episode_tools(
             if thread:
                 thread.episode_id = episode.episode_id
                 thread.processing_status = "completed"
-                thread.updated_at = datetime.now()
+                thread.updated_at = utc_now()
                 storage.save(thread)
 
             # Add to search index
@@ -268,13 +279,13 @@ def register_episode_tools(
         updated = False
         if concept_id not in episode.concept_ids:
             episode.concept_ids.append(concept_id)
-            episode.updated_at = datetime.now()
+            episode.updated_at = utc_now()
             storage.save(episode)
             updated = True
 
         if episode_id not in concept.episode_ids:
             concept.episode_ids.append(episode_id)
-            concept.updated_at = datetime.now()
+            concept.updated_at = utc_now()
             storage.save(concept)
             updated = True
 
@@ -328,7 +339,7 @@ def register_episode_tools(
             return {"error": f"Thread {thread_id} not found"}
 
         thread.processing_status = status  # type: ignore[assignment]
-        thread.updated_at = datetime.now()
+        thread.updated_at = utc_now()
         storage.save(thread)
         return {"thread_id": thread_id, "status": status, "updated": True}
 

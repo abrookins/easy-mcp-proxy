@@ -2,12 +2,10 @@
 
 # ruff: noqa: E501
 
-from datetime import datetime
-
 from fastmcp import FastMCP
 from mcp.types import TextContent
 
-from mcp_memory.models import Reflection
+from mcp_memory.models import Reflection, utc_now
 from mcp_memory.search import MemorySearcher
 from mcp_memory.storage import MemoryStorage
 
@@ -55,7 +53,7 @@ def register_reflection_tools(
             if tags is not None:
                 reflection.tags = tags
 
-            reflection.updated_at = datetime.now()
+            reflection.updated_at = utc_now()
             storage.save(reflection)
             return {"reflection_id": reflection.reflection_id, "updated": True}
         else:

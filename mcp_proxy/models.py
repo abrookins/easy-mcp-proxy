@@ -60,7 +60,13 @@ class CompositeToolConfig(BaseModel):
 
 
 class ToolViewConfig(BaseModel):
-    """Configuration for a tool view."""
+    """Configuration for a tool view.
+
+    The exposure_mode controls how tools are exposed to clients:
+    - "direct": All tools are registered individually (default)
+    - "search": One search_tools + call_tool pair for the entire view
+    - "search_per_server": One search_tools + call_tool pair per upstream server
+    """
 
     description: str | None = None
     exposure_mode: str = "direct"

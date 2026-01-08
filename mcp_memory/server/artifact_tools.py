@@ -2,13 +2,12 @@
 
 # ruff: noqa: E501
 
-from datetime import datetime
 from pathlib import Path
 
 from fastmcp import FastMCP
 from mcp.types import TextContent
 
-from mcp_memory.models import Artifact
+from mcp_memory.models import Artifact, utc_now
 from mcp_memory.search import MemorySearcher
 from mcp_memory.storage import MemoryStorage
 
@@ -75,7 +74,7 @@ def register_artifact_tools(
             if tags is not None:
                 artifact.tags = tags
 
-            artifact.updated_at = datetime.now()
+            artifact.updated_at = utc_now()
 
             if name is not None and name != old_name and old_file_path:
                 storage._delete_file(old_file_path)
@@ -221,7 +220,7 @@ def register_artifact_tools(
             return {"error": f"File not found: {source_path}"}
 
         artifact.content = source.read_text()
-        artifact.updated_at = datetime.now()
+        artifact.updated_at = utc_now()
         storage.save(artifact)
 
         # Rebuild index to update embeddings

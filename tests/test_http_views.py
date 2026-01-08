@@ -291,6 +291,38 @@ class TestHTTPViewListing:
         assert data["description"] == "Research tools"
         assert "tools" in data
 
+    def test_view_info_search_per_server_mode(self):
+        """View info should list server search tools for search_per_server mode."""
+        config = ProxyConfig(
+            mcp_servers={
+                "github": UpstreamServerConfig(url="https://example.com/mcp"),
+                "memory": UpstreamServerConfig(command="echo"),
+            },
+            tool_views={
+                "all": ToolViewConfig(
+                    description="All tools",
+                    exposure_mode="search_per_server",
+                    tools={
+                        "github": {"search_code": {}},
+                        "memory": {"search_memories": {}},
+                    },
+                )
+            },
+        )
+        proxy = MCPProxy(config)
+        app = proxy.http_app()
+
+        client = TestClient(app)
+        response = client.get("/views/all")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "all"
+        assert data["exposure_mode"] == "search_per_server"
+        tool_names = [t["name"] for t in data["tools"]]
+        assert "github_search_tools" in tool_names
+        assert "memory_search_tools" in tool_names
+
 
 class TestHTTPHealthCheck:
     """Tests for health check endpoint."""

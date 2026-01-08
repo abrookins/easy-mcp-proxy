@@ -2,12 +2,10 @@
 
 # ruff: noqa: E501
 
-from datetime import datetime
-
 from fastmcp import FastMCP
 from mcp.types import TextContent
 
-from mcp_memory.models import Concept
+from mcp_memory.models import Concept, utc_now
 from mcp_memory.search import MemorySearcher
 from mcp_memory.storage import MemoryStorage
 
@@ -233,7 +231,7 @@ def register_concept_tools(
             if links is not None:
                 concept.links = links
 
-            concept.updated_at = datetime.now()
+            concept.updated_at = utc_now()
 
             name_changed = name is not None and name != old_name
             path_changed = parent_path is not None and parent_path != old_parent_path

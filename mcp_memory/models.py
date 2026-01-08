@@ -3,10 +3,19 @@
 All models use YAML frontmatter for metadata and markdown body for content.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+def utc_now() -> datetime:
+    """Return current time as timezone-aware UTC datetime.
+
+    Use this instead of datetime.now() to ensure all datetimes are
+    timezone-aware and can be compared/sorted without errors.
+    """
+    return datetime.now(timezone.utc)
 
 
 def generate_id(prefix: str) -> str:
@@ -25,7 +34,7 @@ class Message(BaseModel):
 
     role: Literal["user", "assistant", "system"]
     text: str
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = Field(default_factory=utc_now)
 
 
 class Thread(BaseModel):
@@ -37,8 +46,8 @@ class Thread(BaseModel):
     thread_id: str = Field(default_factory=lambda: generate_id("t"))
     title: str | None = None  # Human-friendly title for the thread
     project_id: str | None = None
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     messages: list[Message] = Field(default_factory=list)
     summary: str | None = None  # For compacted threads
 
@@ -77,8 +86,8 @@ class Concept(BaseModel):
     concept_id: str = Field(default_factory=lambda: generate_id("c"))
     name: str = ""  # Can be derived from filename (leaf name, not full path)
     parent_path: str | None = None  # Hierarchical path to parent folder
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     project_id: str | None = None  # Optional project association
     tags: list[str] = Field(default_factory=list)
     text: str = ""  # Markdown body
@@ -109,8 +118,8 @@ class Project(BaseModel):
     project_id: str = Field(default_factory=lambda: generate_id("p"))
     name: str
     description: str = ""
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     tags: list[str] = Field(default_factory=list)
     instructions: str = ""  # Markdown body with project-specific instructions
 
@@ -124,8 +133,8 @@ class Skill(BaseModel):
     skill_id: str = Field(default_factory=lambda: generate_id("s"))
     name: str
     description: str = ""
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     tags: list[str] = Field(default_factory=list)
     instructions: str = ""  # Markdown body with step-by-step instructions
 
@@ -140,8 +149,8 @@ class Reflection(BaseModel):
     project_id: str | None = None
     thread_id: str | None = None
     skill_id: str | None = None
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     tags: list[str] = Field(default_factory=list)
     text: str = ""  # Markdown body with the reflection content
 
@@ -169,8 +178,8 @@ class Artifact(BaseModel):
     skill_id: str | None = None  # Optional link to parent Skill
     project_id: str | None = None  # Optional project association
     originating_thread_id: str | None = None  # Thread where artifact was created
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     tags: list[str] = Field(default_factory=list)
     content: str = ""  # Markdown body with the artifact content
 
@@ -216,8 +225,8 @@ class Episode(BaseModel):
     qualities: dict[str, Any] = Field(default_factory=dict)
 
     # Standard fields
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     project_id: str | None = None
     tags: list[str] = Field(default_factory=list)
 

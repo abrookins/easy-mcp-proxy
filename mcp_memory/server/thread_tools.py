@@ -2,16 +2,27 @@
 
 # ruff: noqa: E501
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastmcp import FastMCP
 from mcp.types import TextContent
 
-from mcp_memory.models import Message, Thread
+from mcp_memory.models import Message, Thread, utc_now
 from mcp_memory.search import MemorySearcher
 from mcp_memory.storage import MemoryStorage
 
 from .utils import _derive_title_from_text, _text
+
+
+def _parse_datetime(dt_string: str) -> datetime:
+    """Parse an ISO datetime string, ensuring timezone-aware result.
+
+    If the string has no timezone info, UTC is assumed.
+    """
+    dt = datetime.fromisoformat(dt_string)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def register_thread_tools(
@@ -44,7 +55,7 @@ def register_thread_tools(
 
         messages = thread.messages
         if messages_from:
-            from_dt = datetime.fromisoformat(messages_from)
+            from_dt = _parse_datetime(messages_from)
             messages = [m for m in messages if m.timestamp >= from_dt]
 
         lines = [
@@ -75,11 +86,11 @@ def register_thread_tools(
             return {"error": f"Thread {thread_id} not found"}
 
         for msg_data in messages:
-            ts_str = msg_data.get("timestamp", datetime.now().isoformat())
+            ts_str = msg_data.get("timestamp", utc_now().isoformat())
             msg = Message(
                 role=msg_data["role"],
                 text=msg_data["text"],
-                timestamp=datetime.fromisoformat(ts_str),
+                timestamp=_parse_datetime(ts_str),
             )
             thread.messages.append(msg)
             # Add to search index
@@ -97,7 +108,7 @@ def register_thread_tools(
         if not thread.title and thread.messages:
             thread.title = _derive_title_from_text(thread.messages[0].text)
 
-        thread.updated_at = datetime.now()
+        thread.updated_at = utc_now()
         storage.save(thread)
         return {"thread_id": thread_id, "message_count": len(thread.messages)}
 
@@ -177,7 +188,7 @@ def register_thread_tools(
 
         thread.summary = summary
         thread.messages = []  # Clear messages after summarizing
-        thread.updated_at = datetime.now()
+        thread.updated_at = utc_now()
         storage.save(thread)
         return {"thread_id": thread_id, "compacted": True}
 
