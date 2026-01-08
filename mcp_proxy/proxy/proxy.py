@@ -333,11 +333,16 @@ class MCPProxy:
             if default_view and default_view.config.exposure_mode == "search":
                 default_view.update_tool_mapping(default_tools)
                 self._register_search_tool(stdio_server, "default")
-            elif default_view and default_view.config.exposure_mode == "search_per_server":
+            elif (
+                default_view
+                and default_view.config.exposure_mode == "search_per_server"
+            ):
                 default_view.update_tool_mapping(default_tools)
                 self._register_per_server_search_tools(stdio_server, "default")
             else:
-                self._register_tools_on_mcp(stdio_server, default_tools, view=default_view)
+                self._register_tools_on_mcp(
+                    stdio_server, default_tools, view=default_view
+                )
 
             self._register_instructions_tool(stdio_server)
             stdio_server.run(transport="stdio")
