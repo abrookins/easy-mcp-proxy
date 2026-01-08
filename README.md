@@ -208,7 +208,7 @@ Create named views exposing different tool subsets:
 
 ```yaml
 tool_views:
-  # Direct mode: tools exposed with their names
+  # Direct mode (default): tools exposed with their names
   search-tools:
     description: "Read-only search tools"
     exposure_mode: direct
@@ -217,12 +217,24 @@ tool_views:
         search_code: {}
         search_issues: {}
 
-  # Search mode: exposes search_tools + call_tool meta-tools
+  # Search mode: exposes {view}_search_tools + {view}_call_tool meta-tools
   all-github:
     description: "All GitHub tools via search"
     exposure_mode: search
     include_all: true
+
+  # Search-per-server mode: exposes {server}_search_tools + {server}_call_tool
+  # for each upstream server
+  multi-server:
+    description: "All tools with per-server search"
+    exposure_mode: search_per_server
+    include_all: true
 ```
+
+Exposure modes:
+- **direct**: Tools are exposed individually by name (default)
+- **search**: One `{view}_search_tools` + `{view}_call_tool` pair for the entire view
+- **search_per_server**: One `{server}_search_tools` + `{server}_call_tool` pair per upstream server
 
 ### Parallel Composition
 
@@ -425,9 +437,12 @@ When running with `--transport http`, the proxy exposes:
 |----------|-------------|
 | `/mcp` | Default MCP endpoint (all server tools) |
 | `/view/{name}/mcp` | View-specific MCP endpoint |
+| `/search/mcp` | All tools with search-per-server mode (no config needed) |
 | `/views` | List all available views |
 | `/views/{name}` | Get view details |
 | `/health` | Health check |
+
+The `/search/mcp` endpoint is a built-in virtual view that exposes all tools from all upstream servers using `search_per_server` mode. This provides `{server}_search_tools` and `{server}_call_tool` for each upstream server without requiring explicit configuration.
 
 Example requests:
 
@@ -441,6 +456,23 @@ curl http://localhost:8000/views/assistant
 # Health check
 curl http://localhost:8000/health
 ```
+
+### Authentication
+
+Authentication is handled via environment variables for OIDC/Auth0:
+
+```bash
+export FASTMCP_SERVER_AUTH_AUTH0_CONFIG_URL="https://your-tenant.auth0.com/.well-known/openid-configuration"
+export FASTMCP_SERVER_AUTH_AUTH0_CLIENT_ID="your-client-id"
+export FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET="your-client-secret"
+export FASTMCP_SERVER_AUTH_AUTH0_AUDIENCE="your-api-audience"
+export FASTMCP_SERVER_AUTH_AUTH0_BASE_URL="https://your-proxy-url.com"
+
+# Optional: comma-separated required scopes
+export FASTMCP_SERVER_AUTH_AUTH0_REQUIRED_SCOPES="read,write"
+```
+
+When these variables are set, the proxy automatically enables OAuth 2.1 authentication with PKCE support.
 
 ## Architecture
 
