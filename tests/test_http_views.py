@@ -393,6 +393,75 @@ class TestHTTPViewServerSubset:
         assert proxy.views["all-github"].config.include_all is True
 
 
+class TestHTTPSearchEndpoint:
+    """Tests for the /search endpoint that exposes all tools via search_per_server."""
+
+    def test_search_endpoint_is_mounted(self):
+        """The /search endpoint should be mounted in the app."""
+        config = ProxyConfig(
+            mcp_servers={
+                "github": UpstreamServerConfig(url="https://example.com/mcp"),
+            },
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+        app = proxy.http_app()
+
+        # Check that /search route is registered
+        route_paths = []
+        for route in app.routes:
+            if hasattr(route, "path"):
+                route_paths.append(route.path)
+
+        assert "/search" in route_paths, f"Expected /search mount, got: {route_paths}"
+
+    def test_search_endpoint_with_path_prefix(self):
+        """The /search endpoint should respect path prefix."""
+        config = ProxyConfig(
+            mcp_servers={
+                "server-a": UpstreamServerConfig(command="echo"),
+            },
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+        app = proxy.http_app(path="/api")
+
+        route_paths = []
+        for route in app.routes:
+            if hasattr(route, "path"):
+                route_paths.append(route.path)
+
+        assert "/api/search" in route_paths
+
+    def test_search_endpoint_creates_virtual_view(self):
+        """The search endpoint should create a _search virtual view."""
+        config = ProxyConfig(
+            mcp_servers={
+                "github": UpstreamServerConfig(
+                    command="echo",
+                    tools={"search_code": {"description": "Search code"}},
+                ),
+            },
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # _search view should not exist initially
+        assert "_search" not in proxy.views
+
+        # After http_app is created, we need to initialize the search view
+        # This happens in the lifespan, so we test the method directly
+        from fastmcp import FastMCP
+
+        mcp = FastMCP("test")
+        proxy._initialize_search_view(mcp)
+
+        # Now _search view should exist
+        assert "_search" in proxy.views
+        assert proxy.views["_search"].config.include_all is True
+        assert proxy.views["_search"].config.exposure_mode == "search_per_server"
+
+
 class TestHTTPExtraRoutes:
     """Tests for extra_routes in http_app."""
 

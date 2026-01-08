@@ -788,6 +788,38 @@ class MCPProxy:
             wrapper.__doc__ = tool_desc
             mcp.tool(name=tool_name, description=tool_desc)(wrapper)
 
+    def _initialize_search_view(self, mcp: FastMCP) -> None:
+        """Initialize the virtual search view with all tools using search_per_server.
+
+        This creates a virtual view named "_search" that includes all tools from
+        all upstream servers, exposed via search_per_server mode. The view is
+        accessible at /search/mcp.
+        """
+        from mcp_proxy.models import ToolViewConfig
+
+        # Create a virtual view config with include_all
+        search_view_config = ToolViewConfig(
+            description="All tools with search per server",
+            exposure_mode="search_per_server",
+            include_all=True,
+        )
+
+        # Create a virtual view and initialize it
+        search_view = ToolView(name="_search", config=search_view_config)
+        search_view._upstream_clients = self.upstream_clients
+        search_view._get_client = self.get_active_client
+        search_view._reconnect_client = self.reconnect_client
+
+        # Store it so we can access it for call_tool
+        self.views["_search"] = search_view
+
+        # Get all tools (using include_all behavior)
+        all_tools = self.get_view_tools("_search")
+        search_view.update_tool_mapping(all_tools)
+
+        # Register per-server search tools
+        self._register_per_server_search_tools(mcp, "_search")
+
     def http_app(
         self,
         path: str = "",
@@ -800,6 +832,11 @@ class MCPProxy:
         servers. This ensures upstream processes are only spawned once (for
         persistent connections) rather than twice (once for tool discovery,
         once for connections).
+
+        The app includes:
+        - Root /mcp: Default view (or all mcp_servers tools if no default view)
+        - /view/<name>/mcp: Named views from tool_views config
+        - /search/mcp: Virtual view exposing all tools with search_per_server mode
         """
         from contextlib import asynccontextmanager
 
@@ -817,7 +854,11 @@ class MCPProxy:
                 f"MCP Proxy - {view_name}", auth=auth_provider
             )
 
+        # Create a virtual "search" MCP that exposes all tools via search_per_server
+        search_mcp = FastMCP("MCP Proxy - Search", auth=auth_provider)
+
         default_mcp_app = default_mcp.http_app(path="/mcp")
+        search_mcp_app = search_mcp.http_app(path="/mcp")
 
         view_mcp_apps: dict[str, Any] = {}
         for view_name, view_mcp in view_mcps.items():
@@ -893,6 +934,11 @@ class MCPProxy:
                     self._register_tools_on_mcp(view_mcp, view_tools, view=view)
                 self._register_instructions_tool(view_mcp)
 
+            # Initialize the virtual "search" MCP with all tools
+            search_mcp.instructions = aggregated_instructions
+            self._initialize_search_view(search_mcp)
+            self._register_instructions_tool(search_mcp)
+
             try:
                 async with default_mcp_app.lifespan(default_mcp_app):
                     yield
@@ -951,6 +997,9 @@ class MCPProxy:
             return JSONResponse({"views": views_info})
 
         routes.append(Route(f"{path}/views", list_views, methods=["GET"]))
+
+        # Mount the virtual "search" endpoint first (before view mounts)
+        routes.append(Mount(f"{path}/search", app=search_mcp_app))
 
         for view_name, view_mcp_app in view_mcp_apps.items():
             routes.append(Mount(f"{path}{view_prefix}/{view_name}", app=view_mcp_app))
