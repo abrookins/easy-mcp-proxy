@@ -521,11 +521,11 @@ class TestProxyPropertySetters:
         assert proxy._active_clients == test_clients
 
 
-class TestProxyGetServerInstructions:
-    """Tests for get_server_instructions default message."""
+class TestProxyGetToolInstructions:
+    """Tests for get_tool_instructions default message."""
 
-    async def test_get_server_instructions_returns_default_when_no_instructions(self):
-        """get_server_instructions tool returns default message when none available."""
+    async def test_get_tool_instructions_returns_default_when_no_instructions(self):
+        """get_tool_instructions tool returns default message when none available."""
         from fastmcp import Client
 
         config = ProxyConfig(
@@ -538,9 +538,9 @@ class TestProxyGetServerInstructions:
         view_mcp = proxy.get_view_mcp("myview")
 
         async with Client(view_mcp) as client:
-            result = await client.call_tool("get_server_instructions", {})
+            result = await client.call_tool("get_tool_instructions", {})
             text_content = result.content[0].text
-            assert "No server instructions available" in text_content
+            assert "No tool instructions available" in text_content
 
 
 class TestReconnectionLogic:

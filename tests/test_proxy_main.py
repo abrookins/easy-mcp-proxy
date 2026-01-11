@@ -319,8 +319,8 @@ class TestMCPProxyInstructions:
 
         assert proxy.upstream_instructions.get("server") == "Test instructions"
 
-    def test_get_server_instructions_tool_registered(self):
-        """get_server_instructions tool should be registered on view MCP."""
+    def test_get_tool_instructions_tool_registered(self):
+        """get_tool_instructions tool should be registered on view MCP."""
         config = ProxyConfig(
             mcp_servers={"server": {"command": "echo"}},
             tool_views={"myview": {"description": "Test view"}},
@@ -330,13 +330,13 @@ class TestMCPProxyInstructions:
 
         view_mcp = proxy.get_view_mcp("myview")
 
-        # Check that get_server_instructions tool is registered
+        # Check that get_tool_instructions tool is registered
         tools = view_mcp._tool_manager._tools
-        assert "get_server_instructions" in tools
+        assert "get_tool_instructions" in tools
 
     @pytest.mark.asyncio
-    async def test_get_server_instructions_tool_returns_instructions(self):
-        """get_server_instructions tool should return aggregated instructions."""
+    async def test_get_tool_instructions_tool_returns_instructions(self):
+        """get_tool_instructions tool should return aggregated instructions."""
         from fastmcp import Client
 
         config = ProxyConfig(
@@ -349,7 +349,7 @@ class TestMCPProxyInstructions:
         view_mcp = proxy.get_view_mcp("myview")
 
         async with Client(view_mcp) as client:
-            result = await client.call_tool("get_server_instructions", {})
+            result = await client.call_tool("get_tool_instructions", {})
             # Result is a CallToolResult with content
             assert len(result.content) > 0
             text_content = result.content[0].text
@@ -1419,7 +1419,7 @@ class TestInputSchemaPreservation:
         async with Client(view_mcp) as client:
             tools = await client.list_tools()
 
-        # Should have 2 tools: search_tool + get_server_instructions
+        # Should have 2 tools: search_tool + get_tool_instructions
         assert len(tools) == 2
         tool = next(t for t in tools if t.name == "search_tool")
         assert tool.name == "search_tool"

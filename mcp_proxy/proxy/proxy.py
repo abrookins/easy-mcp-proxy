@@ -25,6 +25,59 @@ from .tools import (
 )
 
 
+async def check_auth_token(
+    request: Request, auth_provider: Any | None
+) -> JSONResponse | None:
+    """Check authentication if auth is configured.
+
+    Args:
+        request: The incoming HTTP request
+        auth_provider: The auth provider (OIDCProxy) or None if auth is not configured
+
+    Returns:
+        None if auth passes, or a 401 JSONResponse if auth fails.
+    """
+    if auth_provider is None:
+        return None  # No auth configured, allow access
+
+    # Extract bearer token from Authorization header
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return JSONResponse(
+            {
+                "error": "invalid_token",
+                "error_description": "Missing or invalid Authorization header",
+            },
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = auth_header[7:]  # Remove "Bearer " prefix
+    if not token:
+        return JSONResponse(
+            {
+                "error": "invalid_token",
+                "error_description": "Empty bearer token",
+            },
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Validate token using the auth provider
+    access_token = await auth_provider.verify_token(token)
+    if access_token is None:
+        return JSONResponse(
+            {
+                "error": "invalid_token",
+                "error_description": "Invalid or expired token",
+            },
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return None  # Auth passed
+
+
 class MCPProxy:
     """MCP Proxy that aggregates and filters tools from upstream servers."""
 
@@ -459,16 +512,16 @@ class MCPProxy:
         else:
             self._register_tools_on_mcp(mcp, view_tools, view=view)
 
-        # Register the get_server_instructions tool
+        # Register the get_tool_instructions tool
         self._register_instructions_tool(mcp)
 
         return mcp
 
     def _register_instructions_tool(self, mcp: FastMCP) -> None:
-        """Register the get_server_instructions tool on an MCP instance."""
+        """Register the get_tool_instructions tool on an MCP instance."""
         proxy = self  # Capture reference for closure
 
-        def get_server_instructions() -> str:
+        def get_tool_instructions() -> str:
             """Get aggregated instructions from all upstream MCP servers.
 
             Call this at the start of every session to understand how to use
@@ -477,16 +530,16 @@ class MCPProxy:
             instructions = proxy.get_aggregated_instructions()
             if instructions:
                 return instructions
-            return "No server instructions available."
+            return "No tool instructions available."
 
         mcp.tool(
-            name="get_server_instructions",
+            name="get_tool_instructions",
             description=(
                 "Get instructions for using the available tools. "
                 "Call this at the start of every session to understand "
                 "how to use the memory tools and other capabilities effectively."
             ),
-        )(get_server_instructions)
+        )(get_tool_instructions)
 
     def _register_search_tool(self, mcp: FastMCP, view_name: str) -> None:
         """Register the search and call meta-tools for a view."""
@@ -555,7 +608,7 @@ class MCPProxy:
         # Group tools by server
         tools_by_server: dict[str, list[ToolInfo]] = {}
         for tool in view_tools:
-            server = tool.server or "_custom"
+            server = tool.server or "custom"
             if server not in tools_by_server:
                 tools_by_server[server] = []
             tools_by_server[server].append(tool)
@@ -957,6 +1010,11 @@ class MCPProxy:
         routes.append(Route(f"{path}/health", health_check, methods=["GET"]))
 
         async def view_info(request: Request) -> JSONResponse:
+            # Check authentication first
+            auth_error = await check_auth_token(request, auth_provider)
+            if auth_error:
+                return auth_error
+
             view_name = request.path_params["view_name"]
             if view_name not in self.views:
                 return JSONResponse(
@@ -969,7 +1027,7 @@ class MCPProxy:
             elif view.config.exposure_mode == "search_per_server":
                 # List search tools for each server
                 tools = self.get_view_tools(view_name)
-                servers = set(t.server or "_custom" for t in tools)
+                servers = set(t.server or "custom" for t in tools)
                 tools_list = [{"name": f"{s}_search_tools"} for s in sorted(servers)]
             else:
                 tools = self.get_view_tools(view_name)
@@ -987,6 +1045,11 @@ class MCPProxy:
         routes.append(Route(f"{path}/views/{{view_name}}", view_info, methods=["GET"]))
 
         async def list_views(request: Request) -> JSONResponse:
+            # Check authentication first
+            auth_error = await check_auth_token(request, auth_provider)
+            if auth_error:
+                return auth_error
+
             views_info = {
                 name: {
                     "description": view.config.description,

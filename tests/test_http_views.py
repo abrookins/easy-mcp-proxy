@@ -5,6 +5,7 @@ The proxy should expose different tool views at different URL paths:
 - /view/<name>/mcp → Tools from specific view
 """
 
+import pytest
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
@@ -487,3 +488,177 @@ class TestHTTPExtraRoutes:
         response = client.get("/custom")
         assert response.status_code == 200
         assert response.text == "custom response"
+
+
+class TestCheckAuthToken:
+    """Tests for the check_auth_token function."""
+
+    @pytest.mark.asyncio
+    async def test_no_auth_provider_allows_access(self):
+        """When auth_provider is None, access should be allowed."""
+        from unittest.mock import MagicMock
+
+        from mcp_proxy.proxy.proxy import check_auth_token
+
+        mock_request = MagicMock()
+        result = await check_auth_token(mock_request, None)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_missing_auth_header_returns_401(self):
+        """Missing Authorization header should return 401."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from mcp_proxy.proxy.proxy import check_auth_token
+
+        mock_request = MagicMock()
+        mock_request.headers = {}
+
+        mock_auth_provider = MagicMock()
+        mock_auth_provider.verify_token = AsyncMock(return_value=None)
+
+        result = await check_auth_token(mock_request, mock_auth_provider)
+        assert result is not None
+        assert result.status_code == 401
+        # Check the body contains the expected error
+        import json
+
+        body = json.loads(result.body.decode())
+        assert body["error"] == "invalid_token"
+        assert "Missing or invalid" in body["error_description"]
+
+    @pytest.mark.asyncio
+    async def test_non_bearer_auth_header_returns_401(self):
+        """Non-Bearer Authorization header should return 401."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from mcp_proxy.proxy.proxy import check_auth_token
+
+        mock_request = MagicMock()
+        mock_request.headers = {"Authorization": "Basic dXNlcjpwYXNz"}
+
+        mock_auth_provider = MagicMock()
+        mock_auth_provider.verify_token = AsyncMock(return_value=None)
+
+        result = await check_auth_token(mock_request, mock_auth_provider)
+        assert result is not None
+        assert result.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_empty_bearer_token_returns_401(self):
+        """Empty Bearer token should return 401."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from mcp_proxy.proxy.proxy import check_auth_token
+
+        mock_request = MagicMock()
+        mock_request.headers = {"Authorization": "Bearer "}
+
+        mock_auth_provider = MagicMock()
+        mock_auth_provider.verify_token = AsyncMock(return_value=None)
+
+        result = await check_auth_token(mock_request, mock_auth_provider)
+        assert result is not None
+        assert result.status_code == 401
+        import json
+
+        body = json.loads(result.body.decode())
+        assert "Empty bearer token" in body["error_description"]
+
+    @pytest.mark.asyncio
+    async def test_invalid_token_returns_401(self):
+        """Invalid token should return 401."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from mcp_proxy.proxy.proxy import check_auth_token
+
+        mock_request = MagicMock()
+        mock_request.headers = {"Authorization": "Bearer invalid-token"}
+
+        mock_auth_provider = MagicMock()
+        mock_auth_provider.verify_token = AsyncMock(return_value=None)
+
+        result = await check_auth_token(mock_request, mock_auth_provider)
+        assert result is not None
+        assert result.status_code == 401
+        mock_auth_provider.verify_token.assert_called_once_with("invalid-token")
+
+    @pytest.mark.asyncio
+    async def test_valid_token_allows_access(self):
+        """Valid token should allow access (return None)."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from mcp_proxy.proxy.proxy import check_auth_token
+
+        mock_request = MagicMock()
+        mock_request.headers = {"Authorization": "Bearer valid-token"}
+
+        mock_auth_provider = MagicMock()
+        mock_access_token = MagicMock()  # Valid token object
+        mock_auth_provider.verify_token = AsyncMock(return_value=mock_access_token)
+
+        result = await check_auth_token(mock_request, mock_auth_provider)
+        assert result is None
+        mock_auth_provider.verify_token.assert_called_once_with("valid-token")
+
+
+class TestHTTPViewsAuthIntegration:
+    """Integration tests for auth on /views endpoints."""
+
+    def test_view_info_returns_auth_error(self):
+        """GET /views/<name> should return auth error when check_auth_token fails."""
+        from unittest.mock import AsyncMock, patch
+
+        from starlette.responses import JSONResponse
+
+        config = ProxyConfig(
+            mcp_servers={},
+            tool_views={"research": ToolViewConfig(description="Research tools")},
+        )
+        proxy = MCPProxy(config)
+
+        # Create a mock auth error response
+        mock_auth_error = JSONResponse(
+            {"error": "invalid_token", "error_description": "Test error"},
+            status_code=401,
+        )
+
+        with patch(
+            "mcp_proxy.proxy.proxy.check_auth_token",
+            new=AsyncMock(return_value=mock_auth_error),
+        ):
+            app = proxy.http_app()
+            client = TestClient(app)
+            response = client.get("/views/research")
+
+        assert response.status_code == 401
+        assert response.json()["error"] == "invalid_token"
+
+    def test_list_views_returns_auth_error(self):
+        """GET /views should return auth error when check_auth_token fails."""
+        from unittest.mock import AsyncMock, patch
+
+        from starlette.responses import JSONResponse
+
+        config = ProxyConfig(
+            mcp_servers={},
+            tool_views={"research": ToolViewConfig(description="Research tools")},
+        )
+        proxy = MCPProxy(config)
+
+        # Create a mock auth error response
+        mock_auth_error = JSONResponse(
+            {"error": "invalid_token", "error_description": "Test error"},
+            status_code=401,
+        )
+
+        with patch(
+            "mcp_proxy.proxy.proxy.check_auth_token",
+            new=AsyncMock(return_value=mock_auth_error),
+        ):
+            app = proxy.http_app()
+            client = TestClient(app)
+            response = client.get("/views")
+
+        assert response.status_code == 401
+        assert response.json()["error"] == "invalid_token"
