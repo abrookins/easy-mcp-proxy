@@ -2,7 +2,7 @@
 
 import pytest
 
-from mcp_proxy.search import ToolSearcher
+from mcp_proxy.search import DEFAULT_THRESHOLD, SearchTool, ToolSearcher
 
 
 class TestToolSearcher:
@@ -21,6 +21,136 @@ class TestToolSearcher:
 
         assert search_tool.name == "redis-expert_search_tools"
         assert callable(search_tool)
+
+
+class TestFuzzySearch:
+    """Tests for fuzzy matching in tool search."""
+
+    async def test_fuzzy_match_partial_words(self):
+        """Fuzzy search should match partial words in tool names."""
+        tools = [
+            {"name": "get_month_category_budget", "description": "Get budget"},
+            {"name": "list_accounts", "description": "List all accounts"},
+        ]
+
+        search_tool = SearchTool(
+            name="test_search", view_name="test", tools=tools, threshold=60.0
+        )
+
+        # "month categories" should match "get_month_category_budget"
+        result = await search_tool(query="month categories")
+
+        assert len(result["tools"]) == 1
+        assert result["tools"][0]["name"] == "get_month_category_budget"
+
+    async def test_fuzzy_match_description(self):
+        """Fuzzy search should match against descriptions."""
+        tools = [
+            {"name": "tool_a", "description": "Manage user authentication settings"},
+            {"name": "tool_b", "description": "Delete files"},
+        ]
+
+        search_tool = SearchTool(
+            name="test_search", view_name="test", tools=tools, threshold=60.0
+        )
+
+        result = await search_tool(query="auth settings")
+
+        assert len(result["tools"]) == 1
+        assert result["tools"][0]["name"] == "tool_a"
+
+    async def test_fuzzy_results_sorted_by_score(self):
+        """Results should be sorted by match score, best first."""
+        tools = [
+            {"name": "xyz_unrelated", "description": "Something else"},
+            {"name": "search_memory", "description": "Search in memory"},
+            {"name": "memory", "description": "Memory tool"},
+        ]
+
+        search_tool = SearchTool(
+            name="test_search", view_name="test", tools=tools, threshold=50.0
+        )
+
+        result = await search_tool(query="memory")
+
+        # Results should be sorted - exact name match "memory" first
+        assert len(result["tools"]) >= 2
+        # First result should have "memory" in name (highest score)
+        assert "memory" in result["tools"][0]["name"].lower()
+
+    async def test_fuzzy_threshold_filters_low_scores(self):
+        """Tools below threshold should not be returned."""
+        tools = [
+            {"name": "get_weather", "description": "Get weather forecast"},
+            {"name": "xyz_unrelated", "description": "Something completely different"},
+        ]
+
+        search_tool = SearchTool(
+            name="test_search", view_name="test", tools=tools, threshold=60.0
+        )
+
+        result = await search_tool(query="weather forecast")
+
+        assert len(result["tools"]) == 1
+        assert result["tools"][0]["name"] == "get_weather"
+
+    async def test_custom_threshold(self):
+        """SearchTool should respect custom threshold."""
+        tools = [
+            {"name": "memory_search", "description": "Search memories"},
+            {"name": "xyz_random", "description": "Completely unrelated tool"},
+        ]
+
+        # High threshold - only very close matches
+        search_tool = SearchTool(
+            name="test_search", view_name="test", tools=tools, threshold=90.0
+        )
+
+        result = await search_tool(query="memory")
+
+        # Only memory_search should match at 90% threshold
+        assert len(result["tools"]) == 1
+        assert result["tools"][0]["name"] == "memory_search"
+
+    async def test_default_threshold_value(self):
+        """Default threshold should be 60."""
+        assert DEFAULT_THRESHOLD == 60.0
+
+        tools = [{"name": "test_tool", "description": "A test"}]
+        search_tool = SearchTool(name="test", view_name="test", tools=tools)
+        assert search_tool._threshold == 60.0
+
+    async def test_empty_name_and_description(self):
+        """Search should handle tools with empty name/description."""
+        tools = [
+            {"name": "", "description": ""},
+            {"name": "real_tool", "description": "A real tool"},
+        ]
+
+        search_tool = SearchTool(
+            name="test_search", view_name="test", tools=tools, threshold=60.0
+        )
+
+        result = await search_tool(query="real")
+
+        assert len(result["tools"]) == 1
+        assert result["tools"][0]["name"] == "real_tool"
+
+    async def test_empty_query_with_limit(self):
+        """Empty query with limit should return limited results."""
+        tools = [
+            {"name": "tool_1", "description": "First"},
+            {"name": "tool_2", "description": "Second"},
+            {"name": "tool_3", "description": "Third"},
+        ]
+
+        search_tool = SearchTool(
+            name="test_search", view_name="test", tools=tools, threshold=60.0
+        )
+
+        result = await search_tool(query="", limit=2)
+
+        assert len(result["tools"]) == 2
 
     async def test_search_tool_returns_matching_tools(self):
         """Search tool should return tools matching the query."""
