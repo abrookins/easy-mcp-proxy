@@ -216,14 +216,16 @@ class CompositeAuthProvider:
 
     @property
     def required_scopes(self) -> list[str]:
-        """Get required scopes from the underlying providers.
+        """Return empty list - scope enforcement is per-provider, not global.
 
-        Returns scopes from OIDC provider if available, otherwise from static provider.
+        When using composite auth (static + OIDC), we don't enforce scopes at
+        the middleware level. This allows:
+        - Static tokens to have their own scope requirements (or none)
+        - OIDC tokens to have different scope requirements
+        - Each auth method to work independently
+
+        Individual providers can still enforce scopes in their verify_token().
         """
-        if self.oidc_provider and hasattr(self.oidc_provider, "required_scopes"):
-            return self.oidc_provider.required_scopes or []
-        if self.static_provider and hasattr(self.static_provider, "required_scopes"):
-            return self.static_provider.required_scopes or []
         return []
 
     @property

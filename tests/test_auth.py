@@ -374,30 +374,29 @@ class TestCompositeAuthProvider:
         assert len(result) == 2
         assert all(isinstance(m, Middleware) for m in result)
 
-    def test_composite_required_scopes_from_oidc(self):
-        """CompositeAuthProvider.required_scopes delegates to OIDC provider."""
+    def test_composite_required_scopes_always_empty(self):
+        """required_scopes always returns [] for per-provider enforcement."""
         from mcp_proxy.auth import CompositeAuthProvider
 
+        # Even with OIDC provider that has scopes, composite returns []
         mock_oidc = MagicMock()
         mock_oidc.required_scopes = ["read", "write"]
-
         composite = CompositeAuthProvider(oidc_provider=mock_oidc)
-        assert composite.required_scopes == ["read", "write"]
+        assert composite.required_scopes == []
 
-    def test_composite_required_scopes_from_static(self):
-        """CompositeAuthProvider.required_scopes falls back to static provider."""
-        from mcp_proxy.auth import CompositeAuthProvider
-
+        # With static provider that has scopes, still returns []
         mock_static = MagicMock()
         mock_static.required_scopes = ["admin"]
-
         composite = CompositeAuthProvider(static_provider=mock_static)
-        assert composite.required_scopes == ["admin"]
+        assert composite.required_scopes == []
 
-    def test_composite_required_scopes_empty_without_providers(self):
-        """CompositeAuthProvider.required_scopes returns [] without providers."""
-        from mcp_proxy.auth import CompositeAuthProvider
+        # With both providers, still returns []
+        composite = CompositeAuthProvider(
+            oidc_provider=mock_oidc, static_provider=mock_static
+        )
+        assert composite.required_scopes == []
 
+        # Without providers, returns []
         composite = CompositeAuthProvider()
         assert composite.required_scopes == []
 
