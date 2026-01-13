@@ -289,10 +289,24 @@ class CompositeAuthProvider:
         return []
 
     def get_middleware(self) -> list:
-        """Get middleware from OIDC provider."""
-        if self.oidc_provider and hasattr(self.oidc_provider, "get_middleware"):
-            return self.oidc_provider.get_middleware()
-        return []
+        """Get middleware that uses this composite provider for token verification.
+
+        This is critical: we must use `self` as the token verifier, not delegate
+        to underlying providers. Otherwise, static tokens won't be checked when
+        both OIDC and static auth are configured.
+        """
+        from mcp.server.auth.middleware.auth_context import AuthContextMiddleware
+        from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend
+        from starlette.middleware import Middleware
+        from starlette.middleware.authentication import AuthenticationMiddleware
+
+        return [
+            Middleware(
+                AuthenticationMiddleware,
+                backend=BearerAuthBackend(self),  # Use composite provider, not OIDC
+            ),
+            Middleware(AuthContextMiddleware),
+        ]
 
 
 def create_auth_provider() -> "AuthProvider | None":

@@ -321,17 +321,24 @@ class TestCompositeAuthProvider:
 
         assert result == ["wk1", "wk2"]
 
-    def test_composite_get_middleware_delegates_to_oidc(self):
-        """CompositeAuthProvider.get_middleware delegates to OIDC provider."""
+    def test_composite_get_middleware_returns_middleware_with_composite_verifier(self):
+        """get_middleware returns middleware using composite for verification."""
+        from starlette.middleware import Middleware
+
         from mcp_proxy.auth import CompositeAuthProvider
 
         mock_oidc = MagicMock()
-        mock_oidc.get_middleware = MagicMock(return_value=["middleware1"])
+        mock_static = MagicMock()
 
-        composite = CompositeAuthProvider(oidc_provider=mock_oidc)
+        composite = CompositeAuthProvider(
+            oidc_provider=mock_oidc, static_provider=mock_static
+        )
         result = composite.get_middleware()
 
-        assert result == ["middleware1"]
+        # Should return exactly 2 middleware items
+        assert len(result) == 2
+        # Both should be Starlette Middleware instances
+        assert all(isinstance(m, Middleware) for m in result)
 
     @pytest.mark.asyncio
     async def test_composite_returns_none_with_no_providers(self):
@@ -353,15 +360,19 @@ class TestCompositeAuthProvider:
 
         assert result == []
 
-    def test_composite_get_middleware_returns_empty_without_oidc(self):
-        """CompositeAuthProvider.get_middleware returns [] without OIDC."""
+    def test_composite_get_middleware_works_without_oidc(self):
+        """CompositeAuthProvider.get_middleware works with only static provider."""
+        from starlette.middleware import Middleware
+
         from mcp_proxy.auth import CompositeAuthProvider
 
         mock_static = MagicMock()
         composite = CompositeAuthProvider(static_provider=mock_static)
         result = composite.get_middleware()
 
-        assert result == []
+        # Should still return middleware that uses composite for verification
+        assert len(result) == 2
+        assert all(isinstance(m, Middleware) for m in result)
 
     def test_composite_required_scopes_from_oidc(self):
         """CompositeAuthProvider.required_scopes delegates to OIDC provider."""
