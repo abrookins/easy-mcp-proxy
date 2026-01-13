@@ -25,6 +25,20 @@ class ParameterConfig(BaseModel):
     description: str | None = None
 
 
+class OutputCacheConfig(BaseModel):
+    """Configuration for caching tool outputs.
+
+    When enabled, large tool outputs are written to disk and a retrieval URL
+    is returned instead of the full content. This reduces context size while
+    allowing LLM-generated code to fetch the full output via HTTP.
+    """
+
+    enabled: bool = False
+    ttl_seconds: int = 3600  # URL expiration time (1 hour default)
+    preview_chars: int = 500  # Characters to include in preview
+    min_size: int | None = None  # Only cache outputs larger than this (bytes)
+
+
 class ToolConfig(BaseModel):
     """Configuration for a single tool.
 
@@ -42,6 +56,7 @@ class ToolConfig(BaseModel):
     enabled: bool = True
     aliases: list[AliasConfig] | None = None
     parameters: dict[str, ParameterConfig] | None = None
+    cache_output: OutputCacheConfig | None = None
 
 
 class HooksConfig(BaseModel):
@@ -93,6 +108,7 @@ class UpstreamServerConfig(BaseModel):
     env: dict[str, str] = {}
     headers: dict[str, str] = {}
     tools: dict[str, ToolConfig] | None = None
+    cache_outputs: OutputCacheConfig | None = None  # Default for all tools in server
 
 
 class ProxyConfig(BaseModel):
@@ -106,3 +122,8 @@ class ProxyConfig(BaseModel):
 
     mcp_servers: dict[str, UpstreamServerConfig] = {}
     tool_views: dict[str, ToolViewConfig] = {}
+
+    # Output caching configuration
+    output_cache: OutputCacheConfig | None = None  # Global default
+    cache_secret: str | None = None  # HMAC signing secret for cache URLs
+    cache_base_url: str | None = None  # Base URL for cache retrieval

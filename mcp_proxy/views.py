@@ -10,8 +10,22 @@ from mcp_proxy.hooks import (
     execute_pre_call,
     load_hook,
 )
-from mcp_proxy.models import ToolConfig, ToolViewConfig
+from mcp_proxy.models import OutputCacheConfig, ToolConfig, ToolViewConfig
 from mcp_proxy.parallel import ParallelTool
+
+
+class CacheContext:
+    """Context for output caching configuration."""
+
+    def __init__(
+        self,
+        get_cache_config: Callable[[str, str], OutputCacheConfig | None],
+        cache_secret: str,
+        cache_base_url: str,
+    ):
+        self.get_cache_config = get_cache_config
+        self.cache_secret = cache_secret
+        self.cache_base_url = cache_base_url
 
 
 class ToolView:
@@ -30,6 +44,7 @@ class ToolView:
         self._reconnect_client: Callable[[str], Any] | None = None  # Reconnect callback
         self.composite_tools: dict[str, ParallelTool] = {}
         self.custom_tools: dict[str, Callable] = {}
+        self._cache_context: CacheContext | None = None
 
         # Build tool-to-server mapping, handling renames
         for server_name, tools in config.tools.items():
@@ -64,6 +79,7 @@ class ToolView:
         upstream_clients: dict[str, Any],
         get_client: Callable[[str], Any | None] | None = None,
         reconnect_client: Callable[[str], Any] | None = None,
+        cache_context: CacheContext | None = None,
     ) -> None:
         """Initialize the view with upstream clients.
 
@@ -76,10 +92,12 @@ class ToolView:
                 clients.
             reconnect_client: Optional async function to reconnect a failed client.
                 Called with server_name when an active client fails.
+            cache_context: Optional cache context for output caching.
         """
         self._upstream_clients = upstream_clients
         self._get_client = get_client
         self._reconnect_client = reconnect_client
+        self._cache_context = cache_context
         self._load_hooks()
 
         # Verify we have clients for all referenced servers
@@ -143,6 +161,45 @@ class ToolView:
     def _get_original_tool_name(self, exposed_name: str) -> str:
         """Get the original tool name for a possibly-renamed tool."""
         return self._tool_to_original_name.get(exposed_name, exposed_name)
+
+    def _apply_caching(self, result: Any, cache_config: OutputCacheConfig) -> Any:
+        """Apply output caching to a tool result if it meets criteria.
+
+        Args:
+            result: The tool result to potentially cache
+            cache_config: The cache configuration to apply
+
+        Returns:
+            Either the original result or a CachedOutputResponse
+        """
+        import json
+
+        from mcp_proxy.cache import create_cached_output_with_meta
+
+        # Convert result to string for size check
+        if isinstance(result, str):
+            content = result
+        else:
+            try:
+                content = json.dumps(result, default=str)
+            except (TypeError, ValueError):
+                content = str(result)
+
+        # Check if content meets minimum size threshold
+        if cache_config.min_size and len(content) < cache_config.min_size:
+            return result
+
+        # Cache the content and return metadata
+        assert self._cache_context is not None
+        cached_response = create_cached_output_with_meta(
+            content=content,
+            secret=self._cache_context.cache_secret,
+            base_url=self._cache_context.cache_base_url,
+            ttl_seconds=cache_config.ttl_seconds,
+            preview_chars=cache_config.preview_chars,
+        )
+
+        return cached_response.model_dump()
 
     async def call_tool(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
         """Call a tool, applying hooks if configured."""
@@ -219,6 +276,12 @@ class ToolView:
             )
             if hook_result.result is not None:
                 result = hook_result.result
+
+        # Apply output caching if configured
+        if self._cache_context:
+            cache_config = self._cache_context.get_cache_config(tool_name, server_name)
+            if cache_config:
+                result = self._apply_caching(result, cache_config)
 
         return result
 

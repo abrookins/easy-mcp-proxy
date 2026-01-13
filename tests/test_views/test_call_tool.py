@@ -240,3 +240,215 @@ class TestToolViewUpdateToolMapping:
         # When called, should use original name
         await view.call_tool("friendly_name", {})
         mock_client.call_tool.assert_called_with("ugly_internal_name", {})
+
+
+class TestToolViewCaching:
+    """Tests for output caching in ToolView."""
+
+    async def test_call_tool_applies_caching(self, tmp_path):
+        """ToolView.call_tool() should apply caching when configured."""
+        from unittest.mock import AsyncMock, patch
+
+        from mcp_proxy.models import OutputCacheConfig
+        from mcp_proxy.views import CacheContext
+
+        config = ToolViewConfig(tools={"server-a": {"my_tool": ToolConfig()}})
+        view = ToolView("test", config)
+
+        # Mock upstream client
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"result": "x" * 1000}
+        view._upstream_clients = {"server-a": mock_client}
+
+        # Set up cache context
+        def get_cache_config(tool_name, server_name):
+            return OutputCacheConfig(enabled=True, ttl_seconds=3600, preview_chars=100)
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            view._cache_context = CacheContext(
+                get_cache_config=get_cache_config,
+                cache_secret="secret",
+                cache_base_url="http://localhost:8000",
+            )
+
+            result = await view.call_tool("my_tool", {"arg": "value"})
+
+        # Result should be cached response
+        assert result["cached"] is True
+        assert "token" in result
+        assert "retrieve_url" in result
+        assert "preview" in result
+
+    async def test_call_tool_skips_caching_below_min_size(self, tmp_path):
+        """ToolView.call_tool() should skip caching for small outputs."""
+        from unittest.mock import AsyncMock, patch
+
+        from mcp_proxy.models import OutputCacheConfig
+        from mcp_proxy.views import CacheContext
+
+        config = ToolViewConfig(tools={"server-a": {"my_tool": ToolConfig()}})
+        view = ToolView("test", config)
+
+        # Mock upstream client with small result
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"result": "small"}
+        view._upstream_clients = {"server-a": mock_client}
+
+        # Set up cache context with min_size
+        def get_cache_config(tool_name, server_name):
+            return OutputCacheConfig(
+                enabled=True, ttl_seconds=3600, preview_chars=100, min_size=10000
+            )
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            view._cache_context = CacheContext(
+                get_cache_config=get_cache_config,
+                cache_secret="secret",
+                cache_base_url="http://localhost:8000",
+            )
+
+            result = await view.call_tool("my_tool", {"arg": "value"})
+
+        # Result should NOT be cached (too small)
+        assert result == {"result": "small"}
+
+    async def test_call_tool_no_caching_when_config_returns_none(self, tmp_path):
+        """ToolView.call_tool() should not cache when config returns None."""
+        from unittest.mock import AsyncMock, patch
+
+        from mcp_proxy.views import CacheContext
+
+        config = ToolViewConfig(tools={"server-a": {"my_tool": ToolConfig()}})
+        view = ToolView("test", config)
+
+        # Mock upstream client
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"result": "data"}
+        view._upstream_clients = {"server-a": mock_client}
+
+        # Set up cache context that returns None
+        def get_cache_config(tool_name, server_name):
+            return None
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            view._cache_context = CacheContext(
+                get_cache_config=get_cache_config,
+                cache_secret="secret",
+                cache_base_url="http://localhost:8000",
+            )
+
+            result = await view.call_tool("my_tool", {"arg": "value"})
+
+        # Result should NOT be cached
+        assert result == {"result": "data"}
+
+    async def test_apply_caching_with_string_result(self, tmp_path):
+        """_apply_caching should handle string results."""
+        from unittest.mock import patch
+
+        from mcp_proxy.models import OutputCacheConfig
+        from mcp_proxy.views import CacheContext
+
+        config = ToolViewConfig()
+        view = ToolView("test", config)
+
+        def get_cache_config(tool_name, server_name):
+            return OutputCacheConfig(enabled=True)
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            view._cache_context = CacheContext(
+                get_cache_config=get_cache_config,
+                cache_secret="secret",
+                cache_base_url="http://localhost:8000",
+            )
+
+            cache_config = OutputCacheConfig(enabled=True, preview_chars=10)
+            result = view._apply_caching("hello world", cache_config)
+
+        assert result["cached"] is True
+        assert result["preview"] == "hello worl..."
+
+    async def test_apply_caching_with_dict_result(self, tmp_path):
+        """_apply_caching should handle dict results by JSON serializing them."""
+        from unittest.mock import patch
+
+        from mcp_proxy.models import OutputCacheConfig
+        from mcp_proxy.views import CacheContext
+
+        config = ToolViewConfig()
+        view = ToolView("test", config)
+
+        def get_cache_config(tool_name, server_name):
+            return OutputCacheConfig(enabled=True)
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            view._cache_context = CacheContext(
+                get_cache_config=get_cache_config,
+                cache_secret="secret",
+                cache_base_url="http://localhost:8000",
+            )
+
+            cache_config = OutputCacheConfig(enabled=True, preview_chars=100)
+            result = view._apply_caching({"key": "value"}, cache_config)
+
+        assert result["cached"] is True
+        # The preview should contain the JSON representation
+        assert "key" in result["preview"]
+
+    async def test_apply_caching_json_dumps_fallback(self, tmp_path):
+        """_apply_caching should fall back to str() when json.dumps fails."""
+        import json
+        from unittest.mock import patch
+
+        from mcp_proxy.models import OutputCacheConfig
+        from mcp_proxy.views import CacheContext
+
+        config = ToolViewConfig()
+        view = ToolView("test", config)
+
+        def get_cache_config(tool_name, server_name):
+            return OutputCacheConfig(enabled=True)
+
+        # Create a mock that raises on first call (in _apply_caching)
+        # but works on subsequent calls (in cache module)
+        call_count = [0]
+        original_dumps = json.dumps
+
+        def mock_dumps(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise TypeError("Simulated failure")
+            return original_dumps(*args, **kwargs)
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            view._cache_context = CacheContext(
+                get_cache_config=get_cache_config,
+                cache_secret="secret",
+                cache_base_url="http://localhost:8000",
+            )
+
+            cache_config = OutputCacheConfig(enabled=True, preview_chars=100)
+
+            # Patch json.dumps globally (it's imported inside the function)
+            with patch("json.dumps", mock_dumps):
+                result = view._apply_caching({"key": "value"}, cache_config)
+
+        assert result["cached"] is True

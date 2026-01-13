@@ -662,3 +662,92 @@ class TestHTTPViewsAuthIntegration:
 
         assert response.status_code == 401
         assert response.json()["error"] == "invalid_token"
+
+
+class TestHTTPCacheRoutes:
+    """Tests for cache routes in HTTP app."""
+
+    def test_http_app_includes_cache_routes_when_enabled(self, tmp_path):
+        """http_app should include cache routes when caching is enabled."""
+        from unittest.mock import patch
+
+        from mcp_proxy.models import OutputCacheConfig
+
+        config = ProxyConfig(
+            output_cache=OutputCacheConfig(enabled=True),
+            cache_secret="test-secret",
+            mcp_servers={
+                "server-a": UpstreamServerConfig(command="echo", args=["test"])
+            },
+        )
+        proxy = MCPProxy(config)
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            app = proxy.http_app()
+
+            # Check that cache route exists
+            client = TestClient(app)
+            # Try to access cache endpoint (should return 400 for missing params)
+            response = client.get("/cache/sometoken")
+            assert response.status_code == 400
+            assert "Missing" in response.text
+
+    def test_http_app_cache_retrieval_works(self, tmp_path):
+        """http_app cache route should retrieve cached content."""
+        from unittest.mock import patch
+
+        from mcp_proxy.cache import create_cached_output_with_meta
+        from mcp_proxy.models import OutputCacheConfig
+
+        config = ProxyConfig(
+            output_cache=OutputCacheConfig(enabled=True),
+            cache_secret="test-secret",
+            mcp_servers={
+                "server-a": UpstreamServerConfig(command="echo", args=["test"])
+            },
+        )
+        proxy = MCPProxy(config)
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+
+            # Create cached content
+            response = create_cached_output_with_meta(
+                content="http cached content",
+                secret="test-secret",
+                base_url="http://localhost:8000",
+                ttl_seconds=3600,
+                preview_chars=100,
+            )
+
+            app = proxy.http_app()
+            client = TestClient(app)
+
+            # Extract query params from URL
+            url_parts = response.retrieve_url.split("?")
+            query = url_parts[1]
+            http_response = client.get(f"/cache/{response.token}?{query}")
+
+            assert http_response.status_code == 200
+            assert http_response.text == "http cached content"
+
+    def test_http_app_no_cache_routes_when_disabled(self):
+        """http_app should not include cache routes when caching is disabled."""
+        config = ProxyConfig(
+            mcp_servers={
+                "server-a": UpstreamServerConfig(command="echo", args=["test"])
+            },
+        )
+        proxy = MCPProxy(config)
+        app = proxy.http_app()
+
+        # Check that cache route does not exist
+        client = TestClient(app)
+        response = client.get("/cache/sometoken")
+        # Should be 404 (not found) not 400 (bad request)
+        assert response.status_code == 404
