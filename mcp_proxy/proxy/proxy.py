@@ -10,7 +10,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 from mcp_proxy.hooks import ToolCallContext, execute_post_call, execute_pre_call
-from mcp_proxy.models import ProxyConfig
+from mcp_proxy.models import OutputCacheConfig, ProxyConfig
 from mcp_proxy.views import ToolView
 
 from .client import ClientManager
@@ -244,6 +244,80 @@ class MCPProxy:
         if init_result and init_result.instructions:
             self.upstream_instructions[server_name] = init_result.instructions
 
+    # Output caching methods
+    def _get_cache_config(
+        self, tool_name: str, server_name: str
+    ) -> OutputCacheConfig | None:
+        """Get the effective cache configuration for a tool.
+
+        Priority: tool config > server config > global config
+
+        Args:
+            tool_name: Name of the tool
+            server_name: Name of the upstream server
+
+        Returns:
+            OutputCacheConfig if caching is enabled, None otherwise
+        """
+        # Check tool-level config first
+        server_config = self.config.mcp_servers.get(server_name)
+        if server_config and server_config.tools:
+            tool_config = server_config.tools.get(tool_name)
+            if tool_config and tool_config.cache_output:
+                if tool_config.cache_output.enabled:
+                    return tool_config.cache_output
+                return None  # Explicitly disabled at tool level
+
+        # Check server-level config
+        if server_config and server_config.cache_outputs:
+            if server_config.cache_outputs.enabled:
+                return server_config.cache_outputs
+            return None  # Explicitly disabled at server level
+
+        # Check global config
+        if self.config.output_cache and self.config.output_cache.enabled:
+            return self.config.output_cache
+
+        return None
+
+    def _is_cache_enabled(self) -> bool:
+        """Check if output caching is enabled at any level."""
+        if self.config.output_cache and self.config.output_cache.enabled:
+            return True
+        for server_config in self.config.mcp_servers.values():
+            if server_config.cache_outputs and server_config.cache_outputs.enabled:
+                return True
+            if server_config.tools:
+                for tool_config in server_config.tools.values():
+                    if tool_config.cache_output and tool_config.cache_output.enabled:
+                        return True
+        return False
+
+    def _get_cache_base_url(self) -> str:
+        """Get the base URL for cache retrieval."""
+        return self.config.cache_base_url or "http://localhost:8000"
+
+    def _get_cache_secret(self) -> str:
+        """Get the cache signing secret, generating one if not configured."""
+        if self.config.cache_secret:
+            return self.config.cache_secret
+        # Generate a random secret if not configured (warn in production)
+        import secrets
+
+        return secrets.token_hex(32)
+
+    def _create_cache_context(self):
+        """Create a cache context if caching is enabled."""
+        from mcp_proxy.views import CacheContext
+
+        if not self._is_cache_enabled():
+            return None
+        return CacheContext(
+            get_cache_config=self._get_cache_config,
+            cache_secret=self._get_cache_secret(),
+            cache_base_url=self._get_cache_base_url(),
+        )
+
     def _create_lifespan(self) -> Callable:
         """Create a lifespan context manager that initializes upstream connections."""
 
@@ -253,12 +327,16 @@ class MCPProxy:
             # Connect to upstream servers (spawns processes, keeps connections alive)
             await self.connect_clients(fetch_tools=True)
 
+            # Create cache context if caching is enabled
+            cache_context = self._create_cache_context()
+
             # Initialize views with active clients
             for view_name, view in self.views.items():
                 await view.initialize(
                     self.upstream_clients,
                     get_client=self.get_active_client,
                     reconnect_client=self.reconnect_client,
+                    cache_context=cache_context,
                 )
                 view_tools = self.get_view_tools(view_name)
                 view.update_tool_mapping(view_tools)
@@ -315,11 +393,15 @@ class MCPProxy:
 
         await self.refresh_upstream_tools()
 
+        # Create cache context if caching is enabled
+        cache_context = self._create_cache_context()
+
         for view_name, view in self.views.items():
             await view.initialize(
                 self.upstream_clients,
                 get_client=self.get_active_client,
                 reconnect_client=self.reconnect_client,
+                cache_context=cache_context,
             )
             # Update tool mapping for dynamically discovered tools
             view_tools = self.get_view_tools(view_name)
@@ -398,6 +480,8 @@ class MCPProxy:
                 )
 
             self._register_instructions_tool(stdio_server)
+            if self._is_cache_enabled():
+                self._register_cache_retrieval_tool(stdio_server)
             stdio_server.run(transport="stdio")
         else:
             import uvicorn
@@ -514,6 +598,8 @@ class MCPProxy:
 
         # Register the get_tool_instructions tool
         self._register_instructions_tool(mcp)
+        if self._is_cache_enabled():
+            self._register_cache_retrieval_tool(mcp)
 
         return mcp
 
@@ -541,6 +627,38 @@ class MCPProxy:
             ),
         )(get_tool_instructions)
 
+    def _register_cache_retrieval_tool(self, mcp: FastMCP) -> None:
+        """Register the retrieve_cached_output tool on an MCP instance."""
+        from mcp_proxy.cache import retrieve_by_token
+
+        secret = self._get_cache_secret()
+
+        def retrieve_cached_output(token: str) -> dict:
+            """Retrieve the full content of a cached tool output.
+
+            When a tool's output is cached, you receive a preview and a token.
+            Use this tool to retrieve the full content when you need it.
+
+            Args:
+                token: The cache token from a previous tool response
+
+            Returns:
+                The full cached output content, or an error if not found/expired
+            """
+            content = retrieve_by_token(token, secret)
+            if content is None:
+                return {"error": "Token not found, expired, or invalid"}
+            return {"content": content}
+
+        mcp.tool(
+            name="retrieve_cached_output",
+            description=(
+                "Retrieve the full content of a cached tool output. "
+                "When a tool's output is cached, you receive a preview and a token. "
+                "Use this tool to retrieve the full content when you need it."
+            ),
+        )(retrieve_cached_output)
+
     def _register_search_tool(self, mcp: FastMCP, view_name: str) -> None:
         """Register the search and call meta-tools for a view."""
         from mcp_proxy.search import ToolSearcher
@@ -555,8 +673,10 @@ class MCPProxy:
 
         search_name = f"{view_name}_search_tools"
 
-        async def search_tools_wrapper(query: str = "", limit: int = 10) -> dict:
-            return await search_tool(query=query, limit=limit)
+        async def search_tools_wrapper(
+            query: str = "", limit: int = 25, offset: int = 0
+        ) -> dict:
+            return await search_tool(query=query, limit=limit, offset=offset)
 
         search_tools_wrapper.__name__ = search_name
         search_tools_wrapper.__doc__ = f"Search for tools in the {view_name} view"
@@ -626,8 +746,10 @@ class MCPProxy:
 
             # Create closure properly
             def create_search_func(st: Any, sn: str, srv: str) -> Callable:
-                async def search_func(query: str = "", limit: int = 10) -> dict:
-                    return await st(query=query, limit=limit)
+                async def search_func(
+                    query: str = "", limit: int = 25, offset: int = 0
+                ) -> dict:
+                    return await st(query=query, limit=limit, offset=offset)
 
                 search_func.__name__ = sn
                 search_func.__doc__ = f"Search for tools from the {srv} server"
@@ -925,6 +1047,9 @@ class MCPProxy:
             # Fetch tools and instructions from active connections
             await self.fetch_tools_from_active_clients()
 
+            # Create cache context if caching is enabled
+            cache_context = self._create_cache_context()
+
             # Now register tools on FastMCP instances
             aggregated_instructions = self.get_aggregated_instructions()
             default_mcp.instructions = aggregated_instructions
@@ -936,6 +1061,7 @@ class MCPProxy:
                     self.upstream_clients,
                     get_client=self.get_active_client,
                     reconnect_client=self.reconnect_client,
+                    cache_context=cache_context,
                 )
                 # get_view_tools(None) returns "default" view tools
                 default_tools = self.get_view_tools(None)
@@ -953,6 +1079,8 @@ class MCPProxy:
                 default_tools = self.get_view_tools(None)
                 self._register_tools_on_mcp(default_mcp, default_tools)
             self._register_instructions_tool(default_mcp)
+            if cache_context:
+                self._register_cache_retrieval_tool(default_mcp)
 
             for view_name, view_mcp in view_mcps.items():
                 # Skip "default" view - already initialized above for root
@@ -967,6 +1095,8 @@ class MCPProxy:
                             view_mcp, view_tools, view=default_view
                         )
                     self._register_instructions_tool(view_mcp)
+                    if cache_context:
+                        self._register_cache_retrieval_tool(view_mcp)
                     continue
                 view_mcp.instructions = aggregated_instructions
                 view = self.views[view_name]
@@ -974,6 +1104,7 @@ class MCPProxy:
                     self.upstream_clients,
                     get_client=self.get_active_client,
                     reconnect_client=self.reconnect_client,
+                    cache_context=cache_context,
                 )
                 # Always update tool mapping (needed for view.call_tool to work)
                 view_tools = self.get_view_tools(view_name)
@@ -986,11 +1117,15 @@ class MCPProxy:
                 else:
                     self._register_tools_on_mcp(view_mcp, view_tools, view=view)
                 self._register_instructions_tool(view_mcp)
+                if cache_context:
+                    self._register_cache_retrieval_tool(view_mcp)
 
             # Initialize the virtual "search" MCP with all tools
             search_mcp.instructions = aggregated_instructions
             self._initialize_search_view(search_mcp)
             self._register_instructions_tool(search_mcp)
+            if cache_context:
+                self._register_cache_retrieval_tool(search_mcp)
 
             try:
                 async with default_mcp_app.lifespan(default_mcp_app):
@@ -1060,6 +1195,13 @@ class MCPProxy:
             return JSONResponse({"views": views_info})
 
         routes.append(Route(f"{path}/views", list_views, methods=["GET"]))
+
+        # Add cache routes if caching is enabled
+        if self._is_cache_enabled():
+            from mcp_proxy.cache import create_cache_routes
+
+            cache_routes = create_cache_routes(self._get_cache_secret())
+            routes.extend(cache_routes)
 
         # Mount the virtual "search" endpoint first (before view mounts)
         routes.append(Mount(f"{path}/search", app=search_mcp_app))

@@ -32,20 +32,26 @@ class SearchTool:
                 "limit": {
                     "type": "integer",
                     "description": "Maximum number of results to return",
-                    "default": 10,
+                    "default": 25,
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Number of results to skip (for pagination)",
+                    "default": 0,
                 },
             },
-            "required": ["query"],
+            "required": [],
         }
 
-    async def __call__(self, query: str, limit: int | None = None) -> dict[str, Any]:
+    async def __call__(
+        self, query: str = "", limit: int = 25, offset: int = 0
+    ) -> dict[str, Any]:
         """Search for tools matching the query using fuzzy matching."""
         if not query:
-            # Empty query returns all tools
-            matches = self._tools
-            if limit is not None:
-                matches = matches[:limit]
-            return {"tools": matches}
+            # Empty query returns all tools (paginated)
+            total = len(self._tools)
+            matches = self._tools[offset : offset + limit]
+            return {"tools": matches, "total": total, "offset": offset, "limit": limit}
 
         # Score each tool using fuzzy matching
         scored: list[tuple[float, dict[str, Any]]] = []
@@ -64,12 +70,12 @@ class SearchTool:
         # Sort by score descending
         scored.sort(key=lambda x: x[0], reverse=True)
 
-        # Apply limit
-        if limit is not None:
-            scored = scored[:limit]
+        # Apply pagination
+        total = len(scored)
+        scored = scored[offset : offset + limit]
 
         matches = [tool for _, tool in scored]
-        return {"tools": matches}
+        return {"tools": matches, "total": total, "offset": offset, "limit": limit}
 
 
 class ToolSearcher:
