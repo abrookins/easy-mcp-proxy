@@ -81,10 +81,20 @@ def parse_token_config(token_str: str) -> tuple[str, dict]:
     1. Simple: "my-token" -> token with auto-generated client_id, no scopes
     2. Extended: "my-token:client_id:scope1,scope2" -> token with custom claims
 
+    Scopes can contain colons (e.g., "mcp:tools") since we only split on the
+    first two colons. Everything after the second colon is treated as scopes.
+
+    Examples:
+        "my-token" -> token="my-token", client_id=auto, scopes=[]
+        "my-token:admin" -> token="my-token", client_id="admin", scopes=[]
+        "my-token:admin:read,write" -> scopes=["read", "write"]
+        "my-token:admin:mcp:tools,read" -> scopes=["mcp:tools", "read"]
+
     Returns:
         Tuple of (token, metadata_dict)
     """
-    parts = token_str.strip().split(":")
+    # Split on first two colons only - scopes section can contain colons
+    parts = token_str.strip().split(":", 2)
     token = parts[0]
 
     if len(parts) == 1:

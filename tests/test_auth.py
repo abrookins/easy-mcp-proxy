@@ -52,6 +52,24 @@ class TestParseTokenConfig:
         token, config = parse_token_config("my-token:client: read , write ")
         assert config["scopes"] == ["read", "write"]
 
+    def test_scopes_with_colons(self):
+        """Scopes containing colons (like mcp:tools) parse correctly."""
+        from mcp_proxy.auth import parse_token_config
+
+        token, config = parse_token_config("my-token:admin:mcp:tools")
+        assert token == "my-token"
+        assert config["client_id"] == "admin"
+        assert config["scopes"] == ["mcp:tools"]
+
+    def test_multiple_scopes_with_colons(self):
+        """Multiple scopes with colons parse correctly."""
+        from mcp_proxy.auth import parse_token_config
+
+        token, config = parse_token_config("my-token:admin:mcp:tools,api:read")
+        assert token == "my-token"
+        assert config["client_id"] == "admin"
+        assert config["scopes"] == ["mcp:tools", "api:read"]
+
 
 class TestGetStaticTokenConfigs:
     """Tests for get_static_token_configs function."""
