@@ -158,9 +158,9 @@ Make a required parameter optional:
 
 You want to search code, documentation, and memory simultaneously. Currently, the LLM has to call each search tool separately and wait for results sequentially.
 
-### The Solution: Parallel Composition
+### The Solution: Concurrent Composition
 
-Create a composite tool that fans out to multiple upstreams:
+Create a composite tool that fans out to multiple upstreams concurrently:
 
 ```yaml
 tool_views:
@@ -169,7 +169,7 @@ tool_views:
       search_everything:
         description: |
           Search all knowledge sources simultaneously.
-          Returns results from code, docs, and memory in parallel.
+          Returns results from code, docs, and memory concurrently.
         inputs:
           query:
             type: string
@@ -197,7 +197,7 @@ tool_views:
               limit: "{inputs.max_results|default:10}"
 ```
 
-**Result**: One call to `search_everything(query="kubernetes deployment")` triggers three parallel searches. Results return as:
+**Result**: One call to `search_everything(query="kubernetes deployment")` triggers three concurrent searches (via `asyncio.gather`). Results return as:
 
 ```json
 {
@@ -260,6 +260,70 @@ tool_views:
 
 Or configure different Claude Desktop instances to use different views.
 
+### Variation: Runtime Permission Checks
+
+Views control which tools are *available*, but sometimes you need to check permissions at runtime—for example, verifying OAuth scopes before allowing a write operation.
+
+Use a pre-call hook to inspect the request and enforce permissions:
+
+```python
+# myhooks/permissions.py
+import jwt
+from mcp_proxy.hooks import HookResult, ToolCallContext
+from fastmcp.server.dependencies import get_http_request
+
+# Tools that require the "write" scope
+WRITE_TOOLS = {"write_file", "delete_file", "create_deployment", "scale_deployment"}
+
+async def check_permissions(args: dict, context: ToolCallContext) -> HookResult:
+    """Verify OAuth scopes before allowing tool execution."""
+    if context.tool_name not in WRITE_TOOLS:
+        return HookResult()  # Read operations allowed
+
+    # Get the HTTP request from FastMCP's context
+    try:
+        request = get_http_request()
+    except RuntimeError:
+        # No HTTP request (stdio mode) - allow or deny based on policy
+        return HookResult()
+
+    # Extract and decode the JWT
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return HookResult(abort=True, abort_reason="Missing authorization")
+
+    token = auth_header[7:]
+    try:
+        # In production, verify signature with your OAuth provider's public key
+        claims = jwt.decode(token, options={"verify_signature": False})
+        scopes = claims.get("scope", "").split()
+    except jwt.InvalidTokenError:
+        return HookResult(abort=True, abort_reason="Invalid token")
+
+    # Check for required scope
+    if "write" not in scopes:
+        return HookResult(
+            abort=True,
+            abort_reason=f"Scope 'write' required for {context.tool_name}"
+        )
+
+    return HookResult()
+```
+
+Configure the hook in your view:
+
+```yaml
+tool_views:
+  production:
+    hooks:
+      pre_call: myhooks.permissions.check_permissions
+    include_all: true
+```
+
+**Result**: All tools are exposed, but write operations require the `write` scope in the OAuth token. Users without the scope can still read, but writes are blocked at runtime with a clear error message.
+
+**Note**: This example decodes the JWT without signature verification for brevity. In production, verify the signature using your OAuth provider's JWKS endpoint and the `pyjwt` library with `algorithms` and `audience` parameters.
+
 ---
 
 ## Want to Log or Audit Tool Calls
@@ -268,9 +332,9 @@ Or configure different Claude Desktop instances to use different views.
 
 You need to log all tool calls for debugging, auditing, or analytics. You might also want to validate arguments before they reach upstream servers.
 
-### The Solution: Hooks
+### The Solution: Hooks (YAML-Configurable)
 
-Attach pre/post call hooks to views:
+For simple tool call logging, attach pre/post call hooks to views:
 
 ```yaml
 tool_views:
@@ -299,7 +363,7 @@ async def audit_call(args: dict, context: ToolCallContext) -> HookResult:
         "event": "tool_call",
         "timestamp": datetime.utcnow().isoformat(),
         "tool": context.tool_name,
-        "server": context.server_name,
+        "server": context.upstream_server,
         "args": args
     }))
     return HookResult(args=args)
@@ -332,13 +396,67 @@ async def validate_args(args: dict, context: ToolCallContext) -> HookResult:
     return HookResult(args=args)
 ```
 
+### Alternative: FastMCP Middleware (More Comprehensive)
+
+Our hooks intercept only tool calls within views. For broader interception—including resource reads, prompt requests, tool listing, and all MCP messages—use [FastMCP Middleware](https://gofastmcp.com/servers/middleware).
+
+FastMCP middleware operates as a pipeline, intercepting every MCP request and response:
+
+```python
+# mymiddleware.py
+from fastmcp.server.middleware import Middleware, MiddlewareContext
+
+class AuditMiddleware(Middleware):
+    """Log all MCP operations, not just tool calls."""
+
+    async def on_call_tool(self, context: MiddlewareContext, call_next):
+        """Log tool calls."""
+        print(f"Tool call: {context.message.name}")
+        result = await call_next(context)
+        print(f"Tool completed: {context.message.name}")
+        return result
+
+    async def on_list_tools(self, context: MiddlewareContext, call_next):
+        """Log when clients discover tools."""
+        print("Client listing tools")
+        return await call_next(context)
+
+    async def on_read_resource(self, context: MiddlewareContext, call_next):
+        """Log resource access."""
+        print(f"Resource read: {context.message.uri}")
+        return await call_next(context)
+```
+
+FastMCP provides built-in middleware for common patterns:
+
+```python
+from fastmcp.server.middleware.timing import TimingMiddleware
+from fastmcp.server.middleware.logging import LoggingMiddleware
+
+mcp.add_middleware(TimingMiddleware())     # Performance monitoring
+mcp.add_middleware(LoggingMiddleware())    # Request logging
+```
+
+**When to use each:**
+
+| Feature | Our Hooks | FastMCP Middleware |
+|---------|-----------|-------------------|
+| Tool call logging | ✅ YAML config | ✅ Python class |
+| Resource/prompt logging | ❌ | ✅ |
+| Tool listing interception | ❌ | ✅ |
+| Rate limiting | ❌ | ✅ Built-in |
+| Caching | ✅ Output caching | ✅ Request caching |
+| Per-view configuration | ✅ | ❌ Server-wide |
+
+Use our hooks for simple per-view tool logging. Use FastMCP middleware when you need to intercept all MCP protocol operations or want built-in patterns like rate limiting
+
 ---
 
 ## Need Custom Business Logic
 
 ### The Problem
 
-You need a tool that combines multiple upstream calls with custom logic—something that can't be expressed as simple parallel composition.
+You need a tool that combines multiple upstream calls with custom logic—something that can't be expressed as simple concurrent composition.
 
 ### The Solution: Custom Python Tools
 
@@ -510,7 +628,7 @@ mcp-proxy serve --config config.yaml --env-file .env
 | Too many tools | Search mode | `exposure_mode: search` |
 | Generic names | Tool renaming | `name: new_name` |
 | Implementation details | Parameter binding | `hidden: true`, `default: value` |
-| Sequential searches | Parallel composition | `composite_tools.parallel` |
+| Sequential searches | Concurrent composition | `composite_tools.parallel` |
 | Access control | Multiple views | `tool_views` with different tools |
 | Audit/logging | Hooks | `hooks.pre_call`, `hooks.post_call` |
 | Custom logic | Python tools | `custom_tools` |

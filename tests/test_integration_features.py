@@ -933,6 +933,434 @@ class TestSearchModeIntegration:
 # =============================================================================
 
 
+# =============================================================================
+# 9. Output Caching End-to-End
+# =============================================================================
+
+
+class TestOutputCachingEndToEnd:
+    """End-to-end tests for output caching from tool call to token retrieval."""
+
+    @pytest.mark.asyncio
+    async def test_large_output_is_cached_and_retrievable(self, tmp_path):
+        """Large tool output should be cached and retrievable via token."""
+        from mcp_proxy.models import OutputCacheConfig
+        from mcp_proxy.proxy.tool_info import ToolInfo
+
+        # Create config with caching enabled
+        config = ProxyConfig(
+            output_cache=OutputCacheConfig(
+                enabled=True,
+                ttl_seconds=3600,
+                preview_chars=100,
+                min_size=50,  # Low threshold for testing
+            ),
+            cache_secret="test-secret",
+            cache_base_url="http://localhost:8000",
+            mcp_servers={
+                "server": UpstreamServerConfig(command="echo", tools={"get_data": {}})
+            },
+            tool_views={
+                "test": ToolViewConfig(include_all=True),
+            },
+        )
+        proxy = MCPProxy(config)
+
+        # Generate large output (> min_size)
+        large_output = "x" * 500
+
+        # Mock upstream to return large output
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"content": large_output}
+        proxy.upstream_clients = {"server": mock_client}
+
+        # Set up view with cache context and upstream
+        view = proxy.views["test"]
+        view._upstream_clients = {"server": mock_client}
+        view._cache_context = proxy._create_cache_context()
+        # Register tool mapping for the view
+        view.update_tool_mapping([ToolInfo(name="get_data", server="server")])
+
+        # Patch CACHE_DIR for this test
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+
+            # Call the tool - should return cached response
+            result = await view.call_tool("get_data", {})
+
+            # Verify cached response format
+            assert result["cached"] is True
+            assert "token" in result
+            assert "retrieve_url" in result
+            assert "preview" in result
+            assert "expires_at" in result
+            assert "size_bytes" in result
+
+            # Preview should be truncated
+            assert len(result["preview"]) <= 103  # 100 + "..."
+
+            # Save the token for retrieval
+            token = result["token"]
+
+            # Now retrieve the full content using the token
+            from mcp_proxy.cache import retrieve_by_token
+
+            full_content = retrieve_by_token(token, "test-secret")
+
+            # Full content should match original
+            import json
+
+            expected = json.dumps({"content": large_output})
+            assert full_content == expected
+
+    @pytest.mark.asyncio
+    async def test_cache_retrieval_tool_returns_full_content(self, tmp_path):
+        """retrieve_cached_output tool should return full cached content."""
+        from fastmcp import Client
+
+        from mcp_proxy.models import OutputCacheConfig
+        from mcp_proxy.proxy.tool_info import ToolInfo
+
+        config = ProxyConfig(
+            output_cache=OutputCacheConfig(
+                enabled=True,
+                ttl_seconds=3600,
+                preview_chars=50,
+                min_size=10,  # Very low for testing
+            ),
+            cache_secret="test-secret",
+            cache_base_url="http://localhost:8000",
+            mcp_servers={
+                "server": UpstreamServerConfig(command="echo", tools={"fetch": {}})
+            },
+            tool_views={
+                "cached": ToolViewConfig(include_all=True),
+            },
+        )
+        proxy = MCPProxy(config)
+
+        # Large output that will be cached
+        large_data = {"items": ["item" + str(i) for i in range(100)]}
+
+        # Mock upstream
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = large_data
+        proxy.upstream_clients = {"server": mock_client}
+
+        # Set up view
+        view = proxy.views["cached"]
+        view._upstream_clients = {"server": mock_client}
+        view._cache_context = proxy._create_cache_context()
+        view.update_tool_mapping([ToolInfo(name="fetch", server="server")])
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+
+            # Step 1: Call tool to get cached response
+            cached_response = await view.call_tool("fetch", {})
+
+            assert cached_response["cached"] is True
+            token = cached_response["token"]
+
+            # Step 2: Get the view MCP and call retrieve_cached_output
+            view_mcp = proxy.get_view_mcp("cached")
+
+            async with Client(view_mcp) as client:
+                # The retrieve_cached_output tool should be available
+                tools = await client.list_tools()
+                tool_names = [t.name for t in tools]
+                assert "retrieve_cached_output" in tool_names
+
+                # Call retrieve_cached_output with the token
+                result = await client.call_tool(
+                    "retrieve_cached_output", {"token": token}
+                )
+
+                # Parse the result - it comes back as CallToolResult
+                import json
+
+                content_text = result.content[0].text
+                content_data = json.loads(content_text)
+
+                # Should have the full content
+                assert "content" in content_data
+                full_content = json.loads(content_data["content"])
+
+                # Verify it matches the original data
+                assert full_content == large_data
+
+    @pytest.mark.asyncio
+    async def test_http_cache_endpoint_returns_content(self, tmp_path):
+        """HTTP /cache/{token} endpoint should return full cached content."""
+        from starlette.testclient import TestClient
+
+        from mcp_proxy.models import OutputCacheConfig
+        from mcp_proxy.proxy.tool_info import ToolInfo
+
+        config = ProxyConfig(
+            output_cache=OutputCacheConfig(
+                enabled=True,
+                ttl_seconds=3600,
+                preview_chars=50,
+                min_size=10,
+            ),
+            cache_secret="test-secret",
+            cache_base_url="http://localhost:8000",
+            mcp_servers={
+                "server": UpstreamServerConfig(command="echo", tools={"read": {}})
+            },
+            tool_views={
+                "http-cached": ToolViewConfig(include_all=True),
+            },
+        )
+        proxy = MCPProxy(config)
+
+        # Large content
+        file_content = "Line " + "content " * 100
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = file_content
+        proxy.upstream_clients = {"server": mock_client}
+
+        view = proxy.views["http-cached"]
+        view._upstream_clients = {"server": mock_client}
+        view._cache_context = proxy._create_cache_context()
+        view.update_tool_mapping([ToolInfo(name="read", server="server")])
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+
+            # Step 1: Call tool to cache the output
+            cached_response = await view.call_tool("read", {})
+
+            assert cached_response["cached"] is True
+            retrieve_url = cached_response["retrieve_url"]
+            token = cached_response["token"]
+
+            # Step 2: Create HTTP app and retrieve via HTTP
+            app = proxy.http_app()
+            client = TestClient(app)
+
+            # Extract query params from the signed URL
+            url_parts = retrieve_url.split("?")
+            query = url_parts[1]
+
+            # Make HTTP request to cache endpoint
+            http_response = client.get(f"/cache/{token}?{query}")
+
+            assert http_response.status_code == 200
+            # Content is plain text containing the cached content
+            # The cached content is already the original (string in this case)
+            assert http_response.text == file_content
+
+    @pytest.mark.asyncio
+    async def test_small_output_not_cached(self, tmp_path):
+        """Output below min_size should not be cached."""
+        from mcp_proxy.models import OutputCacheConfig
+        from mcp_proxy.proxy.tool_info import ToolInfo
+
+        config = ProxyConfig(
+            output_cache=OutputCacheConfig(
+                enabled=True,
+                ttl_seconds=3600,
+                preview_chars=100,
+                min_size=10000,  # High threshold
+            ),
+            cache_secret="test-secret",
+            mcp_servers={
+                "server": UpstreamServerConfig(command="echo", tools={"small": {}})
+            },
+            tool_views={
+                "test": ToolViewConfig(include_all=True),
+            },
+        )
+        proxy = MCPProxy(config)
+
+        # Small output (< min_size)
+        small_output = {"status": "ok"}
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = small_output
+        proxy.upstream_clients = {"server": mock_client}
+
+        view = proxy.views["test"]
+        view._upstream_clients = {"server": mock_client}
+        view._cache_context = proxy._create_cache_context()
+        view.update_tool_mapping([ToolInfo(name="small", server="server")])
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+
+            result = await view.call_tool("small", {})
+
+            # Should return original result, not cached
+            assert result == small_output
+            assert "cached" not in result or result.get("cached") is not True
+
+    @pytest.mark.asyncio
+    async def test_tool_level_cache_config_override(self, tmp_path):
+        """Tool-level cache config should override global config."""
+        from mcp_proxy.models import OutputCacheConfig, ToolConfig
+        from mcp_proxy.proxy.tool_info import ToolInfo
+
+        config = ProxyConfig(
+            # Global: caching disabled
+            output_cache=OutputCacheConfig(enabled=False),
+            cache_secret="test-secret",
+            cache_base_url="http://localhost:8000",
+            mcp_servers={
+                "server": UpstreamServerConfig(
+                    command="echo",
+                    tools={
+                        # Tool-level: caching enabled with low threshold
+                        "cached_tool": ToolConfig(
+                            cache_output=OutputCacheConfig(
+                                enabled=True,
+                                min_size=10,
+                                preview_chars=20,
+                            )
+                        ),
+                        "uncached_tool": ToolConfig(),
+                    },
+                )
+            },
+            tool_views={
+                "test": ToolViewConfig(include_all=True),
+            },
+        )
+        proxy = MCPProxy(config)
+
+        large_output = "x" * 500
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = large_output
+        proxy.upstream_clients = {"server": mock_client}
+
+        view = proxy.views["test"]
+        view._upstream_clients = {"server": mock_client}
+        view._cache_context = proxy._create_cache_context()
+        view.update_tool_mapping(
+            [
+                ToolInfo(name="cached_tool", server="server"),
+                ToolInfo(name="uncached_tool", server="server"),
+            ]
+        )
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+
+            # cached_tool should be cached (tool-level override)
+            result1 = await view.call_tool("cached_tool", {})
+            assert result1["cached"] is True
+            assert len(result1["preview"]) <= 23  # 20 + "..."
+
+            # uncached_tool should NOT be cached (follows global disabled)
+            result2 = await view.call_tool("uncached_tool", {})
+            assert result2 == large_output
+
+    @pytest.mark.asyncio
+    async def test_full_flow_tool_to_http_retrieval(self, tmp_path):
+        """Complete flow: call tool -> get token -> retrieve via HTTP."""
+        from starlette.testclient import TestClient
+
+        from mcp_proxy.models import OutputCacheConfig
+        from mcp_proxy.proxy.tool_info import ToolInfo
+
+        config = ProxyConfig(
+            output_cache=OutputCacheConfig(
+                enabled=True,
+                ttl_seconds=3600,
+                preview_chars=100,
+                min_size=50,
+            ),
+            cache_secret="integration-test-secret",
+            cache_base_url="http://localhost:8000",
+            mcp_servers={
+                "files": UpstreamServerConfig(
+                    command="echo", tools={"read_file": {"description": "Read a file"}}
+                )
+            },
+            tool_views={
+                "files": ToolViewConfig(
+                    description="File operations",
+                    include_all=True,
+                ),
+            },
+        )
+        proxy = MCPProxy(config)
+
+        # Simulate large file content
+        file_content = {
+            "path": "/data/large_file.txt",
+            "content": "=" * 1000,  # Large content
+            "size": 1000,
+        }
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = file_content
+        proxy.upstream_clients = {"files": mock_client}
+
+        view = proxy.views["files"]
+        view._upstream_clients = {"files": mock_client}
+        view._cache_context = proxy._create_cache_context()
+        view.update_tool_mapping([ToolInfo(name="read_file", server="files")])
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+
+            # STEP 1: Call tool and get cached response
+            result = await view.call_tool("read_file", {"path": "/data/large_file.txt"})
+
+            # Verify it's cached
+            assert result["cached"] is True
+            assert "token" in result
+            assert "retrieve_url" in result
+            assert "preview" in result
+            assert result["size_bytes"] > 0
+
+            # The preview should be truncated
+            preview = result["preview"]
+            assert len(preview) <= 103
+
+            token = result["token"]
+            retrieve_url = result["retrieve_url"]
+
+            # STEP 2: Create HTTP app
+            app = proxy.http_app()
+            http_client = TestClient(app)
+
+            # STEP 3: Retrieve full content via HTTP endpoint
+            url_parts = retrieve_url.split("?")
+            query = url_parts[1]
+            response = http_client.get(f"/cache/{token}?{query}")
+
+            assert response.status_code == 200
+
+            # STEP 4: Verify the full content matches original
+            import json
+
+            retrieved_content = json.loads(response.text)
+            assert retrieved_content == file_content
+            assert retrieved_content["content"] == "=" * 1000
+
+
+# =============================================================================
+# 10. Validate CLI Command with Upstream Connections
+# =============================================================================
+
+
 class TestValidateCLIWithUpstream:
     """Tests for validate command checking upstream connections."""
 

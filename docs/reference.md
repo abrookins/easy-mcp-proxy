@@ -199,7 +199,7 @@ tool_views:
     tools:                              # Explicit tool selection
       server_name:
         tool_name: {}
-    composite_tools:                    # Parallel composition
+    composite_tools:                    # Concurrent composition
       # ...
     custom_tools:                       # Python tools
       # ...
@@ -215,7 +215,7 @@ tool_views:
 | `exposure_mode` | string | `direct` | How tools are exposed |
 | `include_all` | boolean | `false` | Include all tools from all servers |
 | `tools` | object | - | Server → tool mapping |
-| `composite_tools` | object | - | Parallel composition definitions |
+| `composite_tools` | object | - | Concurrent composition definitions |
 | `custom_tools` | list | - | Python tool modules |
 | `hooks` | object | - | Pre/post call hooks |
 
@@ -279,7 +279,7 @@ tool_views:
 
 Create tools that orchestrate multiple upstream tools.
 
-### Parallel Composition
+### Concurrent Composition
 
 ```yaml
 tool_views:

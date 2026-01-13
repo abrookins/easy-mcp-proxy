@@ -57,8 +57,16 @@ Transform tool interfaces by:
 ### Composite Tools
 
 New tools that orchestrate multiple upstream tools:
-- **Parallel composition**: Fan-out to multiple tools simultaneously
+- **Concurrent composition**: Fan-out to multiple tools via `asyncio.gather`
 - **Custom tools**: Python functions with full upstream access
+
+### Output Caching
+
+Large tool outputs can consume valuable LLM context window space. Output caching:
+- Stores outputs exceeding a size threshold
+- Returns a preview plus a retrieval token
+- Provides both tool-based and HTTP retrieval methods
+- Uses HMAC-signed expiring URLs for security
 
 ## Documentation Structure
 

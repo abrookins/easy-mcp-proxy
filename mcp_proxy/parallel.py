@@ -1,4 +1,4 @@
-"""Parallel/fan-out tool execution."""
+"""Concurrent fan-out tool execution (via asyncio.gather)."""
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, Coroutine
@@ -15,7 +15,7 @@ class ParallelStep:
 
 @dataclass
 class ParallelTool:
-    """A tool that executes multiple upstream tools in parallel."""
+    """A tool that executes multiple upstream tools concurrently."""
 
     name: str
     description: str

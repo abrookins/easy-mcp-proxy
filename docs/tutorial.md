@@ -73,8 +73,10 @@ mcp-proxy schema --config config.yaml
 Call a tool directly to test:
 
 ```bash
-mcp-proxy call filesystem.read_file --config config.yaml --arg path=/tmp/mcp-demo/hello.txt
+mcp-proxy call filesystem.read_file --config config.yaml --arg path=hello.txt
 ```
+
+Note: Paths are relative to the directory passed to the filesystem server (`/tmp/mcp-demo`).
 
 ## Step 4: Run the Proxy
 
@@ -127,56 +129,79 @@ mcp_servers:
 
 The `tools` section acts as an allowlist. Only listed tools pass through.
 
-## Step 6: Rename Tools
+## Step 6: Build a Domain-Specific Interface
 
-Generic tool names like `read_file` can be confusing when you have multiple servers. Rename them:
+Let's build something useful: a "skills library" where you store reusable prompts, templates, and knowledge documents. Instead of exposing generic filesystem tools, we'll create a purpose-built interface.
+
+First, create a skills directory:
+
+```bash
+mkdir -p /tmp/skills/python /tmp/skills/deployment
+echo "# Python Debugging\n\nUse pdb: import pdb; pdb.set_trace()" > /tmp/skills/python/debugging.md
+echo "# Kubernetes Basics\n\nkubectl get pods -A" > /tmp/skills/deployment/kubernetes.md
+```
+
+Now configure the proxy to expose this as a skills library:
 
 ```yaml
 mcp_servers:
-  filesystem:
+  skills:
     command: npx
-    args: [-y, "@modelcontextprotocol/server-filesystem", /tmp/mcp-demo]
+    args: [-y, "@modelcontextprotocol/server-filesystem", /tmp/skills]
     tools:
       read_file:
-        name: read_document
-        description: "Read a document from the demo folder"
+        name: get_skill
+        description: |
+          Retrieve a skill document from the skills library.
+
+          Skills are markdown files organized by category.
+          Examples: "python/debugging.md", "deployment/kubernetes.md"
       list_directory:
-        name: list_documents
+        name: list_skills
+        description: "List skills in a category (e.g., 'python') or all categories"
+      directory_tree:
+        name: browse_skills
+        description: "Show the complete skills library structure"
 ```
 
-Now the LLM sees `read_document` instead of `read_file`.
+The LLM now sees `get_skill`, `list_skills`, `browse_skills` — purpose-driven names that guide correct usage.
 
 ## Step 7: Parameter Binding
 
-Hide implementation details by binding parameters:
+Let's improve the skills interface further. The `browse_skills` tool has a `path` parameter, but we always want it to show the entire library. Hide the parameter and set a default:
 
 ```yaml
 mcp_servers:
-  filesystem:
+  skills:
     command: npx
-    args: [-y, "@modelcontextprotocol/server-filesystem", /tmp/mcp-demo]
+    args: [-y, "@modelcontextprotocol/server-filesystem", /tmp/skills]
     tools:
       directory_tree:
-        name: show_structure
-        description: "Show the folder structure"
+        name: browse_skills
+        description: "Show the complete skills library structure"
         parameters:
           path:
-            hidden: true    # Don't expose this parameter
-            default: "."    # Always use the root
-```
-
-The LLM calls `show_structure()` with no arguments. The proxy injects `path="."` automatically.
-
-You can also rename parameters:
-
-```yaml
+            hidden: true    # Remove from exposed schema
+            default: "."    # Always start at root
       read_file:
-        name: get_document
+        name: get_skill
         parameters:
           path:
-            rename: document_name
-            description: "Name of the document to read"
+            rename: skill_path
+            description: "Path to skill (e.g., 'python/debugging.md')"
+      list_directory:
+        name: list_skills
+        parameters:
+          path:
+            rename: category
+            default: "."
+            description: "Category to list, or omit for all categories"
 ```
+
+Now:
+- `browse_skills()` takes no arguments — the proxy injects `path="."`
+- `get_skill(skill_path="python/debugging.md")` uses a domain-specific parameter name
+- `list_skills()` works (shows all), and `list_skills(category="python")` filters
 
 ## Step 8: Multiple Servers
 
@@ -237,16 +262,16 @@ tool_views:
 
 This creates `{server}_search_tools` and `{server}_call_tool` for each upstream server.
 
-## Step 10: Composite Tools (Parallel Execution)
+## Step 10: Composite Tools (Concurrent Execution)
 
-Create tools that call multiple upstream tools simultaneously:
+Create tools that call multiple upstream tools concurrently:
 
 ```yaml
 tool_views:
   unified:
     composite_tools:
       search_everywhere:
-        description: "Search files and memory in parallel"
+        description: "Search files and memory concurrently"
         inputs:
           query: { type: string, required: true }
         parallel:
@@ -380,6 +405,59 @@ Access views via HTTP endpoints:
 - `/view/readonly/mcp`
 - `/view/full/mcp`
 - `/view/deployment/mcp`
+
+## Step 15: Output Caching
+
+Large tool outputs (file contents, search results) consume valuable context window space. Enable output caching to store large results and return only a preview:
+
+```yaml
+output_cache:
+  enabled: true
+  ttl_seconds: 3600        # URLs valid for 1 hour
+  preview_chars: 500       # Show first 500 chars inline
+  min_size: 10000          # Only cache outputs > 10KB
+
+cache_secret: "${CACHE_SECRET}"  # HMAC signing key (set via environment variable)
+cache_base_url: "https://your-proxy.example.com"  # Base URL for retrieval (HTTP mode)
+
+mcp_servers:
+  filesystem:
+    command: npx
+    args: [-y, "@modelcontextprotocol/server-filesystem", /data]
+```
+
+When a tool returns output larger than `min_size`, the proxy returns:
+
+```json
+{
+  "cached": true,
+  "preview": "First 500 characters of the file...",
+  "token": "abc123",
+  "retrieve_url": "https://your-proxy.example.com/cache/abc123?expires=...",
+  "expires_at": "2025-01-13T20:00:00Z",
+  "size_bytes": 248000
+}
+```
+
+The LLM can:
+1. Use the preview if it contains enough information
+2. Call `retrieve_cached_output(token="abc123")` to load the full content
+3. Generate code that fetches the URL directly
+
+You can also configure caching per-server or per-tool:
+
+```yaml
+mcp_servers:
+  filesystem:
+    cache_outputs:
+      enabled: true
+      min_size: 5000  # Lower threshold for this server
+    tools:
+      read_file:
+        cache_output:
+          enabled: true
+          preview_chars: 1000  # More preview for this tool
+```
 
 ## Next Steps
 

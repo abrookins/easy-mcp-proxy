@@ -439,3 +439,128 @@ class TestCacheRoutes:
             sig = sign_url("nonexistent", expires, "secret")
             response = client.get(f"/cache/nonexistent?expires={expires}&sig={sig}")
             assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_retrieve_cache_tampered_signature(self, tmp_path):
+        """Test cache retrieval rejects tampered signatures."""
+        from starlette.testclient import TestClient
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+
+            # Create valid cached content
+            response = create_cached_output_with_meta(
+                "secret content", "secret", "http://test", 3600, 100
+            )
+
+            routes = create_cache_routes("secret")
+            from starlette.applications import Starlette
+
+            app = Starlette(routes=routes)
+            client = TestClient(app)
+
+            # Try with tampered signature
+            expires = int(time.time()) + 3600
+            http_response = client.get(
+                f"/cache/{response.token}?expires={expires}&sig=tampered_signature"
+            )
+            assert http_response.status_code == 404
+            assert "invalid signature" in http_response.text.lower()
+
+    @pytest.mark.asyncio
+    async def test_retrieve_cache_expired_url(self, tmp_path):
+        """Test cache retrieval rejects expired URLs."""
+        from starlette.testclient import TestClient
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+
+            # Create valid cached content
+            response = create_cached_output_with_meta(
+                "secret content", "secret", "http://test", 3600, 100
+            )
+
+            routes = create_cache_routes("secret")
+            from starlette.applications import Starlette
+
+            app = Starlette(routes=routes)
+            client = TestClient(app)
+
+            # Create signature for expired timestamp
+            expired_time = int(time.time()) - 100  # 100 seconds ago
+            expired_sig = sign_url(response.token, expired_time, "secret")
+            http_response = client.get(
+                f"/cache/{response.token}?expires={expired_time}&sig={expired_sig}"
+            )
+            assert http_response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_retrieve_cache_wrong_secret(self, tmp_path):
+        """Test cache retrieval rejects signatures made with wrong secret."""
+        from starlette.testclient import TestClient
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+
+            # Create cached content with one secret
+            response = create_cached_output_with_meta(
+                "secret content", "correct_secret", "http://test", 3600, 100
+            )
+
+            # Server uses different secret
+            routes = create_cache_routes("different_secret")
+            from starlette.applications import Starlette
+
+            app = Starlette(routes=routes)
+            client = TestClient(app)
+
+            # Use URL generated with original secret
+            url_parts = response.retrieve_url.split("?")
+            query = url_parts[1]
+            http_response = client.get(f"/cache/{response.token}?{query}")
+            assert http_response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_retrieve_cache_path_traversal_rejected(self, tmp_path):
+        """Test cache retrieval rejects path traversal attempts."""
+        from starlette.testclient import TestClient
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+
+            routes = create_cache_routes("secret")
+            from starlette.applications import Starlette
+
+            app = Starlette(routes=routes)
+            client = TestClient(app)
+
+            # Try path traversal attacks
+            malicious_tokens = [
+                "../etc/passwd",
+                "..%2F..%2Fetc%2Fpasswd",
+                "....//....//etc/passwd",
+                "/etc/passwd",
+                "token/../../../etc/passwd",
+            ]
+
+            for token in malicious_tokens:
+                expires = int(time.time()) + 3600
+                sig = sign_url(token, expires, "secret")
+                # URL encode the token for the request
+                import urllib.parse
+
+                encoded_token = urllib.parse.quote(token, safe="")
+                http_response = client.get(
+                    f"/cache/{encoded_token}?expires={expires}&sig={sig}"
+                )
+                # Should either 404 (not found) or fail - never return /etc/passwd
+                assert http_response.status_code in (404, 400, 422)
+                assert "root:" not in http_response.text  # /etc/passwd content

@@ -95,7 +95,7 @@ mcp_servers:
             default: "."          # Always start at root
 ```
 
-### Search Multiple Sources in Parallel
+### Search Multiple Sources Concurrently
 
 Create a unified search that queries all your knowledge sources at once:
 
@@ -119,13 +119,31 @@ tool_views:
             args: { text: "{inputs.query}" }
 ```
 
+### Reduce Context Usage with Output Caching
+
+Large tool outputs (file contents, search results) consume valuable LLM context. Cache them and return a preview:
+
+```yaml
+output_cache:
+  enabled: true
+  ttl_seconds: 3600        # URLs valid for 1 hour
+  preview_chars: 500       # Show first 500 chars inline
+  min_size: 10000          # Only cache outputs > 10KB
+
+cache_secret: "${CACHE_SECRET}"
+cache_base_url: "https://your-proxy.example.com"
+```
+
+The LLM gets a preview plus a retrieval token—it can load the full content only when needed.
+
 ## What Can It Do?
 
 - **Aggregate** multiple MCP servers (stdio or HTTP) into one endpoint
 - **Filter** which tools are exposed from each server
 - **Rename** tools and parameters for clearer interfaces
 - **Bind** parameter defaults or hide implementation details
-- **Compose** parallel tools that fan out to multiple upstreams
+- **Compose** concurrent tools that fan out to multiple upstreams
+- **Cache** large outputs to reduce context window usage
 - **Transform** with pre/post hooks for logging, validation, or modification
 - **Serve** via stdio (Claude Desktop) or HTTP with multi-view routing
 
