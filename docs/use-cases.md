@@ -12,7 +12,6 @@ This guide explores Easy MCP Proxy features through the problems they solve. Fin
 - [Want to Log or Audit Tool Calls](#want-to-log-or-audit-tool-calls)
 - [Need Custom Business Logic](#need-custom-business-logic)
 - [Large Tool Outputs Waste Context](#large-tool-outputs-waste-context)
-- [Managing Multiple MCP Servers](#managing-multiple-mcp-servers)
 
 ---
 
@@ -562,65 +561,6 @@ The LLM can:
 
 ---
 
-## Managing Multiple MCP Servers
-
-### The Problem
-
-You have many MCP servers to configure. Managing them all in one YAML file is unwieldy.
-
-### The Solution: CLI Management
-
-Use the CLI to manage servers and views:
-
-```bash
-# Add servers
-mcp-proxy server add filesystem --command npx \
-  --args "-y,@modelcontextprotocol/server-filesystem,/data"
-
-mcp-proxy server add github --command npx \
-  --args "-y,@github/mcp-server" \
-  --env "GITHUB_TOKEN=${GITHUB_TOKEN}"
-
-# Configure tool filtering
-mcp-proxy server set-tools github "search_code,search_issues,get_file_contents"
-
-# Create views
-mcp-proxy view create readonly --description "Safe read-only tools"
-mcp-proxy view add-server readonly filesystem --tools "read_file,list_directory"
-mcp-proxy view add-server readonly github --tools "search_code,search_issues"
-
-# Inspect configuration
-mcp-proxy server list --verbose
-mcp-proxy view list --verbose
-mcp-proxy schema  # See all exposed tools
-```
-
-### Variation: Environment-Specific Configs
-
-Use environment variables for secrets:
-
-```yaml
-mcp_servers:
-  github:
-    command: npx
-    args: [-y, "@github/mcp-server"]
-    env:
-      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_TOKEN}
-
-  zapier:
-    url: "https://actions.zapier.com/mcp/${ZAPIER_MCP_ID}/sse"
-    headers:
-      Authorization: "Bearer ${ZAPIER_API_KEY}"
-```
-
-Load from `.env` file:
-
-```bash
-mcp-proxy serve --config config.yaml --env-file .env
-```
-
----
-
 ## Summary
 
 | Problem | Solution | Key Config |
@@ -633,7 +573,6 @@ mcp-proxy serve --config config.yaml --env-file .env
 | Audit/logging | Hooks | `hooks.pre_call`, `hooks.post_call` |
 | Custom logic | Python tools | `custom_tools` |
 | Large outputs | Output caching | `output_cache.enabled: true` |
-| Config management | CLI | `mcp-proxy server`, `mcp-proxy view` |
 
 For complete syntax and all options, see the **[Reference](reference.md)**.
 
