@@ -162,6 +162,48 @@ class ToolView:
         """Get the original tool name for a possibly-renamed tool."""
         return self._tool_to_original_name.get(exposed_name, exposed_name)
 
+    def _extract_content_for_cache(self, result: Any) -> str:
+        """Extract cacheable content from a tool result.
+
+        Handles MCP CallToolResult objects by extracting the text content,
+        making the cached output usable with tools like jq.
+
+        Args:
+            result: The tool result (CallToolResult, dict, list, or string)
+
+        Returns:
+            String content suitable for caching
+        """
+        import json
+
+        # Handle MCP CallToolResult - extract text from content items
+        if hasattr(result, "content") and isinstance(result.content, list):
+            texts = []
+            for item in result.content:
+                if hasattr(item, "text"):
+                    texts.append(item.text)
+            if texts:
+                # If single text item looks like JSON, return it directly
+                if len(texts) == 1:
+                    text = texts[0]
+                    # Try to parse and re-serialize for consistent formatting
+                    try:
+                        parsed = json.loads(text)
+                        return json.dumps(parsed, indent=2)
+                    except (json.JSONDecodeError, TypeError):
+                        return text
+                return "\n".join(texts)
+
+        # Handle plain string
+        if isinstance(result, str):
+            return result
+
+        # Handle dict/list - serialize to JSON
+        try:
+            return json.dumps(result, indent=2)
+        except (TypeError, ValueError):
+            return str(result)
+
     def _apply_caching(self, result: Any, cache_config: OutputCacheConfig) -> Any:
         """Apply output caching to a tool result if it meets criteria.
 
@@ -172,18 +214,10 @@ class ToolView:
         Returns:
             Either the original result or a CachedOutputResponse
         """
-        import json
-
         from mcp_proxy.cache import create_cached_output_with_meta
 
-        # Convert result to string for size check
-        if isinstance(result, str):
-            content = result
-        else:
-            try:
-                content = json.dumps(result, default=str)
-            except (TypeError, ValueError):
-                content = str(result)
+        # Extract content, handling CallToolResult objects properly
+        content = self._extract_content_for_cache(result)
 
         # Check if content meets minimum size threshold
         if cache_config.min_size and len(content) < cache_config.min_size:

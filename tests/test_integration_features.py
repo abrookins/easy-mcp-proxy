@@ -1009,10 +1009,10 @@ class TestOutputCachingEndToEnd:
 
             full_content = retrieve_by_token(token, "test-secret")
 
-            # Full content should match original
+            # Full content should match original (pretty-printed)
             import json
 
-            expected = json.dumps({"content": large_output})
+            expected = json.dumps({"content": large_output}, indent=2)
             assert full_content == expected
 
     @pytest.mark.asyncio

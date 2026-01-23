@@ -452,3 +452,105 @@ class TestToolViewCaching:
                 result = view._apply_caching({"key": "value"}, cache_config)
 
         assert result["cached"] is True
+
+
+class TestExtractContentForCache:
+    """Tests for _extract_content_for_cache method."""
+
+    def test_extract_string_result(self):
+        """String results are returned unchanged."""
+        config = ToolViewConfig()
+        view = ToolView("test", config)
+
+        result = view._extract_content_for_cache("hello world")
+        assert result == "hello world"
+
+    def test_extract_dict_result(self):
+        """Dict results are JSON serialized with indentation."""
+        config = ToolViewConfig()
+        view = ToolView("test", config)
+
+        result = view._extract_content_for_cache({"key": "value"})
+        assert result == '{\n  "key": "value"\n}'
+
+    def test_extract_call_tool_result_single_json_text(self):
+        """CallToolResult with single JSON text is pretty-printed."""
+        from unittest.mock import MagicMock
+
+        config = ToolViewConfig()
+        view = ToolView("test", config)
+
+        # Mock CallToolResult with TextContent
+        text_content = MagicMock()
+        text_content.text = '{"items":[1,2,3]}'
+
+        call_result = MagicMock()
+        call_result.content = [text_content]
+
+        result = view._extract_content_for_cache(call_result)
+        # Should be pretty-printed JSON
+        assert '"items"' in result
+        assert "\n" in result  # Has indentation
+
+    def test_extract_call_tool_result_single_non_json_text(self):
+        """CallToolResult with non-JSON text is returned as-is."""
+        from unittest.mock import MagicMock
+
+        config = ToolViewConfig()
+        view = ToolView("test", config)
+
+        text_content = MagicMock()
+        text_content.text = "Just plain text, not JSON"
+
+        call_result = MagicMock()
+        call_result.content = [text_content]
+
+        result = view._extract_content_for_cache(call_result)
+        assert result == "Just plain text, not JSON"
+
+    def test_extract_call_tool_result_multiple_texts(self):
+        """CallToolResult with multiple texts are joined with newlines."""
+        from unittest.mock import MagicMock
+
+        config = ToolViewConfig()
+        view = ToolView("test", config)
+
+        text1 = MagicMock()
+        text1.text = "First text"
+        text2 = MagicMock()
+        text2.text = "Second text"
+
+        call_result = MagicMock()
+        call_result.content = [text1, text2]
+
+        result = view._extract_content_for_cache(call_result)
+        assert result == "First text\nSecond text"
+
+    def test_extract_call_tool_result_no_text_items(self):
+        """CallToolResult with no text items falls through to JSON."""
+        from unittest.mock import MagicMock
+
+        config = ToolViewConfig()
+        view = ToolView("test", config)
+
+        # Mock content item without text attribute
+        image_content = MagicMock(spec=["type"])  # No text attribute
+
+        call_result = MagicMock()
+        call_result.content = [image_content]
+
+        result = view._extract_content_for_cache(call_result)
+        # Should fall through to JSON serialization (via str() fallback)
+        assert result is not None
+
+    def test_extract_non_serializable_result(self):
+        """Non-serializable objects fall back to str()."""
+        config = ToolViewConfig()
+        view = ToolView("test", config)
+
+        class CustomObj:
+            def __str__(self):
+                return "CustomObj string repr"
+
+        result = view._extract_content_for_cache(CustomObj())
+        assert result == "CustomObj string repr"
