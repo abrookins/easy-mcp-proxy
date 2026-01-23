@@ -709,8 +709,8 @@ mcp-proxy view set-tool-param VIEW SERVER TOOL PARAM [OPTIONS]
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │                      Tool Views                            │  │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐    │  │
-│  │  │  assistant  │  │   search    │  │   all-tools     │    │  │
-│  │  │  - memory   │  │ - search_*  │  │ - include_all   │    │  │
+│  │  │  readonly   │  │   search    │  │   all-tools     │    │  │
+│  │  │  - fs read  │  │ - search_*  │  │ - include_all   │    │  │
 │  │  └──────┬──────┘  └──────┬──────┘  └────────┬────────┘    │  │
 │  └─────────┼────────────────┼──────────────────┼─────────────┘  │
 │            │                │                  │                 │
@@ -723,7 +723,7 @@ mcp-proxy view set-tool-param VIEW SERVER TOOL PARAM [OPTIONS]
 │  ┌─────────▼────────────────▼──────────────────▼─────────────┐  │
 │  │                 Upstream MCP Clients                       │  │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │  │
-│  │  │   memory     │  │   github     │  │    zapier    │     │  │
+│  │  │  filesystem  │  │   github     │  │    zapier    │     │  │
 │  │  │   (stdio)    │  │   (stdio)    │  │   (http)     │     │  │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘     │  │
 │  └───────────────────────────────────────────────────────────┘  │

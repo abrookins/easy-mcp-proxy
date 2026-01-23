@@ -4,7 +4,7 @@ Easy MCP Proxy is an aggregation layer for [Model Context Protocol (MCP)](https:
 
 ## Why Use a Proxy?
 
-MCP servers provide tools to AI assistants. As you add more servers—filesystem access, GitHub, memory systems, APIs—you encounter challenges:
+MCP servers provide tools to AI assistants. As you add more servers—filesystem access, GitHub, Slack, APIs—you encounter challenges:
 
 - **Tool overload**: Too many tools confuse the LLM about which to use
 - **Inconsistent interfaces**: Each server has its own naming conventions
@@ -18,7 +18,7 @@ Easy MCP Proxy solves these by sitting between your MCP clients and upstream ser
 │  Claude Desktop │     │  Easy MCP Proxy │     │  MCP Servers    │
 │  or other       │────▶│                 │────▶│  - filesystem   │
 │  MCP client     │     │  Tool Views     │     │  - github       │
-│                 │◀────│  Composition    │◀────│  - memory       │
+│                 │◀────│  Composition    │◀────│  - slack        │
 │                 │     │  Transformation │     │  - zapier       │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```

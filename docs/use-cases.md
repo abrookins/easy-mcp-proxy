@@ -155,7 +155,7 @@ Make a required parameter optional:
 
 ### The Problem
 
-You want to search code, documentation, and memory simultaneously. Currently, the LLM has to call each search tool separately and wait for results sequentially.
+You want to search code, documentation, and Slack simultaneously. Currently, the LLM has to call each search tool separately and wait for results sequentially.
 
 ### The Solution: Concurrent Composition
 
@@ -168,7 +168,7 @@ tool_views:
       search_everything:
         description: |
           Search all knowledge sources simultaneously.
-          Returns results from code, docs, and memory concurrently.
+          Returns results from code, docs, and Slack concurrently.
         inputs:
           query:
             type: string
@@ -189,10 +189,10 @@ tool_views:
             args:
               query: "{inputs.query}"
               limit: "{inputs.max_results|default:10}"
-          memory:
-            tool: memory.search_long_term_memory
+          slack:
+            tool: slack.search_messages
             args:
-              text: "{inputs.query}"
+              query: "{inputs.query}"
               limit: "{inputs.max_results|default:10}"
 ```
 
@@ -202,7 +202,7 @@ tool_views:
 {
   "code": [...github results...],
   "docs": [...confluence results...],
-  "memory": [...memory results...]
+  "slack": [...slack results...]
 }
 ```
 

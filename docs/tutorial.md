@@ -213,20 +213,20 @@ mcp_servers:
     command: npx
     args: [-y, "@modelcontextprotocol/server-filesystem", /tmp/mcp-demo]
 
-  memory:
-    command: uv
-    args: [tool, run, agent-memory, mcp]
+  github:
+    command: npx
+    args: [-y, "@modelcontextprotocol/server-github"]
     env:
-      REDIS_URL: redis://localhost:6379
+      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_TOKEN}
 
 tool_views:
   default:
     tools:
       filesystem:
         read_file: {}
-      memory:
-        search_long_term_memory: {}
-        create_long_term_memories: {}
+      github:
+        search_repositories: {}
+        get_file_contents: {}
 ```
 
 Now both servers' tools are available through one proxy.
@@ -271,16 +271,16 @@ tool_views:
   unified:
     composite_tools:
       search_everywhere:
-        description: "Search files and memory concurrently"
+        description: "Search files and GitHub concurrently"
         inputs:
           query: { type: string, required: true }
         parallel:
           files:
             tool: filesystem.search_files
             args: { query: "{inputs.query}" }
-          memory:
-            tool: memory.search_long_term_memory
-            args: { text: "{inputs.query}" }
+          code:
+            tool: github.search_code
+            args: { query: "{inputs.query}" }
 ```
 
 When the LLM calls `search_everywhere(query="deployment")`, both searches run concurrently and results are combined.
@@ -299,19 +299,19 @@ from mcp_proxy.custom_tools import custom_tool, ProxyContext
 )
 async def smart_search(query: str, ctx: ProxyContext) -> dict:
     # Call multiple upstream tools
-    memory_results = await ctx.call_tool(
-        "memory.search_long_term_memory",
-        text=query
+    search_results = await ctx.call_tool(
+        "github.search_code",
+        query=query
     )
 
     # Process results
-    if not memory_results:
+    if not search_results:
         return {"message": "No results found", "query": query}
 
     return {
         "query": query,
-        "results": memory_results,
-        "count": len(memory_results)
+        "results": search_results,
+        "count": len(search_results)
     }
 ```
 
