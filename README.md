@@ -72,6 +72,8 @@ mcp-proxy serve --config config.yaml --transport http --port 8000
 }
 ```
 
+This requires [authentication](docs/reference.md#authentication) to be configured on the proxy. See `mcp-proxy serve --help` for auth options.
+
 ## Example Use Cases
 
 ### Reduce Tool Count with Search Mode
