@@ -43,7 +43,7 @@ mcp-proxy serve --config config.yaml --transport http --port 8000
 
 ### 4. Use with Claude Desktop
 
-Add to `claude_desktop_config.json`:
+**Local (stdio)** — runs the proxy as a subprocess:
 
 ```json
 {
@@ -51,6 +51,22 @@ Add to `claude_desktop_config.json`:
     "proxy": {
       "command": "uv",
       "args": ["run", "mcp-proxy", "serve", "--config", "/path/to/config.yaml"]
+    }
+  }
+}
+```
+
+**Remote (HTTP)** — connect to a proxy running on a server:
+
+```json
+{
+  "mcpServers": {
+    "proxy": {
+      "type": "http",
+      "url": "https://your-proxy-server.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer your-auth-token"
+      }
     }
   }
 }
