@@ -231,6 +231,41 @@ class MCPProxy:
 
         return "\n\n".join(parts)
 
+    def enable_debug(self, log_level: int | None = None) -> None:
+        """Enable debug instrumentation for timing and logging.
+
+        This instruments all views and the client manager to log:
+        - Tool call timing
+        - Arguments and results (truncated)
+        - Warnings for slow calls
+
+        Can also be enabled via MCP_PROXY_DEBUG=1 environment variable.
+
+        Args:
+            log_level: Optional logging level (default: DEBUG)
+        """
+        from mcp_proxy.debug import (
+            configure_debug_logging,
+            instrument_client_manager,
+            instrument_view,
+        )
+        from mcp_proxy.debug import (
+            enable_debug as _enable_debug,
+        )
+
+        _enable_debug()
+        if log_level is not None:
+            configure_debug_logging(log_level)
+        else:
+            configure_debug_logging()
+
+        # Instrument client manager
+        instrument_client_manager(self._client_manager)
+
+        # Instrument all views
+        for view in self.views.values():
+            instrument_view(view)
+
     async def fetch_upstream_instructions(
         self, server_name: str, client: Client
     ) -> None:

@@ -284,12 +284,18 @@ def validate(config: str | None, check_connections: bool):
     default=True,
     help="Enable/disable access logging (HTTP only, default: enabled)",
 )
+@click.option(
+    "--debug/--no-debug",
+    default=False,
+    help="Enable debug logging for tool calls (timing, args, results)",
+)
 def serve(
     config: str | None,
     transport: str,
     port: int,
     env_file: str,
     access_log: bool,
+    debug: bool,
 ):  # pragma: no cover
     """Start the MCP proxy server."""
     from dotenv import load_dotenv
@@ -301,6 +307,11 @@ def serve(
 
     cfg = load_config(str(get_config_path(config)))
     proxy = MCPProxy(cfg)
+
+    # Enable debug instrumentation if requested
+    if debug:
+        proxy.enable_debug()
+
     proxy.run(transport=transport, port=port, access_log=access_log)
 
 

@@ -79,6 +79,38 @@ class TestMCPProxyInitialization:
         # Should have clients registered for all servers in config
         assert "test-server" in proxy.upstream_clients
 
+    def test_enable_debug_instruments_proxy(self):
+        """enable_debug should instrument client manager and views."""
+        from mcp_proxy.models import ToolViewConfig
+
+        config = ProxyConfig(
+            mcp_servers={"test": UpstreamServerConfig(command="echo")},
+            tool_views={"view1": ToolViewConfig(servers=["test"])},
+        )
+        proxy = MCPProxy(config)
+        proxy.enable_debug()
+
+        # Verify instrumentation was applied
+        assert hasattr(proxy._client_manager, "_debug_instrumented")
+        assert proxy._client_manager._debug_instrumented is True
+        for view in proxy.views.values():
+            assert hasattr(view, "_debug_instrumented")
+            assert view._debug_instrumented is True
+
+    def test_enable_debug_with_log_level(self):
+        """enable_debug should accept optional log level."""
+        import logging
+
+        config = ProxyConfig(
+            mcp_servers={"test": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+        proxy.enable_debug(log_level=logging.INFO)
+
+        # Should complete without error
+        assert hasattr(proxy._client_manager, "_debug_instrumented")
+
 
 class TestMCPProxyClientCreation:
     """Tests for upstream client creation."""
