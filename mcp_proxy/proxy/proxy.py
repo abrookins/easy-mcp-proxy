@@ -797,24 +797,17 @@ class MCPProxy:
 
             # Create call tool for this server
             call_name = f"{server_name}_call_tool"
-            tool_names_list = [t.name for t in server_tools]
 
-            def make_call_tool_wrapper(
-                v: ToolView, valid_tools: list[str], srv_name: str
-            ) -> Callable[..., Any]:
+            def make_call_tool_wrapper(v: ToolView) -> Callable[..., Any]:
                 async def call_tool_wrapper(
                     tool_name: str, arguments: dict | None = None
                 ) -> Any:
-                    if tool_name not in valid_tools:
-                        raise ValueError(
-                            f"Unknown tool '{tool_name}'. "
-                            f"Use {srv_name}_search_tools to find available tools."
-                        )
+                    # Forward directly to upstream - let it handle unknown tools
                     return await v.call_tool(tool_name, arguments or {})
 
                 return call_tool_wrapper
 
-            call_wrapper = make_call_tool_wrapper(view, tool_names_list, server_name)
+            call_wrapper = make_call_tool_wrapper(view)
             call_wrapper.__name__ = call_name
             call_wrapper.__doc__ = (
                 f"Call a tool from the {server_name} server by name. "
