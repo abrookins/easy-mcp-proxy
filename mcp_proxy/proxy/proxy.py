@@ -529,6 +529,9 @@ class MCPProxy:
                 port=port or 8000,
                 ws="wsproto",
                 access_log=access_log,
+                # Force shutdown after 2 seconds instead of waiting for
+                # WebSocket clients to disconnect gracefully
+                timeout_graceful_shutdown=2,
             )
 
     def get_view_tools(self, view_name: str | None) -> list[ToolInfo]:
