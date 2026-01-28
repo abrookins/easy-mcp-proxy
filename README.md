@@ -139,7 +139,7 @@ tool_views:
 
 ### Reduce Context Usage with Output Caching
 
-Large tool outputs (file contents, search results) consume valuable LLM context. Cache them and return a preview:
+Large tool outputs (file contents, search results) consume valuable LLM context. Cache them and return a preview with a signed retrieval URL:
 
 ```yaml
 output_cache:
@@ -152,7 +152,7 @@ cache_secret: "${CACHE_SECRET}"
 cache_base_url: "https://your-proxy.example.com"
 ```
 
-The LLM gets a preview plus a retrieval token—it can load the full content only when needed.
+The LLM gets a preview plus a retrieval token—it can load the full content only when needed, or delegate to a sub-agent that fetches and processes the data in its own context window. This enables **Recursive Language Model (RLM)** patterns where agents pass file references instead of file contents, dramatically reducing context usage while maintaining full access to the data.
 
 ## What Can It Do?
 

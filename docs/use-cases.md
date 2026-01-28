@@ -11,7 +11,7 @@ This guide explores Easy MCP Proxy features through the problems they solve. Fin
 - [Different Users Need Different Tools](#different-users-need-different-tools)
 - [Want to Log or Audit Tool Calls](#want-to-log-or-audit-tool-calls)
 - [Need Custom Business Logic](#need-custom-business-logic)
-- [Large Tool Outputs Waste Context](#large-tool-outputs-waste-context)
+- [Large Tool Outputs Waste Context](#large-tool-outputs-waste-context) *(Recursive Language Model pattern)*
 
 ---
 
@@ -517,11 +517,13 @@ tool_views:
 
 ### The Problem
 
-Some tools return huge outputs (file contents, search results). These consume valuable context window space, leaving less room for conversation.
+Some tools return huge outputs (file contents, search results). These consume valuable context window space, leaving less room for conversation and reasoning.
+
+Consider an agent reading a 150KB log file. That's ~40,000 tokens stuffed into context, leaving almost no room for the LLM to actually think about the data.
 
 ### The Solution: Output Caching
 
-Enable output caching to store large results and return only a preview:
+Enable output caching to store large results and return only a preview with a signed retrieval URL:
 
 ```yaml
 output_cache:
@@ -558,6 +560,89 @@ The LLM can:
 1. Use the preview if sufficient
 2. Call `retrieve_cached_output(token="abc123")` to load full content
 3. Generate code that fetches the URL directly
+4. **Delegate to a sub-agent** that processes the data in its own context
+
+### Advanced: Recursive Language Model (RLM) Pattern
+
+Output caching enables a powerful pattern for context-efficient agents: instead of passing data by value (stuffing it into context), you pass data **by reference** (the signed URL).
+
+This is the **Recursive Language Model (RLM)** pattern. Here's how it works with a coding agent:
+
+**Scenario**: User asks "Analyze this JSON log file and summarize error patterns."
+
+**Without caching** (traditional approach):
+```
+Agent calls read_file("application.log")
+  → 150KB JSON stuffed into context (~40,000 tokens)
+  → Agent tries to reason about the data
+  → Context exhausted, poor analysis
+```
+
+**With caching** (RLM pattern):
+```
+Agent calls read_file("application.log")
+  → Receives: {token, preview, size_bytes: 153600, retrieve_url: "..."}
+  → Agent sees the preview, understands the structure
+  → Agent spawns a sub-agent with instructions:
+
+    "You have access to a cached file via this URL:
+     https://proxy.local:8000/cache/abc123?expires=...&sig=...
+
+     Task: Extract all ERROR entries, group by message pattern,
+     and return a summary with counts and timestamps.
+     Use jq or Python to process the file."
+
+  → Sub-agent (fresh context window):
+    - Fetches the URL with curl
+    - Processes with jq: select(.level == "ERROR") | group_by(.message)
+    - Returns structured summary (~200 tokens)
+
+  → Parent agent receives summary, has full context for reasoning
+```
+
+The parent agent never loaded the raw data. The sub-agent processed it in isolation using shell tools, returning only what was needed.
+
+**Why the signed URL is essential**:
+
+The URL is a **capability token**—possession grants access to exactly one file, for a limited time:
+
+- **HMAC signature** prevents forging access to other files
+- **Expiration timestamp** limits the access window
+- **Random token** is unguessable
+
+This makes it safe to pass the URL to sub-agents or LLM-generated code. The sub-agent can fetch the data, but can't access anything else.
+
+**Example sub-agent workflow**:
+
+```bash
+# Sub-agent executes this to process the cached file
+curl -s "https://proxy.local:8000/cache/abc123?expires=1706303600&sig=..." \
+  | jq '[.[] | select(.level == "ERROR" or .level == "FATAL")]' \
+  | jq 'group_by(.message | split(":")[0]) | map({
+      pattern: .[0].message | split(":")[0],
+      count: length,
+      first: (sort_by(.timestamp) | first | .timestamp),
+      last: (sort_by(.timestamp) | last | .timestamp)
+    })'
+```
+
+**Result**:
+```json
+[
+  {"pattern": "Connection timeout", "count": 847, "first": "2025-01-27T00:12:33Z", "last": "2025-01-27T18:45:02Z"},
+  {"pattern": "Database deadlock", "count": 23, "first": "2025-01-27T03:22:11Z", "last": "2025-01-27T15:08:44Z"},
+  {"pattern": "Out of memory", "count": 5, "first": "2025-01-27T08:00:00Z", "last": "2025-01-27T08:02:15Z"}
+]
+```
+
+The parent agent receives ~200 tokens instead of ~40,000. It has plenty of context remaining to reason about the patterns, correlate with other information, and provide actionable insights.
+
+**When to use this pattern**:
+
+- Processing large files (logs, data exports, codebases)
+- When the LLM needs to reason about results, not just return them
+- With coding agents that can spawn sub-agents (Claude, Augment, Cursor, etc.)
+- When you have shell tools available for data processing (jq, grep, awk)
 
 ---
 
