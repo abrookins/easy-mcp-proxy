@@ -1,0 +1,4 @@
+# RLM Demo dependencies
+openai>=5.2.0
+tiktoken>=0.5.0
+

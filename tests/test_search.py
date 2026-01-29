@@ -473,8 +473,11 @@ class TestSearchPerServerMode:
 
         assert github_call_fn is not None
 
-        # Should reject memory tools (error comes from ToolView, not proxy validation)
-        with pytest.raises(ValueError, match="Unknown tool: search_memories"):
+        # Should fail when calling a tool that doesn't exist on this server
+        # The error comes from _call_upstream_tool since the view isn't initialized
+        with pytest.raises(
+            ValueError, match="Unknown upstream tool: github.search_memories"
+        ):
             await github_call_fn(tool_name="search_memories", arguments={})
 
     async def test_search_per_server_with_include_all(self):
