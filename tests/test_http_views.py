@@ -751,3 +751,81 @@ class TestHTTPCacheRoutes:
         response = client.get("/cache/sometoken")
         # Should be 404 (not found) not 400 (bad request)
         assert response.status_code == 404
+
+
+class TestHTTPWebUIRoutes:
+    """Tests for web UI config routes in HTTP app."""
+
+    def test_http_app_includes_config_routes(self):
+        """http_app should include /config routes for web UI."""
+        config = ProxyConfig(
+            mcp_servers={
+                "server-a": UpstreamServerConfig(command="echo", args=["test"])
+            },
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+        app = proxy.http_app()
+
+        # Check that /config route exists
+        route_paths = [r.path for r in app.routes if hasattr(r, "path")]
+        assert "/config" in route_paths
+
+    def test_config_route_uses_auth(self, tmp_path, monkeypatch):
+        """Config routes should use the same auth as other endpoints."""
+        from unittest.mock import AsyncMock, patch
+
+        from starlette.responses import JSONResponse
+
+        # Set up config file
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("mcp_servers: {}\ntool_views: {}\n")
+        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
+
+        config = ProxyConfig(
+            mcp_servers={},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        # Create a mock auth error response
+        mock_auth_error = JSONResponse(
+            {"error": "invalid_token", "error_description": "Test error"},
+            status_code=401,
+        )
+
+        with patch(
+            "mcp_proxy.proxy.proxy.check_auth_token",
+            new=AsyncMock(return_value=mock_auth_error),
+        ):
+            app = proxy.http_app()
+            client = TestClient(app)
+            response = client.get("/config")
+
+        assert response.status_code == 401
+        assert response.json()["error"] == "invalid_token"
+
+    def test_config_api_route_uses_auth(self, tmp_path, monkeypatch):
+        """Config API routes should use auth."""
+        from unittest.mock import AsyncMock, patch
+
+        from starlette.responses import JSONResponse
+
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("mcp_servers: {}\ntool_views: {}\n")
+        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
+
+        config = ProxyConfig(mcp_servers={}, tool_views={})
+        proxy = MCPProxy(config)
+
+        mock_auth_error = JSONResponse({"error": "unauthorized"}, status_code=401)
+
+        with patch(
+            "mcp_proxy.proxy.proxy.check_auth_token",
+            new=AsyncMock(return_value=mock_auth_error),
+        ):
+            app = proxy.http_app()
+            client = TestClient(app)
+            response = client.get("/config/api")
+
+        assert response.status_code == 401

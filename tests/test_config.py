@@ -1,9 +1,17 @@
 """Tests for configuration loading."""
 
+import json
+
 import pytest
 import yaml
 
-from mcp_proxy.config import load_config, validate_config
+from mcp_proxy.config import (
+    _deep_merge,
+    get_overrides_path,
+    load_config,
+    load_overrides,
+    validate_config,
+)
 
 
 class TestLoadConfig:
@@ -182,3 +190,74 @@ class TestEnvVarSubstitution:
 
         config = load_config(config_file)
         assert config is not None
+
+
+class TestConfigOverrides:
+    """Tests for config override functionality."""
+
+    def test_get_overrides_path(self, tmp_path):
+        """get_overrides_path should return path with .overrides.json suffix."""
+        config_path = tmp_path / "config.yaml"
+        overrides_path = get_overrides_path(config_path)
+        assert overrides_path == tmp_path / "config.overrides.json"
+
+    def test_load_overrides_nonexistent(self, tmp_path):
+        """load_overrides should return empty dict when file doesn't exist."""
+        config_path = tmp_path / "config.yaml"
+        overrides = load_overrides(config_path)
+        assert overrides == {}
+
+    def test_load_overrides_existing(self, tmp_path):
+        """load_overrides should load existing overrides file."""
+        config_path = tmp_path / "config.yaml"
+        overrides_path = get_overrides_path(config_path)
+        overrides_path.write_text(json.dumps({"key": "value"}))
+
+        overrides = load_overrides(config_path)
+        assert overrides == {"key": "value"}
+
+    def test_deep_merge_simple(self):
+        """_deep_merge should merge simple dicts."""
+        base = {"a": 1, "b": 2}
+        overrides = {"b": 3, "c": 4}
+        result = _deep_merge(base, overrides)
+        assert result == {"a": 1, "b": 3, "c": 4}
+
+    def test_deep_merge_nested(self):
+        """_deep_merge should recursively merge nested dicts."""
+        base = {"a": {"x": 1, "y": 2}, "b": 3}
+        overrides = {"a": {"y": 10, "z": 11}}
+        result = _deep_merge(base, overrides)
+        assert result == {"a": {"x": 1, "y": 10, "z": 11}, "b": 3}
+
+    def test_load_config_with_overrides(self, tmp_path):
+        """load_config should apply overrides when present."""
+        config_data = {
+            "mcp_servers": {"server1": {"command": "original"}},
+            "tool_views": {},
+        }
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(yaml.dump(config_data))
+
+        overrides_data = {"mcp_servers": {"server1": {"command": "overridden"}}}
+        overrides_path = get_overrides_path(config_file)
+        overrides_path.write_text(json.dumps(overrides_data))
+
+        config = load_config(config_file, apply_overrides=True)
+        assert config.mcp_servers["server1"].command == "overridden"
+
+    def test_load_config_without_overrides(self, tmp_path):
+        """load_config should skip overrides when apply_overrides=False."""
+        config_data = {
+            "mcp_servers": {"server1": {"command": "original"}},
+            "tool_views": {},
+        }
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(yaml.dump(config_data))
+
+        overrides_data = {"mcp_servers": {"server1": {"command": "overridden"}}}
+        overrides_path = get_overrides_path(config_file)
+        overrides_path.write_text(json.dumps(overrides_data))
+
+        config = load_config(config_file, apply_overrides=False)
+        assert config.mcp_servers["server1"].command == "original"

@@ -801,22 +801,27 @@ class MCPProxy:
             # Create call tool for this server
             call_name = f"{server_name}_call_tool"
 
+            # Get all tool names for this server to validate calls
+            server_tool_names = {t.name for t in server_tools}
+
             def make_call_tool_wrapper(
-                v: ToolView, srv_name: str
+                v: ToolView, srv_name: str, valid_tools: set[str]
             ) -> Callable[..., Any]:
                 async def call_tool_wrapper(
                     tool_name: str, arguments: dict | None = None
                 ) -> Any:
-                    # Call the specific server directly using server.tool format
-                    # This bypasses the tool-to-server lookup, allowing agents to
-                    # call tools they know about without searching first
-                    return await v._call_upstream_tool(
-                        f"{srv_name}.{tool_name}", **(arguments or {})
-                    )
+                    # Validate the tool exists for this server
+                    if tool_name not in valid_tools:
+                        raise ValueError(
+                            f"Unknown tool '{tool_name}' for server '{srv_name}'. "
+                            f"Use {srv_name}_search_tools to find available tools."
+                        )
+                    # Use call_tool to ensure hooks and caching are applied
+                    return await v.call_tool(tool_name, arguments or {})
 
                 return call_tool_wrapper
 
-            call_wrapper = make_call_tool_wrapper(view, server_name)
+            call_wrapper = make_call_tool_wrapper(view, server_name, server_tool_names)
             call_wrapper.__name__ = call_name
             call_wrapper.__doc__ = (
                 f"Call a tool from the {server_name} server by name. "
@@ -1239,6 +1244,19 @@ class MCPProxy:
 
             cache_routes = create_cache_routes(self._get_cache_secret())
             routes.extend(cache_routes)
+
+        # Add web UI routes for config editing (with same auth as other endpoints)
+        from mcp_proxy.web_ui import create_web_ui_routes
+
+        async def web_ui_auth_check(request: Request) -> JSONResponse | None:
+            return await check_auth_token(request, auth_provider)
+
+        web_ui_routes = create_web_ui_routes(
+            path_prefix=f"{path}/config",
+            check_auth=web_ui_auth_check,
+            auth_provider=auth_provider,
+        )
+        routes.extend(web_ui_routes)
 
         # Mount the virtual "search" endpoint first (before view mounts)
         routes.append(Mount(f"{path}/search", app=search_mcp_app))

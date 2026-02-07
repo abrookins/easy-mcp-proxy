@@ -474,9 +474,9 @@ class TestSearchPerServerMode:
         assert github_call_fn is not None
 
         # Should fail when calling a tool that doesn't exist on this server
-        # The error comes from _call_upstream_tool since the view isn't initialized
+        # The tool is validated before calling upstream
         with pytest.raises(
-            ValueError, match="Unknown upstream tool: github.search_memories"
+            ValueError, match="Unknown tool 'search_memories' for server 'github'"
         ):
             await github_call_fn(tool_name="search_memories", arguments={})
 
