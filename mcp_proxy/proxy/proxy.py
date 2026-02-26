@@ -13,8 +13,23 @@ from mcp_proxy.hooks import ToolCallContext, execute_post_call, execute_pre_call
 from mcp_proxy.models import OutputCacheConfig, ProxyConfig
 from mcp_proxy.views import ToolView
 
+from .caching import (
+    get_cache_base_url,
+    get_cache_config,
+    get_cache_secret,
+    is_cache_enabled,
+    register_cache_retrieval_tool,
+)
 from .client import ClientManager
-from .schema import create_tool_with_schema, transform_args
+from .http_routes import (
+    check_auth_token,
+    create_health_check_handler,
+    create_list_views_handler,
+    create_view_info_handler,
+)
+from .registration import register_direct_tool, register_view_tool
+from .schema import create_tool_with_schema
+from .search_tools import register_tool_pair
 from .tool_info import ToolInfo
 from .tools import (
     _process_server_all_tools,
@@ -23,59 +38,6 @@ from .tools import (
     _process_view_include_all_fallback,
     _process_view_include_all_with_upstream,
 )
-
-
-async def check_auth_token(
-    request: Request, auth_provider: Any | None
-) -> JSONResponse | None:
-    """Check authentication if auth is configured.
-
-    Args:
-        request: The incoming HTTP request
-        auth_provider: The auth provider (OIDCProxy) or None if auth is not configured
-
-    Returns:
-        None if auth passes, or a 401 JSONResponse if auth fails.
-    """
-    if auth_provider is None:
-        return None  # No auth configured, allow access
-
-    # Extract bearer token from Authorization header
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return JSONResponse(
-            {
-                "error": "invalid_token",
-                "error_description": "Missing or invalid Authorization header",
-            },
-            status_code=401,
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    token = auth_header[7:]  # Remove "Bearer " prefix
-    if not token:
-        return JSONResponse(
-            {
-                "error": "invalid_token",
-                "error_description": "Empty bearer token",
-            },
-            status_code=401,
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Validate token using the auth provider
-    access_token = await auth_provider.verify_token(token)
-    if access_token is None:
-        return JSONResponse(
-            {
-                "error": "invalid_token",
-                "error_description": "Invalid or expired token",
-            },
-            status_code=401,
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    return None  # Auth passed
 
 
 class MCPProxy:
@@ -279,79 +241,48 @@ class MCPProxy:
         if init_result and init_result.instructions:
             self.upstream_instructions[server_name] = init_result.instructions
 
-    # Output caching methods
+    # Output caching methods - delegated to caching module
     def _get_cache_config(
         self, tool_name: str, server_name: str
     ) -> OutputCacheConfig | None:
-        """Get the effective cache configuration for a tool.
-
-        Priority: tool config > server config > global config
-
-        Args:
-            tool_name: Name of the tool
-            server_name: Name of the upstream server
-
-        Returns:
-            OutputCacheConfig if caching is enabled, None otherwise
-        """
-        # Check tool-level config first
-        server_config = self.config.mcp_servers.get(server_name)
-        if server_config and server_config.tools:
-            tool_config = server_config.tools.get(tool_name)
-            if tool_config and tool_config.cache_output:
-                if tool_config.cache_output.enabled:
-                    return tool_config.cache_output
-                return None  # Explicitly disabled at tool level
-
-        # Check server-level config
-        if server_config and server_config.cache_outputs:
-            if server_config.cache_outputs.enabled:
-                return server_config.cache_outputs
-            return None  # Explicitly disabled at server level
-
-        # Check global config
-        if self.config.output_cache and self.config.output_cache.enabled:
-            return self.config.output_cache
-
-        return None
+        """Get the effective cache configuration for a tool."""
+        return get_cache_config(self.config, tool_name, server_name)
 
     def _is_cache_enabled(self) -> bool:
         """Check if output caching is enabled at any level."""
-        if self.config.output_cache and self.config.output_cache.enabled:
-            return True
-        for server_config in self.config.mcp_servers.values():
-            if server_config.cache_outputs and server_config.cache_outputs.enabled:
-                return True
-            if server_config.tools:
-                for tool_config in server_config.tools.values():
-                    if tool_config.cache_output and tool_config.cache_output.enabled:
-                        return True
-        return False
+        return is_cache_enabled(self.config)
 
     def _get_cache_base_url(self) -> str:
         """Get the base URL for cache retrieval."""
-        return self.config.cache_base_url or "http://localhost:8000"
+        return get_cache_base_url(self.config)
 
     def _get_cache_secret(self) -> str:
         """Get the cache signing secret, generating one if not configured."""
-        if self.config.cache_secret:
-            return self.config.cache_secret
-        # Generate a random secret if not configured (warn in production)
-        import secrets
-
-        return secrets.token_hex(32)
+        return get_cache_secret(self.config)
 
     def _create_cache_context(self):
         """Create a cache context if caching is enabled."""
         from mcp_proxy.views import CacheContext
 
-        if not self._is_cache_enabled():
+        if not is_cache_enabled(self.config):
             return None
         return CacheContext(
             get_cache_config=self._get_cache_config,
-            cache_secret=self._get_cache_secret(),
-            cache_base_url=self._get_cache_base_url(),
+            cache_secret=get_cache_secret(self.config),
+            cache_base_url=get_cache_base_url(self.config),
         )
+
+    async def _initialize_views(self, cache_context: Any) -> None:
+        """Initialize all views with upstream clients and cache context."""
+        for view_name, view in self.views.items():
+            await view.initialize(
+                self.upstream_clients,
+                get_client=self.get_active_client,
+                reconnect_client=self.reconnect_client,
+                cache_context=cache_context,
+            )
+            view_tools = self.get_view_tools(view_name)
+            view.update_tool_mapping(view_tools)
 
     def _create_lifespan(self) -> Callable:
         """Create a lifespan context manager that initializes upstream connections."""
@@ -362,19 +293,9 @@ class MCPProxy:
             # Connect to upstream servers (spawns processes, keeps connections alive)
             await self.connect_clients(fetch_tools=True)
 
-            # Create cache context if caching is enabled
+            # Create cache context and initialize views
             cache_context = self._create_cache_context()
-
-            # Initialize views with active clients
-            for view_name, view in self.views.items():
-                await view.initialize(
-                    self.upstream_clients,
-                    get_client=self.get_active_client,
-                    reconnect_client=self.reconnect_client,
-                    cache_context=cache_context,
-                )
-                view_tools = self.get_view_tools(view_name)
-                view.update_tool_mapping(view_tools)
+            await self._initialize_views(cache_context)
 
             self._initialized = True
             try:
@@ -428,19 +349,9 @@ class MCPProxy:
 
         await self.refresh_upstream_tools()
 
-        # Create cache context if caching is enabled
+        # Create cache context and initialize views
         cache_context = self._create_cache_context()
-
-        for view_name, view in self.views.items():
-            await view.initialize(
-                self.upstream_clients,
-                get_client=self.get_active_client,
-                reconnect_client=self.reconnect_client,
-                cache_context=cache_context,
-            )
-            # Update tool mapping for dynamically discovered tools
-            view_tools = self.get_view_tools(view_name)
-            view.update_tool_mapping(view_tools)
+        await self._initialize_views(cache_context)
 
         self._initialized = True
 
@@ -667,99 +578,42 @@ class MCPProxy:
 
     def _register_cache_retrieval_tool(self, mcp: FastMCP) -> None:
         """Register the retrieve_cached_output tool on an MCP instance."""
-        from mcp_proxy.cache import retrieve_by_token
+        register_cache_retrieval_tool(mcp, get_cache_secret(self.config))
 
-        secret = self._get_cache_secret()
+    def _register_view_on_mcp(
+        self,
+        mcp: FastMCP,
+        view: ToolView,
+        view_name: str,
+        cache_context: Any,
+    ) -> None:
+        """Register a view's tools on an MCP instance based on exposure mode.
 
-        def retrieve_cached_output(token: str) -> dict:
-            """Retrieve the full content of a cached tool output.
+        Handles exposure_mode (direct, search, search_per_server), instructions,
+        and cache retrieval tool registration in a single consistent pattern.
+        """
+        view_tools = self.get_view_tools(view_name)
+        view.update_tool_mapping(view_tools)
 
-            When a tool's output is cached, you receive a preview and a token.
-            Use this tool to retrieve the full content when you need it.
+        if view.config.exposure_mode == "search":
+            self._register_search_tool(mcp, view_name)
+        elif view.config.exposure_mode == "search_per_server":
+            self._register_per_server_search_tools(mcp, view_name)
+        else:
+            self._register_tools_on_mcp(mcp, view_tools, view=view)
 
-            Args:
-                token: The cache token from a previous tool response
-
-            Returns:
-                The full cached output content, or an error if not found/expired
-            """
-            content = retrieve_by_token(token, secret)
-            if content is None:
-                return {"error": "Token not found, expired, or invalid"}
-            return {"content": content}
-
-        mcp.tool(
-            name="retrieve_cached_output",
-            description=(
-                "Retrieve the full content of a cached tool output. "
-                "When a tool's output is cached, you receive a preview and a token. "
-                "Use this tool to retrieve the full content when you need it."
-            ),
-        )(retrieve_cached_output)
+        self._register_instructions_tool(mcp)
+        if cache_context:
+            self._register_cache_retrieval_tool(mcp)
 
     def _register_search_tool(self, mcp: FastMCP, view_name: str) -> None:
         """Register the search and call meta-tools for a view."""
-        from mcp_proxy.search import ToolSearcher
-
         view = self.views[view_name]
         view_tools = self.get_view_tools(view_name)
-        tools_data = [
-            {"name": t.name, "description": t.description} for t in view_tools
-        ]
-        searcher = ToolSearcher(view_name=view_name, tools=tools_data)
-        search_tool = searcher.create_search_tool()
-
-        search_name = f"{view_name}_search_tools"
-
-        async def search_tools_wrapper(
-            query: str = "", limit: int = 25, offset: int = 0
-        ) -> dict:
-            return await search_tool(query=query, limit=limit, offset=offset)
-
-        search_tools_wrapper.__name__ = search_name
-        search_tools_wrapper.__doc__ = f"Search for tools in the {view_name} view"
-
-        mcp.tool(
-            name=search_name, description=f"Search for tools in the {view_name} view"
-        )(search_tools_wrapper)
-
-        call_name = f"{view_name}_call_tool"
-        tool_names_list = [t.name for t in view_tools]
-
-        def make_call_tool_wrapper(
-            v: ToolView, valid_tools: list[str]
-        ) -> Callable[..., Any]:
-            async def call_tool_wrapper(
-                tool_name: str, arguments: dict | None = None
-            ) -> Any:
-                if tool_name not in valid_tools:
-                    raise ValueError(
-                        f"Unknown tool '{tool_name}'. "
-                        f"Use {view_name}_search_tools to find available tools."
-                    )
-                return await v.call_tool(tool_name, arguments or {})
-
-            return call_tool_wrapper
-
-        call_wrapper = make_call_tool_wrapper(view, tool_names_list)
-        call_wrapper.__name__ = call_name
-        call_wrapper.__doc__ = (
-            f"Call a tool in the {view_name} view by name. "
-            f"Use {view_name}_search_tools first to find available tools."
-        )
-
-        mcp.tool(
-            name=call_name,
-            description=(
-                f"Call a tool in the {view_name} view by name. "
-                f"Use {view_name}_search_tools first to find available tools."
-            ),
-        )(call_wrapper)
+        register_tool_pair(mcp, view, view_tools, view_name, "view")
 
     def _register_per_server_search_tools(self, mcp: FastMCP, view_name: str) -> None:
         """Register search and call meta-tools for each upstream server."""
-        from mcp_proxy.search import ToolSearcher
-
         view = self.views[view_name]
         view_tools = self.get_view_tools(view_name)
 
@@ -771,70 +625,9 @@ class MCPProxy:
                 tools_by_server[server] = []
             tools_by_server[server].append(tool)
 
-        # Create search/call pairs for each server
+        # Register search/call pairs for each server
         for server_name, server_tools in tools_by_server.items():
-            tools_data = [
-                {"name": t.name, "description": t.description} for t in server_tools
-            ]
-            searcher = ToolSearcher(view_name=server_name, tools=tools_data)
-            search_tool = searcher.create_search_tool()
-
-            # Use server name with _proxy suffix to avoid conflicts
-            search_name = f"{server_name}_search_tools"
-
-            # Create closure properly
-            def create_search_func(st: Any, sn: str, srv: str) -> Callable:
-                async def search_func(
-                    query: str = "", limit: int = 25, offset: int = 0
-                ) -> dict:
-                    return await st(query=query, limit=limit, offset=offset)
-
-                search_func.__name__ = sn
-                search_func.__doc__ = f"Search for tools from the {srv} server"
-                return search_func
-
-            search_func = create_search_func(search_tool, search_name, server_name)
-            desc = f"Search for tools from the {server_name} server."
-
-            mcp.tool(name=search_name, description=desc)(search_func)
-
-            # Create call tool for this server
-            call_name = f"{server_name}_call_tool"
-
-            # Get all tool names for this server to validate calls
-            server_tool_names = {t.name for t in server_tools}
-
-            def make_call_tool_wrapper(
-                v: ToolView, srv_name: str, valid_tools: set[str]
-            ) -> Callable[..., Any]:
-                async def call_tool_wrapper(
-                    tool_name: str, arguments: dict | None = None
-                ) -> Any:
-                    # Validate the tool exists for this server
-                    if tool_name not in valid_tools:
-                        raise ValueError(
-                            f"Unknown tool '{tool_name}' for server '{srv_name}'. "
-                            f"Use {srv_name}_search_tools to find available tools."
-                        )
-                    # Use call_tool to ensure hooks and caching are applied
-                    return await v.call_tool(tool_name, arguments or {})
-
-                return call_tool_wrapper
-
-            call_wrapper = make_call_tool_wrapper(view, server_name, server_tool_names)
-            call_wrapper.__name__ = call_name
-            call_wrapper.__doc__ = (
-                f"Call a tool from the {server_name} server by name. "
-                f"Use {server_name}_search_tools first to find available tools."
-            )
-
-            mcp.tool(
-                name=call_name,
-                description=(
-                    f"Call a tool from the {server_name} server by name. "
-                    f"Use {server_name}_search_tools first to find available tools."
-                ),
-            )(call_wrapper)
+            register_tool_pair(mcp, view, server_tools, server_name, "server")
 
     def _register_tools_on_mcp(
         self, mcp: FastMCP, tools: list[ToolInfo], view: ToolView | None = None
@@ -872,12 +665,13 @@ class MCPProxy:
                 )
                 mcp._tool_manager._tools[_tool_name] = tool
             elif view:
-                self._register_view_tool(
+                register_view_tool(
                     mcp, view, _tool_name, _tool_desc, _input_schema, _param_config
                 )
             else:
-                self._register_direct_tool(
+                register_direct_tool(
                     mcp,
+                    self,
                     _tool_name,
                     _tool_desc,
                     _input_schema,
@@ -885,125 +679,6 @@ class MCPProxy:
                     _tool_server,
                     _param_config,
                 )
-
-    def _register_view_tool(
-        self,
-        mcp: FastMCP,
-        view: ToolView,
-        tool_name: str,
-        tool_desc: str,
-        input_schema: dict[str, Any] | None,
-        param_config: dict[str, Any] | None,
-    ) -> None:
-        """Register a regular upstream tool that routes through view.call_tool."""
-        if input_schema:
-
-            def make_upstream_wrapper_kwargs(
-                v: ToolView, name: str, param_cfg: dict[str, Any] | None
-            ) -> Callable[..., Any]:
-                async def upstream_wrapper(**kwargs: Any) -> Any:
-                    transformed = transform_args(kwargs, param_cfg)
-                    return await v.call_tool(name, transformed)
-
-                return upstream_wrapper
-
-            wrapper = make_upstream_wrapper_kwargs(view, tool_name, param_config)
-            tool = create_tool_with_schema(
-                name=tool_name,
-                description=tool_desc,
-                input_schema=input_schema,
-                fn=wrapper,
-            )
-            mcp._tool_manager._tools[tool_name] = tool
-        else:
-
-            def make_upstream_wrapper_dict(
-                v: ToolView, name: str, param_cfg: dict[str, Any] | None
-            ) -> Callable[..., Any]:
-                async def upstream_wrapper(arguments: dict | None = None) -> Any:
-                    transformed = transform_args(arguments or {}, param_cfg)
-                    return await v.call_tool(name, transformed)
-
-                return upstream_wrapper
-
-            wrapper = make_upstream_wrapper_dict(view, tool_name, param_config)
-            wrapper.__name__ = tool_name
-            wrapper.__doc__ = tool_desc
-            mcp.tool(name=tool_name, description=tool_desc)(wrapper)
-
-    def _register_direct_tool(
-        self,
-        mcp: FastMCP,
-        tool_name: str,
-        tool_desc: str,
-        input_schema: dict[str, Any] | None,
-        original_name: str,
-        server: str,
-        param_config: dict[str, Any] | None,
-    ) -> None:
-        """Register a tool that routes directly through proxy's upstream clients."""
-        if input_schema:
-
-            def make_direct_wrapper_kwargs(
-                proxy: "MCPProxy",
-                orig_name: str,
-                srv: str,
-                param_cfg: dict[str, Any] | None,
-            ) -> Callable[..., Any]:
-                async def direct_wrapper(**kwargs: Any) -> Any:
-                    if srv not in proxy.config.mcp_servers:
-                        raise ValueError(f"Server '{srv}' not configured")
-                    transformed = transform_args(kwargs, param_cfg)
-                    active_client = proxy._active_clients.get(srv)
-                    if active_client:
-                        return await active_client.call_tool(orig_name, transformed)
-                    client = proxy._create_client_from_config(
-                        proxy.config.mcp_servers[srv]
-                    )
-                    async with client:
-                        return await client.call_tool(orig_name, transformed)
-
-                return direct_wrapper
-
-            wrapper = make_direct_wrapper_kwargs(
-                self, original_name, server, param_config
-            )
-            tool = create_tool_with_schema(
-                name=tool_name,
-                description=tool_desc,
-                input_schema=input_schema,
-                fn=wrapper,
-            )
-            mcp._tool_manager._tools[tool_name] = tool
-        else:
-
-            def make_direct_wrapper_dict(
-                proxy: "MCPProxy",
-                orig_name: str,
-                srv: str,
-                param_cfg: dict[str, Any] | None,
-            ) -> Callable[..., Any]:
-                async def direct_wrapper(arguments: dict | None = None) -> Any:
-                    if srv not in proxy.config.mcp_servers:
-                        raise ValueError(f"Server '{srv}' not configured")
-                    transformed = transform_args(arguments or {}, param_cfg)
-                    active_client = proxy._active_clients.get(srv)
-                    if active_client:
-                        return await active_client.call_tool(orig_name, transformed)
-                    client = proxy._create_client_from_config(
-                        proxy.config.mcp_servers[srv]
-                    )
-                    async with client:
-                        return await client.call_tool(orig_name, transformed)
-
-                return direct_wrapper
-
-            wrapper = make_direct_wrapper_dict(
-                self, original_name, server, param_config
-            )
-            wrapper.__name__ = tool_name
-            wrapper.__doc__ = tool_desc
-            mcp.tool(name=tool_name, description=tool_desc)(wrapper)
 
     def _initialize_search_view(self, mcp: FastMCP) -> None:
         """Initialize the virtual search view with all tools using search_per_server.
@@ -1105,40 +780,22 @@ class MCPProxy:
                     reconnect_client=self.reconnect_client,
                     cache_context=cache_context,
                 )
-                # get_view_tools(None) returns "default" view tools
-                default_tools = self.get_view_tools(None)
-                default_view.update_tool_mapping(default_tools)
-                # Respect exposure_mode for root path
-                if default_view.config.exposure_mode == "search":
-                    self._register_search_tool(default_mcp, "default")
-                elif default_view.config.exposure_mode == "search_per_server":
-                    self._register_per_server_search_tools(default_mcp, "default")
-                else:
-                    self._register_tools_on_mcp(
-                        default_mcp, default_tools, view=default_view
-                    )
+                self._register_view_on_mcp(
+                    default_mcp, default_view, "default", cache_context
+                )
             else:
                 default_tools = self.get_view_tools(None)
                 self._register_tools_on_mcp(default_mcp, default_tools)
-            self._register_instructions_tool(default_mcp)
-            if cache_context:
-                self._register_cache_retrieval_tool(default_mcp)
+                self._register_instructions_tool(default_mcp)
+                if cache_context:
+                    self._register_cache_retrieval_tool(default_mcp)
 
             for view_name, view_mcp in view_mcps.items():
                 # Skip "default" view - already initialized above for root
                 if view_name == "default" and default_view:
-                    view_tools = self.get_view_tools(view_name)
-                    if default_view.config.exposure_mode == "search":
-                        self._register_search_tool(view_mcp, view_name)
-                    elif default_view.config.exposure_mode == "search_per_server":
-                        self._register_per_server_search_tools(view_mcp, view_name)
-                    else:
-                        self._register_tools_on_mcp(
-                            view_mcp, view_tools, view=default_view
-                        )
-                    self._register_instructions_tool(view_mcp)
-                    if cache_context:
-                        self._register_cache_retrieval_tool(view_mcp)
+                    self._register_view_on_mcp(
+                        view_mcp, default_view, view_name, cache_context
+                    )
                     continue
                 view_mcp.instructions = aggregated_instructions
                 view = self.views[view_name]
@@ -1148,19 +805,7 @@ class MCPProxy:
                     reconnect_client=self.reconnect_client,
                     cache_context=cache_context,
                 )
-                # Always update tool mapping (needed for view.call_tool to work)
-                view_tools = self.get_view_tools(view_name)
-                view.update_tool_mapping(view_tools)
-
-                if view.config.exposure_mode == "search":
-                    self._register_search_tool(view_mcp, view_name)
-                elif view.config.exposure_mode == "search_per_server":
-                    self._register_per_server_search_tools(view_mcp, view_name)
-                else:
-                    self._register_tools_on_mcp(view_mcp, view_tools, view=view)
-                self._register_instructions_tool(view_mcp)
-                if cache_context:
-                    self._register_cache_retrieval_tool(view_mcp)
+                self._register_view_on_mcp(view_mcp, view, view_name, cache_context)
 
             # Initialize the virtual "search" MCP with all tools
             search_mcp.instructions = aggregated_instructions
@@ -1181,68 +826,29 @@ class MCPProxy:
         if extra_routes:
             routes.extend(extra_routes)
 
-        async def health_check(request: Request) -> JSONResponse:
-            return JSONResponse({"status": "healthy"})
-
-        routes.append(Route(f"{path}/health", health_check, methods=["GET"]))
-
-        async def view_info(request: Request) -> JSONResponse:
-            # Check authentication first
-            auth_error = await check_auth_token(request, auth_provider)
-            if auth_error:
-                return auth_error
-
-            view_name = request.path_params["view_name"]
-            if view_name not in self.views:
-                return JSONResponse(
-                    {"error": f"View '{view_name}' not found"}, status_code=404
-                )
-            view = self.views[view_name]
-
-            if view.config.exposure_mode == "search":
-                tools_list = [{"name": f"{view_name}_search_tools"}]
-            elif view.config.exposure_mode == "search_per_server":
-                # List search tools for each server
-                tools = self.get_view_tools(view_name)
-                servers = set(t.server or "custom" for t in tools)
-                tools_list = [{"name": f"{s}_search_tools"} for s in sorted(servers)]
-            else:
-                tools = self.get_view_tools(view_name)
-                tools_list = [{"name": t.name} for t in tools] if tools else []
-
-            return JSONResponse(
-                {
-                    "name": view_name,
-                    "description": view.config.description,
-                    "exposure_mode": view.config.exposure_mode,
-                    "tools": tools_list,
-                }
+        routes.append(
+            Route(f"{path}/health", create_health_check_handler(), methods=["GET"])
+        )
+        routes.append(
+            Route(
+                f"{path}/views/{{view_name}}",
+                create_view_info_handler(self, auth_provider),
+                methods=["GET"],
             )
-
-        routes.append(Route(f"{path}/views/{{view_name}}", view_info, methods=["GET"]))
-
-        async def list_views(request: Request) -> JSONResponse:
-            # Check authentication first
-            auth_error = await check_auth_token(request, auth_provider)
-            if auth_error:
-                return auth_error
-
-            views_info = {
-                name: {
-                    "description": view.config.description,
-                    "exposure_mode": view.config.exposure_mode,
-                }
-                for name, view in self.views.items()
-            }
-            return JSONResponse({"views": views_info})
-
-        routes.append(Route(f"{path}/views", list_views, methods=["GET"]))
+        )
+        routes.append(
+            Route(
+                f"{path}/views",
+                create_list_views_handler(self, auth_provider),
+                methods=["GET"],
+            )
+        )
 
         # Add cache routes if caching is enabled
         if self._is_cache_enabled():
             from mcp_proxy.cache import create_cache_routes
 
-            cache_routes = create_cache_routes(self._get_cache_secret())
+            cache_routes = create_cache_routes(self._get_cache_secret(), path)
             routes.extend(cache_routes)
 
         # Add web UI routes for config editing (with same auth as other endpoints)

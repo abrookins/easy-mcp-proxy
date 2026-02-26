@@ -10,8 +10,6 @@ from starlette.testclient import TestClient
 
 from mcp_proxy.web_ui import (
     SESSION_COOKIE_NAME,
-    _build_html_template,
-    _build_restart_html,
     _exchange_code_for_token,
     _get_oauth_client_id,
     _get_oidc_provider,
@@ -28,10 +26,14 @@ from mcp_proxy.web_ui import (
     load_overrides,
     load_raw_config,
     merge_config,
-    render_servers_html,
-    render_views_html,
     save_overrides,
     verify_session_cookie,
+)
+from mcp_proxy.web_ui_templates import (
+    build_html_template,
+    build_restart_html,
+    render_servers_html,
+    render_views_html,
 )
 
 
@@ -412,8 +414,8 @@ class TestHtmlTemplates:
     """Tests for HTML template building."""
 
     def test_build_html_template(self):
-        """_build_html_template should produce valid HTML."""
-        html = _build_html_template(
+        """build_html_template should produce valid HTML."""
+        html = build_html_template(
             alert="",
             servers_html="<p>Servers</p>",
             views_html="<p>Views</p>",
@@ -427,8 +429,8 @@ class TestHtmlTemplates:
         assert "key: value" in html
 
     def test_build_restart_html(self):
-        """_build_restart_html should produce restart page."""
-        html = _build_restart_html("/config")
+        """build_restart_html should produce restart page."""
+        html = build_restart_html("/config")
         assert "Restarting" in html
         assert "/config" in html
 

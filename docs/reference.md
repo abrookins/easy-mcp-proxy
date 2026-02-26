@@ -12,6 +12,7 @@ Complete documentation for all Easy MCP Proxy features, configuration options, a
 - [Exposure Modes](#exposure-modes)
 - [Composite Tools](#composite-tools)
 - [Custom Tools](#custom-tools)
+- [Built-in Tools](#built-in-tools)
 - [Hooks](#hooks)
 - [Output Caching](#output-caching)
 - [Authentication](#authentication)
@@ -375,6 +376,101 @@ tool_views:
 | `call_tool(name, **kwargs)` | Call upstream tool |
 | `get_tool_info(name)` | Get tool schema |
 | `list_tools()` | List available tools |
+
+---
+
+## Built-in Tools
+
+Easy MCP Proxy includes several built-in custom tools that can be added to any view.
+
+### Code Sandbox
+
+Docker-based code execution sandbox for running code in isolated containers. Works on Mac (via Docker Desktop/OrbStack) and Linux.
+
+**Requirements**: Docker must be installed and running.
+
+#### Tools
+
+| Tool | Description |
+|------|-------------|
+| `run_code_sandbox` | Execute code in an isolated container (one-shot) |
+| `sandbox_session_start` | Start a persistent sandbox session |
+| `sandbox_session_exec` | Execute code in an existing session |
+| `sandbox_session_stop` | Stop and remove a session |
+| `sandbox_session_list` | List all active sessions |
+
+#### Configuration
+
+```yaml
+tool_views:
+  default:
+    custom_tools:
+      - module: mcp_proxy.tools.sandbox.run_code_sandbox
+      - module: mcp_proxy.tools.sandbox.sandbox_session_start
+      - module: mcp_proxy.tools.sandbox.sandbox_session_exec
+      - module: mcp_proxy.tools.sandbox.sandbox_session_stop
+      - module: mcp_proxy.tools.sandbox.sandbox_session_list
+```
+
+#### run_code_sandbox Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `code` | string | (required) | Code to execute |
+| `language` | string | `"python"` | Language: `python`, `node`, `bash` |
+| `timeout` | int | `30` | Execution timeout in seconds |
+| `isolation_level` | string | `"standard"` | Security level: `minimal`, `standard`, `secure` |
+| `memory_limit` | string | `"256m"` | Memory limit (e.g., `"512m"`, `"1g"`) |
+| `cpu_limit` | float | `1.0` | CPU limit (e.g., `0.5` for half a core) |
+| `packages` | list | `null` | Packages to install before execution |
+
+#### Isolation Levels
+
+| Level | Network | Read-only FS | Privilege Restrictions |
+|-------|---------|--------------|------------------------|
+| `minimal` | ✓ Allowed | No | No |
+| `standard` | ✗ Blocked | Yes | Yes |
+| `secure` | ✗ Blocked | Yes | Full hardening |
+
+#### Security Features
+
+- **Image Allowlist**: Only pre-approved Docker images can be used
+- **Package Validation**: Package names are validated to prevent command injection
+- **Resource Caps**: Memory, CPU, and timeout are capped to prevent DoS
+- **Session Limits**: Maximum 10 concurrent sessions
+- **Container Hardening**: Sessions use `--security-opt no-new-privileges --cap-drop ALL`
+
+#### Examples
+
+```python
+# Basic Python execution
+run_code_sandbox(code="print('hello world')")
+
+# Install packages and make network requests
+run_code_sandbox(
+    code="import requests; print(requests.get('https://api.github.com').status_code)",
+    packages=["requests"],
+    isolation_level="minimal"  # Network access required
+)
+
+# Persistent session for multi-step work
+session = sandbox_session_start(language="python", packages=["pandas"])
+sandbox_session_exec(session_id=session["session_id"], code="import pandas as pd")
+sandbox_session_exec(session_id=session["session_id"], code="df = pd.DataFrame({'a': [1,2,3]})")
+sandbox_session_exec(session_id=session["session_id"], code="print(df.describe())")
+sandbox_session_stop(session_id=session["session_id"])
+```
+
+### Code Quality Analysis
+
+Analyze code quality using the MFCQI tool.
+
+```yaml
+tool_views:
+  default:
+    custom_tools:
+      - module: mcp_proxy.tools.mfcqi.analyze_code_quality
+```
 
 ---
 

@@ -624,7 +624,7 @@ class TestHTTPViewsAuthIntegration:
         )
 
         with patch(
-            "mcp_proxy.proxy.proxy.check_auth_token",
+            "mcp_proxy.proxy.http_routes.check_auth_token",
             new=AsyncMock(return_value=mock_auth_error),
         ):
             app = proxy.http_app()
@@ -653,7 +653,7 @@ class TestHTTPViewsAuthIntegration:
         )
 
         with patch(
-            "mcp_proxy.proxy.proxy.check_auth_token",
+            "mcp_proxy.proxy.http_routes.check_auth_token",
             new=AsyncMock(return_value=mock_auth_error),
         ):
             app = proxy.http_app()

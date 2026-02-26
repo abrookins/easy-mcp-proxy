@@ -27,148 +27,29 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 
+from mcp_proxy.web_ui_templates import (
+    build_error_html,
+    build_html_template,
+    build_restart_html,
+    render_servers_html,
+    render_views_html,
+)
+
 if TYPE_CHECKING:
     from fastmcp.server.auth.auth import AuthProvider
 
 # Type alias for auth check function
 AuthChecker = Callable[[Request], Coroutine[Any, Any, Response | None]]
 
+
+def _error_response(title: str, message: str, status_code: int = 500) -> HTMLResponse:
+    """Create an HTML error response."""
+    return HTMLResponse(build_error_html(title, message), status_code=status_code)
+
+
 # Session cookie settings
 SESSION_COOKIE_NAME = "mcp_proxy_session"
 SESSION_MAX_AGE = 3600 * 24  # 24 hours
-
-# HTML template parts - split to avoid line length issues
-_CSS_STYLES = """
-body { font-family: -apple-system, sans-serif; max-width: 1200px;
-       margin: 0 auto; padding: 20px; background: #f5f5f5; }
-h1 { color: #333; }
-.card { background: white; border-radius: 8px; padding: 20px;
-        margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-.card h2 { margin-top: 0; color: #555;
-           border-bottom: 1px solid #eee; padding-bottom: 10px; }
-.form-group { margin-bottom: 15px; }
-label { display: block; margin-bottom: 5px; font-weight: 600; color: #444; }
-input[type="text"], textarea { width: 100%; padding: 10px;
-    border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-textarea { font-family: monospace; min-height: 200px; }
-button { background: #007bff; color: white; border: none;
-         padding: 10px 20px; border-radius: 4px;
-         cursor: pointer; margin-right: 10px; }
-button:hover { background: #0056b3; }
-button.danger { background: #dc3545; }
-button.danger:hover { background: #c82333; }
-.alert { padding: 15px; border-radius: 4px; margin-bottom: 20px; }
-.alert-success { background: #d4edda; color: #155724; }
-.alert-error { background: #f8d7da; color: #721c24; }
-.server-item, .view-item { border: 1px solid #eee; padding: 15px;
-                           margin-bottom: 10px; border-radius: 4px; }
-.server-item h3, .view-item h3 { margin-top: 0; }
-code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; }
-.tabs { display: flex; border-bottom: 1px solid #ddd; margin-bottom: 20px; }
-.tab { padding: 10px 20px; cursor: pointer; border: none; background: none; }
-.tab.active { border-bottom: 2px solid #007bff; color: #007bff; }
-.tab-content { display: none; }
-.tab-content.active { display: block; }
-"""
-
-_JS_SCRIPT = """
-function showTab(name) {
-    document.querySelectorAll('.tab').forEach(
-        function(t) { t.classList.remove('active'); }
-    );
-    document.querySelectorAll('.tab-content').forEach(
-        function(t) { t.classList.remove('active'); }
-    );
-    document.querySelector('[onclick*="' + name + '"]')
-        .classList.add('active');
-    document.getElementById(name).classList.add('active');
-}
-"""
-
-
-def _build_html_template(
-    alert: str,
-    servers_html: str,
-    views_html: str,
-    config_yaml: str,
-    save_url: str,
-    restart_url: str,
-) -> str:
-    """Build the HTML page from parts."""
-    restart_js = f"if(confirm('Restart?')) window.location='{restart_url}'"
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MCP Proxy Configuration</title>
-    <style>{_CSS_STYLES}</style>
-</head>
-<body>
-    <h1>MCP Proxy Configuration</h1>
-    {alert}
-    <div class="tabs">
-        <button class="tab active" onclick="showTab('servers')">Servers</button>
-        <button class="tab" onclick="showTab('views')">Views</button>
-        <button class="tab" onclick="showTab('yaml')">YAML Editor</button>
-    </div>
-    <div id="servers" class="tab-content active">
-        <div class="card">
-            <h2>Upstream MCP Servers</h2>
-            {servers_html}
-        </div>
-    </div>
-    <div id="views" class="tab-content">
-        <div class="card">
-            <h2>Tool Views</h2>
-            {views_html}
-        </div>
-    </div>
-    <div id="yaml" class="tab-content">
-        <div class="card">
-            <h2>Full Configuration (YAML)</h2>
-            <form method="POST" action="{save_url}">
-                <div class="form-group">
-                    <textarea name="config_yaml">{config_yaml}</textarea>
-                </div>
-                <button type="submit">Save Configuration</button>
-                <button type="button" class="danger" onclick="{restart_js}">
-                    Restart Server
-                </button>
-            </form>
-        </div>
-    </div>
-    <script>{_JS_SCRIPT}</script>
-</body>
-</html>"""
-
-
-_RESTART_CSS = """
-body { font-family: sans-serif; text-align: center; padding: 50px; }
-.spinner { animation: spin 1s linear infinite; font-size: 2em; }
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-"""
-
-
-def _build_restart_html(redirect_url: str) -> str:
-    """Build the restart page HTML."""
-    return f"""<!DOCTYPE html>
-<html>
-<head>
-    <title>Restarting...</title>
-    <meta http-equiv="refresh" content="3;url={redirect_url}">
-    <style>{_RESTART_CSS}</style>
-</head>
-<body>
-    <div class="spinner">⟳</div>
-    <h1>Restarting Server...</h1>
-    <p>The server is restarting with the new configuration.</p>
-    <p>You will be redirected automatically in a few seconds.</p>
-</body>
-</html>"""
 
 
 def get_config_path() -> Path:
@@ -218,45 +99,12 @@ def merge_config(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, A
     return result
 
 
-def render_servers_html(servers: dict[str, Any]) -> str:
-    """Render HTML for server list."""
-    if not servers:
-        return "<p>No servers configured.</p>"
-    html_parts = []
-    for name, cfg in servers.items():
-        server_type = "HTTP" if cfg.get("url") else "stdio"
-        if cfg.get("url"):
-            details = cfg.get("url")
-        else:
-            cmd = cfg.get("command", "")
-            args = " ".join(cfg.get("args", []))
-            details = f"{cmd} {args}".strip()
-        html_parts.append(
-            f'<div class="server-item">'
-            f"<h3>{name}</h3>"
-            f"<p><strong>Type:</strong> {server_type}</p>"
-            f"<p><strong>Details:</strong> <code>{details}</code></p>"
-            f"</div>"
-        )
-    return "".join(html_parts)
-
-
-def render_views_html(views: dict[str, Any]) -> str:
-    """Render HTML for views list."""
-    if not views:
-        return "<p>No views configured.</p>"
-    html_parts = []
-    for name, cfg in views.items():
-        desc = cfg.get("description", "No description")
-        mode = cfg.get("exposure_mode", "direct")
-        html_parts.append(
-            f'<div class="view-item">'
-            f"<h3>{name}</h3>"
-            f"<p><strong>Description:</strong> {desc}</p>"
-            f"<p><strong>Mode:</strong> {mode}</p>"
-            f"</div>"
-        )
-    return "".join(html_parts)
+def load_merged_config() -> dict[str, Any]:
+    """Load config with overrides merged in."""
+    config_path = get_config_path()
+    raw_config = load_raw_config(config_path)
+    overrides = load_overrides(config_path)
+    return merge_config(raw_config, overrides)
 
 
 def _get_session_secret() -> str:
@@ -348,14 +196,34 @@ def _get_oidc_provider(
     return auth_provider
 
 
-def _get_oauth_client_id(auth_provider: "AuthProvider | None") -> str:
-    """Get the OAuth client ID from the auth provider."""
-    from mcp_proxy.auth import AUTH0_CLIENT_ID_VAR
+def _get_oauth_credentials(
+    auth_provider: "AuthProvider | None",
+) -> tuple[str, str]:
+    """Get OAuth client ID and secret from auth provider or environment.
+
+    Returns:
+        Tuple of (client_id, client_secret)
+    """
+    from mcp_proxy.auth import AUTH0_CLIENT_ID_VAR, AUTH0_CLIENT_SECRET_VAR
 
     provider = _get_oidc_provider(auth_provider)
-    if provider and hasattr(provider, "client_id"):
-        return str(provider.client_id)
-    return os.environ.get(AUTH0_CLIENT_ID_VAR, "")
+    client_id = (
+        str(provider.client_id)
+        if provider and hasattr(provider, "client_id")
+        else os.environ.get(AUTH0_CLIENT_ID_VAR, "")
+    )
+    client_secret = (
+        str(provider.client_secret)
+        if provider and hasattr(provider, "client_secret")
+        else os.environ.get(AUTH0_CLIENT_SECRET_VAR, "")
+    )
+    return client_id, client_secret
+
+
+def _get_oauth_client_id(auth_provider: "AuthProvider | None") -> str:
+    """Get the OAuth client ID from the auth provider."""
+    client_id, _ = _get_oauth_credentials(auth_provider)
+    return client_id
 
 
 def _get_token_url(auth_provider: "AuthProvider | None") -> str | None:
@@ -383,23 +251,11 @@ async def _exchange_code_for_token(
     """Exchange an authorization code for an access token."""
     import httpx
 
-    from mcp_proxy.auth import AUTH0_CLIENT_ID_VAR, AUTH0_CLIENT_SECRET_VAR
-
     token_url = _get_token_url(auth_provider)
     if not token_url:
         return None
 
-    provider = _get_oidc_provider(auth_provider)
-    client_id = (
-        str(provider.client_id)
-        if provider and hasattr(provider, "client_id")
-        else os.environ.get(AUTH0_CLIENT_ID_VAR, "")
-    )
-    client_secret = (
-        str(provider.client_secret)
-        if provider and hasattr(provider, "client_secret")
-        else os.environ.get(AUTH0_CLIENT_SECRET_VAR, "")
-    )
+    client_id, client_secret = _get_oauth_credentials(auth_provider)
 
     try:
         async with httpx.AsyncClient() as client:
@@ -462,11 +318,10 @@ def create_web_ui_routes(
                 login_url = f"{path_prefix}/login?return_url={encoded_url}"
                 return RedirectResponse(login_url, status_code=302)
             # No auth provider available - show error
-            return HTMLResponse(
-                "<h1>Authentication Required</h1>"
-                "<p>OAuth is not configured. "
-                "Please set up OIDC environment variables.</p>",
-                status_code=401,
+            return _error_response(
+                "Authentication Required",
+                "OAuth is not configured. Please set up OIDC environment variables.",
+                401,
             )
 
         # API request without valid token
@@ -480,10 +335,7 @@ def create_web_ui_routes(
         if auth_result:
             return auth_result
 
-        config_path = get_config_path()
-        raw_config = load_raw_config(config_path)
-        overrides = load_overrides(config_path)
-        merged = merge_config(raw_config, overrides)
+        merged = load_merged_config()
 
         alert = ""
         if "saved" in request.query_params:
@@ -495,7 +347,7 @@ def create_web_ui_routes(
             err_msg = request.query_params.get("error", "Unknown error")
             alert = f'<div class="alert alert-error">Error: {err_msg}</div>'
 
-        html = _build_html_template(
+        html = build_html_template(
             alert=alert,
             servers_html=render_servers_html(merged.get("mcp_servers", {})),
             views_html=render_views_html(merged.get("tool_views", {})),
@@ -552,7 +404,7 @@ def create_web_ui_routes(
             if is_api:
                 return JSONResponse({"status": "restart_initiated"})
             else:
-                return HTMLResponse(_build_restart_html(path_prefix))
+                return HTMLResponse(build_restart_html(path_prefix))
         except Exception as e:
             if is_api:
                 return JSONResponse({"error": str(e)}, status_code=500)
@@ -567,11 +419,7 @@ def create_web_ui_routes(
         if auth_result:
             return auth_result
 
-        config_path = get_config_path()
-        raw_config = load_raw_config(config_path)
-        overrides = load_overrides(config_path)
-        merged = merge_config(raw_config, overrides)
-        return JSONResponse(merged)
+        return JSONResponse(load_merged_config())
 
     async def update_config_json(request: Request) -> Response:
         """Update config via JSON API."""
@@ -593,10 +441,9 @@ def create_web_ui_routes(
         auth_url = get_authorization_url(auth_provider)
 
         if not auth_url:
-            return HTMLResponse(
-                "<h1>OAuth Not Configured</h1>"
-                "<p>Please configure OIDC environment variables to enable login.</p>",
-                status_code=500,
+            return _error_response(
+                "OAuth Not Configured",
+                "Please configure OIDC environment variables to enable login.",
             )
 
         # Build auth URL with state containing the return URL
@@ -621,18 +468,12 @@ def create_web_ui_routes(
 
         if not code:
             error = request.query_params.get("error", "Unknown error")
-            return HTMLResponse(
-                f"<h1>Login Failed</h1><p>Error: {error}</p>",
-                status_code=400,
-            )
+            return _error_response("Login Failed", f"Error: {error}", 400)
 
         # Exchange code for token
         token_url = _get_token_url(auth_provider)
         if not token_url:
-            return HTMLResponse(
-                "<h1>OAuth Not Configured</h1>",
-                status_code=500,
-            )
+            return _error_response("OAuth Not Configured", "Token URL not available.")
 
         # Exchange the authorization code for an access token
         callback_url = str(request.url_for("config_login_callback"))
@@ -640,10 +481,9 @@ def create_web_ui_routes(
             auth_provider, code, callback_url
         )
         if not token_response:
-            return HTMLResponse(
-                "<h1>Token Exchange Failed</h1>"
-                "<p>Could not exchange authorization code for token.</p>",
-                status_code=500,
+            return _error_response(
+                "Token Exchange Failed",
+                "Could not exchange authorization code for token.",
             )
 
         # Create session cookie with user info from token

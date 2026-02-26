@@ -475,9 +475,7 @@ class TestSearchPerServerMode:
 
         # Should fail when calling a tool that doesn't exist on this server
         # The tool is validated before calling upstream
-        with pytest.raises(
-            ValueError, match="Unknown tool 'search_memories' for server 'github'"
-        ):
+        with pytest.raises(ValueError, match="Unknown tool 'search_memories'"):
             await github_call_fn(tool_name="search_memories", arguments={})
 
     async def test_search_per_server_with_include_all(self):

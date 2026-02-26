@@ -289,11 +289,12 @@ def clear_cache() -> int:
     return count
 
 
-def create_cache_routes(secret: str) -> list:
+def create_cache_routes(secret: str, path_prefix: str = "") -> list:
     """Create Starlette routes for cache retrieval.
 
     Args:
         secret: HMAC signing secret for URL verification
+        path_prefix: Optional path prefix for the route (e.g., "/mcp")
 
     Returns:
         List of Starlette Route objects
@@ -329,4 +330,4 @@ def create_cache_routes(secret: str) -> list:
 
         return PlainTextResponse(content)
 
-    return [Route("/cache/{token}", retrieve_cache, methods=["GET"])]
+    return [Route(f"{path_prefix}/cache/{{token}}", retrieve_cache, methods=["GET"])]
