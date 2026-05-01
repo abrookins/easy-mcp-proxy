@@ -2,7 +2,15 @@
 
 import pytest
 from fastmcp import Client, FastMCP
+from mcp import types
+from starlette.applications import Starlette
+from starlette.testclient import TestClient
 
+from mcp_proxy.cache import (
+    create_cache_routes,
+    create_cached_output_with_meta,
+    retrieve_by_token,
+)
 from mcp_proxy.models import ProxyConfig, ToolViewConfig, UpstreamServerConfig
 from mcp_proxy.proxy import MCPProxy
 
@@ -112,3 +120,92 @@ class TestMCPClientIntegration:
             # These should NOT be present
             assert "create_branch" not in tool_names
             assert "merge_pr" not in tool_names
+
+    @pytest.mark.asyncio
+    async def test_tool_can_return_mcp_and_signed_http_resource_links(self, tmp_path):
+        """A tool can return multiple resource links for the same cached output."""
+        from unittest.mock import patch
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            cached = create_cached_output_with_meta(
+                content='{"large":"payload"}',
+                secret="test-secret",
+                base_url="http://testserver",
+                ttl_seconds=3600,
+                preview_chars=8,
+            )
+
+            mcp = FastMCP("Dual Link Test")
+
+            @mcp.resource(
+                "mcp://easy-mcp-proxy/cache/{token}",
+                name="cached-output",
+                mime_type="application/json",
+            )
+            def cached_output_resource(token: str) -> str:
+                content = retrieve_by_token(token, "test-secret")
+                assert content is not None
+                return content
+
+            @mcp.tool(name="get_cached_output_links")
+            def get_cached_output_links() -> list[types.ContentBlock]:
+                return [
+                    types.TextContent(type="text", text=cached.preview),
+                    types.ResourceLink(
+                        type="resource_link",
+                        name="cached-output-mcp",
+                        title="Cached output via MCP",
+                        uri=f"mcp://easy-mcp-proxy/cache/{cached.token}",
+                        description="Canonical MCP resource URI",
+                        mimeType="application/json",
+                        size=cached.size_bytes,
+                    ),
+                    types.ResourceLink(
+                        type="resource_link",
+                        name="cached-output-http",
+                        title="Cached output via HTTPS",
+                        uri=cached.retrieve_url,
+                        description="Signed HTTP retrieval URL",
+                        mimeType="application/json",
+                        size=cached.size_bytes,
+                        _meta={"access": "signed_http"},
+                    ),
+                ]
+
+            async with Client(mcp) as client:
+                result = await client.call_tool("get_cached_output_links", {})
+
+                assert len(result.content) == 3
+                assert result.content[0].type == "text"
+
+                mcp_link = next(
+                    block
+                    for block in result.content
+                    if getattr(block, "name", "") == "cached-output-mcp"
+                )
+                http_link = next(
+                    block
+                    for block in result.content
+                    if getattr(block, "name", "") == "cached-output-http"
+                )
+
+                assert mcp_link.type == "resource_link"
+                assert str(mcp_link.uri) == f"mcp://easy-mcp-proxy/cache/{cached.token}"
+                assert http_link.type == "resource_link"
+                assert str(http_link.uri) == cached.retrieve_url
+                assert http_link.meta == {"access": "signed_http"}
+
+                resource_contents = await client.read_resource(mcp_link.uri)
+                assert len(resource_contents) == 1
+                assert resource_contents[0].mimeType == "application/json"
+                assert resource_contents[0].text == '{"large":"payload"}'
+
+            http_app = Starlette(routes=create_cache_routes("test-secret"))
+            http_client = TestClient(http_app)
+            http_response = http_client.get(cached.retrieve_url)
+
+            assert http_response.status_code == 200
+            assert http_response.text == '{"large":"payload"}'
