@@ -18,6 +18,7 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 logger = logging.getLogger("mcp_proxy.debug")
@@ -476,3 +477,38 @@ def configure_debug_logging(level: int = logging.DEBUG) -> None:
         )
         handler.setFormatter(formatter)
         debug_logger.addHandler(handler)
+
+
+def configure_file_logging(path: str, level: int = logging.INFO) -> None:
+    """Configure file-backed logging for proxy and HTTP activity.
+
+    This captures:
+    - `mcp_proxy.*` logger output
+
+    Args:
+        path: File path to append logs to
+        level: Logging level for attached file handlers
+    """
+    log_path = Path(path).expanduser()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    logger_names = ["mcp_proxy"]
+
+    for logger_name in logger_names:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(min(logger.level or level, level))
+
+        existing = [
+            handler
+            for handler in logger.handlers
+            if isinstance(handler, logging.FileHandler)
+            and getattr(handler, "baseFilename", None) == str(log_path)
+        ]
+        if existing:
+            continue
+
+        handler = logging.FileHandler(log_path)
+        handler.setLevel(level)
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)

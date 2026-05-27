@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from fastmcp import FastMCP
 
+from mcp_proxy.proxy.schema import normalize_dict_arguments, transform_args
 from mcp_proxy.search import ToolSearcher
 
 if TYPE_CHECKING:
@@ -18,28 +19,35 @@ if TYPE_CHECKING:
 
 def create_call_tool_wrapper(
     view: "ToolView",
-    valid_tools: set[str] | list[str],
+    tools: list["ToolInfo"] | dict[str, "ToolInfo"],
     search_tool_name: str,
 ) -> Callable[..., Any]:
     """Create a call_tool wrapper function with validation.
 
     Args:
         view: The ToolView to call tools on
-        valid_tools: Set or list of valid tool names
+        tools: ToolInfo objects keyed by exposed tool name or a flat list
         search_tool_name: Name of the search tool for error messages
 
     Returns:
         An async function that validates and calls tools
     """
-    valid_set = set(valid_tools) if isinstance(valid_tools, list) else valid_tools
+    tool_map = {tool.name: tool for tool in tools} if isinstance(tools, list) else tools
 
-    async def call_tool_wrapper(tool_name: str, arguments: dict | None = None) -> Any:
-        if tool_name not in valid_set:
+    async def call_tool_wrapper(
+        tool_name: str, arguments: dict | str | None = None
+    ) -> Any:
+        if tool_name not in tool_map:
             raise ValueError(
                 f"Unknown tool '{tool_name}'. "
                 f"Use {search_tool_name} to find available tools."
             )
-        return await view.call_tool(tool_name, arguments or {})
+        tool_info = tool_map[tool_name]
+        transformed_args = transform_args(
+            normalize_dict_arguments(arguments),
+            tool_info.parameter_config,
+        )
+        return await view.call_tool(tool_name, transformed_args, tool_info=tool_info)
 
     return call_tool_wrapper
 
@@ -93,8 +101,7 @@ def register_tool_pair(
     mcp.tool(name=search_name, description=f"{search_desc}.")(search_wrapper)
 
     call_name = f"{entity_name}_call_tool"
-    tool_names = {t.name for t in tools}
-    call_wrapper = create_call_tool_wrapper(view, tool_names, search_name)
+    call_wrapper = create_call_tool_wrapper(view, tools, search_name)
     call_wrapper.__name__ = call_name
     call_desc = (
         f"Call a tool {preposition} the {entity_name} {entity_type} by name. "

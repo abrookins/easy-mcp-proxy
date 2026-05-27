@@ -72,6 +72,8 @@ AUTH0_CLIENT_ID_VAR = "FASTMCP_SERVER_AUTH_AUTH0_CLIENT_ID"
 AUTH0_CLIENT_SECRET_VAR = "FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET"
 AUTH0_AUDIENCE_VAR = "FASTMCP_SERVER_AUTH_AUTH0_AUDIENCE"
 AUTH0_BASE_URL_VAR = "FASTMCP_SERVER_AUTH_AUTH0_BASE_URL"
+AUTH_ALLOWED_EMAILS_VAR = "MCP_PROXY_AUTH_ALLOWED_EMAILS"
+AUTH_REQUIRE_VERIFIED_EMAIL_VAR = "MCP_PROXY_AUTH_REQUIRE_EMAIL_VERIFIED"
 
 
 def parse_token_config(token_str: str) -> tuple[str, dict]:
@@ -147,6 +149,24 @@ def get_static_token_configs() -> dict[str, dict]:
         if token:
             result[token] = config
     return result
+
+
+def get_allowed_emails() -> set[str]:
+    """Get the set of explicitly allowed email addresses from the environment."""
+    emails_env = os.environ.get(AUTH_ALLOWED_EMAILS_VAR, "")
+    if not emails_env:
+        return set()
+
+    parts = emails_env.replace(";", ",").split(",")
+    return {email.strip().casefold() for email in parts if email.strip()}
+
+
+def require_verified_email() -> bool:
+    """Return whether email-restricted auth also requires email verification."""
+    value = os.environ.get(AUTH_REQUIRE_VERIFIED_EMAIL_VAR, "")
+    if not value:
+        return True
+    return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def is_static_auth_configured() -> bool:
@@ -321,6 +341,87 @@ class CompositeAuthProvider:
         ]
 
 
+class RestrictedAuthProvider:
+    """Auth provider wrapper that applies additional claim-based restrictions."""
+
+    def __init__(
+        self,
+        provider: "AuthProvider",
+        *,
+        allowed_emails: set[str],
+        require_email_verified: bool = True,
+    ):
+        self.provider = provider
+        self.allowed_emails = {email.casefold() for email in allowed_emails}
+        self.require_email_verified = require_email_verified
+
+    @property
+    def required_scopes(self) -> list[str]:
+        """Delegate required scopes to the wrapped provider."""
+        return getattr(self.provider, "required_scopes", [])
+
+    @property
+    def base_url(self):
+        """Delegate base_url to the wrapped provider."""
+        return getattr(self.provider, "base_url", None)
+
+    def _get_resource_url(self, path: str | None = None):
+        """Delegate resource URL construction to the wrapped provider."""
+        if hasattr(self.provider, "_get_resource_url"):
+            return self.provider._get_resource_url(path)
+        return None
+
+    def get_routes(self, mcp_path: str | None = None) -> list:
+        """Delegate OAuth-related routes to the wrapped provider."""
+        if hasattr(self.provider, "get_routes"):
+            return self.provider.get_routes(mcp_path)
+        return []
+
+    def get_well_known_routes(self, mcp_path: str | None = None) -> list:
+        """Delegate well-known routes to the wrapped provider."""
+        if hasattr(self.provider, "get_well_known_routes"):
+            return self.provider.get_well_known_routes(mcp_path)
+        return []
+
+    def get_middleware(self) -> list:
+        """Build middleware that verifies tokens through this wrapper."""
+        from mcp.server.auth.middleware.auth_context import AuthContextMiddleware
+        from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend
+        from starlette.middleware import Middleware
+        from starlette.middleware.authentication import AuthenticationMiddleware
+
+        return [
+            Middleware(
+                AuthenticationMiddleware,
+                backend=BearerAuthBackend(self),
+            ),
+            Middleware(AuthContextMiddleware),
+        ]
+
+    async def verify_token(self, token: str) -> "AccessToken | None":
+        """Verify token with the wrapped provider, then enforce claim restrictions."""
+        access_token = await self.provider.verify_token(token)
+        if access_token is None:
+            return None
+        if not self._is_token_allowed(access_token):
+            return None
+        return access_token
+
+    def _is_token_allowed(self, access_token: "AccessToken") -> bool:
+        """Return True if the token satisfies the configured claim restrictions."""
+        claims = getattr(access_token, "claims", {}) or {}
+        email = claims.get("email")
+
+        if not isinstance(email, str):
+            return False
+        if email.casefold() not in self.allowed_emails:
+            return False
+        if self.require_email_verified and claims.get("email_verified") is not True:
+            return False
+
+        return True
+
+
 def create_auth_provider() -> "AuthProvider | None":
     """Create an auth provider from environment variables.
 
@@ -350,14 +451,22 @@ def create_auth_provider() -> "AuthProvider | None":
     static_provider = _create_static_token_provider() if has_static else None
     oidc_provider = _create_oidc_provider() if has_oidc else None
 
-    # If only one is configured, return it directly
-    if has_static and not has_oidc:
-        return static_provider
-    if has_oidc and not has_static:
-        return oidc_provider
+    allowed_emails = get_allowed_emails()
+    if allowed_emails and oidc_provider is not None:
+        oidc_provider = RestrictedAuthProvider(
+            oidc_provider,
+            allowed_emails=allowed_emails,
+            require_email_verified=require_verified_email(),
+        )
 
-    # Both configured - use composite
-    return CompositeAuthProvider(
-        static_provider=static_provider,
-        oidc_provider=oidc_provider,
-    )
+    if has_static and not has_oidc:
+        provider: AuthProvider = static_provider
+    elif has_oidc and not has_static:
+        provider = oidc_provider
+    else:
+        provider = CompositeAuthProvider(
+            static_provider=static_provider,
+            oidc_provider=oidc_provider,
+        )
+
+    return provider

@@ -13,6 +13,7 @@ from mcp_proxy.debug import (
     _truncate,
     clear_request_id,
     configure_debug_logging,
+    configure_file_logging,
     disable_debug,
     enable_debug,
     get_request_id,
@@ -784,3 +785,40 @@ class TestConfigureDebugLogging:
 
         # Reset
         configure_debug_logging(logging.DEBUG)
+
+
+class TestConfigureFileLogging:
+    """Tests for file-backed logging configuration."""
+
+    def test_configure_file_logging_writes_proxy_logs(self, tmp_path):
+        """File logging should capture proxy loggers to the configured file."""
+        log_file = tmp_path / "proxy.log"
+
+        configure_file_logging(str(log_file), level=logging.INFO)
+
+        logging.getLogger("mcp_proxy.debug").info("proxy event")
+
+        content = log_file.read_text()
+        assert "proxy event" in content
+
+    def test_configure_file_logging_skips_duplicate_handler(self, tmp_path):
+        """File logging should not attach duplicate handlers for the same path."""
+        log_file = tmp_path / "proxy.log"
+        logger = logging.getLogger("mcp_proxy")
+
+        configure_file_logging(str(log_file), level=logging.INFO)
+        configure_file_logging(str(log_file), level=logging.INFO)
+
+        matching_handlers = [
+            handler
+            for handler in logger.handlers
+            if isinstance(handler, logging.FileHandler)
+            and handler.baseFilename == str(log_file)
+        ]
+
+        try:
+            assert len(matching_handlers) == 1
+        finally:
+            for handler in matching_handlers:
+                logger.removeHandler(handler)
+                handler.close()

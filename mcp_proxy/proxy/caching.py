@@ -133,3 +133,24 @@ def register_cache_retrieval_tool(mcp: FastMCP, secret: str) -> None:
             "Use this tool to retrieve the full content when you need it."
         ),
     )(retrieve_cached_output)
+
+
+def register_cache_resource(mcp: FastMCP, secret: str) -> None:
+    """Register the cached-output MCP resource template on an MCP instance.
+
+    Args:
+        mcp: FastMCP instance to register the resource on
+        secret: The cache signing secret
+    """
+    from mcp_proxy.cache import CACHE_RESOURCE_URI_TEMPLATE, retrieve_by_token
+
+    @mcp.resource(
+        CACHE_RESOURCE_URI_TEMPLATE,
+        name="cached-output",
+        description="Read the full content of a cached tool output by token.",
+    )
+    def cached_output_resource(token: str) -> str:
+        content = retrieve_by_token(token, secret)
+        if content is None:
+            raise ValueError("Token not found, expired, or invalid")
+        return content

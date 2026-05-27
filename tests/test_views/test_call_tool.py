@@ -9,6 +9,17 @@ from mcp_proxy.proxy.tool_info import ToolInfo
 from mcp_proxy.views import ToolView
 
 
+def _assert_cached_tool_result(result):
+    """Assert a cached tool result and return its structured content."""
+    assert result.structured_content is not None
+    assert result.structured_content["cached"] is True
+    assert len(result.content) == 3
+    assert result.content[0].type == "text"
+    assert result.content[1].type == "resource_link"
+    assert result.content[2].type == "resource_link"
+    return result.structured_content
+
+
 class TestToolViewCallTool:
     """Tests for calling tools through a view."""
 
@@ -277,10 +288,10 @@ class TestToolViewCaching:
             result = await view.call_tool("my_tool", {"arg": "value"})
 
         # Result should be cached response
-        assert result["cached"] is True
-        assert "token" in result
-        assert "retrieve_url" in result
-        assert "preview" in result
+        structured = _assert_cached_tool_result(result)
+        assert "token" in structured
+        assert "retrieve_url" in structured
+        assert "preview" in structured
 
     async def test_call_tool_skips_caching_below_min_size(self, tmp_path):
         """ToolView.call_tool() should skip caching for small outputs."""
@@ -377,8 +388,8 @@ class TestToolViewCaching:
             cache_config = OutputCacheConfig(enabled=True, preview_chars=10)
             result = view._apply_caching("hello world", cache_config)
 
-        assert result["cached"] is True
-        assert result["preview"] == "hello worl..."
+        structured = _assert_cached_tool_result(result)
+        assert structured["preview"] == "hello worl..."
 
     async def test_apply_caching_with_dict_result(self, tmp_path):
         """_apply_caching should handle dict results by JSON serializing them."""
@@ -406,9 +417,9 @@ class TestToolViewCaching:
             cache_config = OutputCacheConfig(enabled=True, preview_chars=100)
             result = view._apply_caching({"key": "value"}, cache_config)
 
-        assert result["cached"] is True
+        structured = _assert_cached_tool_result(result)
         # The preview should contain the JSON representation
-        assert "key" in result["preview"]
+        assert "key" in structured["preview"]
 
     async def test_apply_caching_json_dumps_fallback(self, tmp_path):
         """_apply_caching should fall back to str() when json.dumps fails."""
@@ -451,7 +462,7 @@ class TestToolViewCaching:
             with patch("json.dumps", mock_dumps):
                 result = view._apply_caching({"key": "value"}, cache_config)
 
-        assert result["cached"] is True
+        _assert_cached_tool_result(result)
 
 
 class TestExtractContentForCache:

@@ -514,6 +514,237 @@ class TestCompositeAuthProvider:
         assert str(result) == "http://localhost:8000/"
 
 
+class TestRestrictedAuthProvider:
+    """Tests for explicit claim-based auth restrictions."""
+
+    def test_get_allowed_emails_parses_comma_and_semicolon_separated(self):
+        """Allowed emails should support both comma and semicolon separators."""
+        from mcp_proxy.auth import get_allowed_emails
+
+        with patch.dict(
+            os.environ,
+            {"MCP_PROXY_AUTH_ALLOWED_EMAILS": "User@Example.com; two@example.com"},
+            clear=True,
+        ):
+            assert get_allowed_emails() == {"user@example.com", "two@example.com"}
+
+    def test_require_verified_email_defaults_true(self):
+        """Verified email should be required by default when email allowlist is used."""
+        from mcp_proxy.auth import require_verified_email
+
+        with patch.dict(os.environ, {}, clear=True):
+            assert require_verified_email() is True
+
+    @pytest.mark.parametrize("env_value", ["0", "false", "no", "off"])
+    def test_require_verified_email_can_be_disabled(self, env_value):
+        """Verified email checks can be disabled through the environment."""
+        from mcp_proxy.auth import require_verified_email
+
+        with patch.dict(
+            os.environ,
+            {"MCP_PROXY_AUTH_REQUIRE_EMAIL_VERIFIED": env_value},
+            clear=True,
+        ):
+            assert require_verified_email() is False
+
+    def test_restricted_provider_delegates_auth_metadata(self):
+        """RestrictedAuthProvider should delegate metadata methods when present."""
+        from starlette.middleware import Middleware
+
+        from mcp_proxy.auth import RestrictedAuthProvider
+
+        class InnerProvider:
+            required_scopes = ["mcp:tools"]
+            base_url = "http://localhost:8000"
+
+            def _get_resource_url(self, path):
+                return f"http://localhost:8000{path}"
+
+            def get_routes(self, mcp_path=None):
+                return [f"route:{mcp_path}"]
+
+            def get_well_known_routes(self, mcp_path=None):
+                return [f"well-known:{mcp_path}"]
+
+        provider = RestrictedAuthProvider(
+            InnerProvider(),
+            allowed_emails={"user@example.com"},
+        )
+
+        assert provider.required_scopes == ["mcp:tools"]
+        assert provider.base_url == "http://localhost:8000"
+        assert provider._get_resource_url("/mcp") == "http://localhost:8000/mcp"
+        assert provider.get_routes("/mcp") == ["route:/mcp"]
+        assert provider.get_well_known_routes("/mcp") == ["well-known:/mcp"]
+        assert all(isinstance(item, Middleware) for item in provider.get_middleware())
+
+    def test_restricted_provider_metadata_defaults_without_delegate_methods(self):
+        """RestrictedAuthProvider should return safe defaults for minimal providers."""
+        from mcp_proxy.auth import RestrictedAuthProvider
+
+        class InnerProvider:
+            pass
+
+        provider = RestrictedAuthProvider(
+            InnerProvider(),
+            allowed_emails={"user@example.com"},
+        )
+
+        assert provider.required_scopes == []
+        assert provider.base_url is None
+        assert provider._get_resource_url("/mcp") is None
+        assert provider.get_routes("/mcp") == []
+        assert provider.get_well_known_routes("/mcp") == []
+
+    @pytest.mark.asyncio
+    async def test_restricted_provider_allows_matching_verified_email(self):
+        """Matching, verified emails should be accepted."""
+        from fastmcp.server.auth.auth import AccessToken
+
+        from mcp_proxy.auth import RestrictedAuthProvider
+
+        token = AccessToken(
+            token="oidc-token",
+            client_id="client",
+            scopes=["mcp:tools"],
+            claims={"email": "user@example.com", "email_verified": True},
+        )
+        inner = MagicMock()
+        inner.verify_token = AsyncMock(return_value=token)
+
+        provider = RestrictedAuthProvider(
+            inner,
+            allowed_emails={"user@example.com"},
+        )
+
+        result = await provider.verify_token("oidc-token")
+        assert result is token
+
+    @pytest.mark.asyncio
+    async def test_restricted_provider_rejects_missing_inner_token(self):
+        """Missing tokens from the wrapped provider should be rejected."""
+        from mcp_proxy.auth import RestrictedAuthProvider
+
+        inner = MagicMock()
+        inner.verify_token = AsyncMock(return_value=None)
+
+        provider = RestrictedAuthProvider(
+            inner,
+            allowed_emails={"user@example.com"},
+        )
+
+        result = await provider.verify_token("oidc-token")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_restricted_provider_rejects_non_string_email(self):
+        """Email restrictions should reject tokens without a string email claim."""
+        from fastmcp.server.auth.auth import AccessToken
+
+        from mcp_proxy.auth import RestrictedAuthProvider
+
+        token = AccessToken(
+            token="oidc-token",
+            client_id="client",
+            scopes=["mcp:tools"],
+            claims={"email": None, "email_verified": True},
+        )
+        inner = MagicMock()
+        inner.verify_token = AsyncMock(return_value=token)
+
+        provider = RestrictedAuthProvider(
+            inner,
+            allowed_emails={"user@example.com"},
+        )
+
+        result = await provider.verify_token("oidc-token")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_restricted_provider_rejects_wrong_email(self):
+        """Non-allowlisted emails should be rejected."""
+        from fastmcp.server.auth.auth import AccessToken
+
+        from mcp_proxy.auth import RestrictedAuthProvider
+
+        token = AccessToken(
+            token="oidc-token",
+            client_id="client",
+            scopes=["mcp:tools"],
+            claims={"email": "other@example.com", "email_verified": True},
+        )
+        inner = MagicMock()
+        inner.verify_token = AsyncMock(return_value=token)
+
+        provider = RestrictedAuthProvider(
+            inner,
+            allowed_emails={"user@example.com"},
+        )
+
+        result = await provider.verify_token("oidc-token")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_restricted_provider_rejects_unverified_email(self):
+        """Unverified emails should be rejected by default."""
+        from fastmcp.server.auth.auth import AccessToken
+
+        from mcp_proxy.auth import RestrictedAuthProvider
+
+        token = AccessToken(
+            token="oidc-token",
+            client_id="client",
+            scopes=["mcp:tools"],
+            claims={"email": "user@example.com", "email_verified": False},
+        )
+        inner = MagicMock()
+        inner.verify_token = AsyncMock(return_value=token)
+
+        provider = RestrictedAuthProvider(
+            inner,
+            allowed_emails={"user@example.com"},
+        )
+
+        result = await provider.verify_token("oidc-token")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_static_token_still_works_with_email_allowlist(self):
+        """Static tokens should remain usable when OIDC is email-restricted."""
+        from mcp_proxy.auth import create_auth_provider
+
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_PROXY_AUTH_TOKENS": "my-secret-token",
+                "MCP_PROXY_AUTH_ALLOWED_EMAILS": "user@example.com",
+            },
+            clear=True,
+        ):
+            provider = create_auth_provider()
+            result = await provider.verify_token("my-secret-token")
+            assert result is not None
+
+    def test_create_auth_provider_keeps_static_provider_when_only_static_configured(
+        self,
+    ):
+        """Static-only auth should not be wrapped by email restrictions."""
+        from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
+
+        from mcp_proxy.auth import create_auth_provider
+
+        with patch.dict(
+            os.environ,
+            {
+                "MCP_PROXY_AUTH_TOKENS": "my-secret-token",
+                "MCP_PROXY_AUTH_ALLOWED_EMAILS": "user@example.com",
+            },
+            clear=True,
+        ):
+            result = create_auth_provider()
+            assert isinstance(result, StaticTokenVerifier)
+
+
 class TestCreateAuthProviderModes:
     """Tests for different auth provider modes."""
 
@@ -660,6 +891,41 @@ class TestCreateAuthProvider:
                 assert result is not None
                 # Verify required_scopes was parsed correctly
                 assert result.required_scopes == ["read:tools", "write:tools"]
+
+    def test_wraps_oidc_provider_when_allowed_emails_set(self):
+        """OIDC auth should be wrapped when email restrictions are configured."""
+        from mcp_proxy.auth import RestrictedAuthProvider, create_auth_provider
+
+        mock_oidc_config = {
+            "issuer": "https://test.auth0.com/",
+            "authorization_endpoint": "https://test.auth0.com/authorize",
+            "token_endpoint": "https://test.auth0.com/oauth/token",
+            "userinfo_endpoint": "https://test.auth0.com/userinfo",
+            "jwks_uri": "https://test.auth0.com/.well-known/jwks.json",
+            "response_types_supported": ["code"],
+            "subject_types_supported": ["public"],
+            "id_token_signing_alg_values_supported": ["RS256"],
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "FASTMCP_SERVER_AUTH_AUTH0_CONFIG_URL": "https://test.auth0.com/.well-known/openid-configuration",
+                "FASTMCP_SERVER_AUTH_AUTH0_CLIENT_ID": "test-client-id",
+                "FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET": "test-client-secret",
+                "FASTMCP_SERVER_AUTH_AUTH0_AUDIENCE": "https://api.test.com",
+                "FASTMCP_SERVER_AUTH_AUTH0_BASE_URL": "http://localhost:8000",
+                "MCP_PROXY_AUTH_ALLOWED_EMAILS": "user@example.com",
+            },
+            clear=True,
+        ):
+            with patch("httpx.get") as mock_get:
+                mock_response = mock_get.return_value
+                mock_response.status_code = 200
+                mock_response.json.return_value = mock_oidc_config
+
+                result = create_auth_provider()
+                assert isinstance(result, RestrictedAuthProvider)
 
 
 class TestIsAuthConfigured:

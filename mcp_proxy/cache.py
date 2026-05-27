@@ -20,10 +20,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from fastmcp.tools.tool import ToolResult
+from mcp import types
 from pydantic import BaseModel
 
 # Cache directory in system temp
 CACHE_DIR = Path(tempfile.gettempdir()) / "mcp-proxy-cache"
+CACHE_RESOURCE_URI_TEMPLATE = "mcp://easy-mcp-proxy/cache/{token}"
 
 
 class CachedOutputResponse(BaseModel):
@@ -35,6 +38,62 @@ class CachedOutputResponse(BaseModel):
     expires_at: str  # ISO 8601 timestamp
     preview: str
     size_bytes: int
+
+
+def build_cache_resource_uri(token: str) -> str:
+    """Build the MCP resource URI for a cached output token."""
+    return CACHE_RESOURCE_URI_TEMPLATE.format(token=token)
+
+
+def infer_cached_content_mime_type(content: str) -> str:
+    """Infer a reasonable MIME type for cached content."""
+    try:
+        json.loads(content)
+    except (TypeError, json.JSONDecodeError):
+        return "text/plain"
+    return "application/json"
+
+
+def build_cached_output_tool_result(
+    cached_response: CachedOutputResponse,
+    mime_type: str,
+) -> ToolResult:
+    """Build a tool result with MCP and signed-HTTP resource links."""
+    preview_text = (
+        f"{cached_response.preview}\n\n"
+        "Full output is available via the cached resource links."
+    )
+    resource_uri = build_cache_resource_uri(cached_response.token)
+    structured_content = cached_response.model_dump()
+
+    return ToolResult(
+        content=[
+            types.TextContent(type="text", text=preview_text),
+            types.ResourceLink(
+                type="resource_link",
+                name="cached-output-mcp",
+                title="Cached output via MCP",
+                uri=resource_uri,
+                description="Read the full cached output via resources/read.",
+                mimeType=mime_type,
+                size=cached_response.size_bytes,
+            ),
+            types.ResourceLink(
+                type="resource_link",
+                name="cached-output-http",
+                title="Cached output via HTTPS",
+                uri=cached_response.retrieve_url,
+                description="Retrieve the full cached output using this signed URL.",
+                mimeType=mime_type,
+                size=cached_response.size_bytes,
+                _meta={
+                    "access": "signed_http",
+                    "expires_at": cached_response.expires_at,
+                },
+            ),
+        ],
+        structured_content=structured_content,
+    )
 
 
 def ensure_cache_dir() -> Path:

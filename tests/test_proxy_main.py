@@ -387,6 +387,27 @@ class TestMCPProxyInstructions:
             text_content = result.content[0].text
             assert "Server instructions here" in text_content
 
+    @pytest.mark.asyncio
+    async def test_get_tool_instructions_tool_accepts_tool_name_argument(self):
+        """get_tool_instructions should tolerate clients passing tool_name."""
+        from fastmcp import Client
+
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={"myview": {"description": "Test view"}},
+        )
+        proxy = MCPProxy(config)
+        proxy.upstream_instructions["server"] = "Server instructions here"
+
+        view_mcp = proxy.get_view_mcp("myview")
+
+        async with Client(view_mcp) as client:
+            result = await client.call_tool(
+                "get_tool_instructions", {"tool_name": "memory_call_tool"}
+            )
+            text_content = result.content[0].text
+            assert "Server instructions here" in text_content
+
 
 class TestMCPProxyToolRegistration:
     """Tests for tool registration in direct/search modes."""
@@ -646,6 +667,41 @@ class TestMCPProxyToolExecution:
 
         # Should call upstream and return result
         mock_client.call_tool.assert_called_once()
+        assert result == {"result": "from_upstream"}
+
+    async def test_registered_tool_accepts_stringified_json_arguments(self):
+        """Dict-style wrappers should accept JSON-string arguments."""
+        from unittest.mock import AsyncMock
+
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={
+                "view": {
+                    "exposure_mode": "direct",
+                    "tools": {"server": {"my_tool": {"description": "A tool"}}},
+                }
+            },
+        )
+        proxy = MCPProxy(config)
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"result": "from_upstream"}
+        proxy.upstream_clients = {"server": mock_client}
+        proxy.views["view"]._upstream_clients = {"server": mock_client}
+
+        view_mcp = proxy.get_view_mcp("view")
+
+        registered_tool = None
+        for tool in view_mcp._tool_manager._tools.values():
+            if tool.name == "my_tool":
+                registered_tool = tool
+                break
+
+        assert registered_tool is not None, "Tool should be registered"
+
+        result = await registered_tool.fn(arguments='{"arg": "value"}')
+
+        mock_client.call_tool.assert_called_once_with("my_tool", {"arg": "value"})
         assert result == {"result": "from_upstream"}
 
     async def test_registered_composite_tool_executes(self):
@@ -3100,6 +3156,33 @@ class TestCacheConfiguration:
             result = tool.fn(token="nonexistent")
 
             assert "error" in result
+
+    def test_register_cache_resource_raises_for_invalid_token(self, tmp_path):
+        """Test cached-output resource raises for an invalid token."""
+        from unittest.mock import patch
+
+        from fastmcp import FastMCP
+
+        from mcp_proxy.models import OutputCacheConfig
+
+        config = ProxyConfig(
+            output_cache=OutputCacheConfig(enabled=True),
+            cache_secret="test-secret",
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+        )
+        proxy = MCPProxy(config)
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+
+            mcp = FastMCP("test")
+            proxy._register_cache_retrieval_tool(mcp)
+
+            template = next(iter(mcp._resource_manager._templates.values()))
+            with pytest.raises(ValueError, match="Token not found"):
+                template.fn(token="nonexistent")
 
     def test_get_view_mcp_registers_cache_tool_when_enabled(self, tmp_path):
         """Test get_view_mcp registers cache retrieval tool when enabled."""

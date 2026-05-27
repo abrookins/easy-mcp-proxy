@@ -298,12 +298,22 @@ def serve(
     debug: bool,
 ):  # pragma: no cover
     """Start the MCP proxy server."""
+    import logging
+    import os
+
     from dotenv import load_dotenv
 
+    from mcp_proxy.debug import configure_file_logging
     from mcp_proxy.proxy import MCPProxy
 
     # Load environment variables from .env file
     load_dotenv(env_file)
+
+    log_file = os.environ.get("MCP_PROXY_LOG_FILE")
+    if log_file:
+        level_name = os.environ.get("MCP_PROXY_LOG_LEVEL", "INFO").upper()
+        level = getattr(logging, level_name, logging.INFO)
+        configure_file_logging(log_file, level=level)
 
     cfg = load_config(str(get_config_path(config)))
     proxy = MCPProxy(cfg)

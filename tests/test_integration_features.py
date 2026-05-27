@@ -21,6 +21,18 @@ import pytest
 from mcp_proxy.models import ProxyConfig, ToolViewConfig, UpstreamServerConfig
 from mcp_proxy.proxy import MCPProxy
 
+
+def _assert_cached_tool_result(result):
+    """Assert a cached tool result and return its structured content."""
+    assert result.structured_content is not None
+    assert result.structured_content["cached"] is True
+    assert len(result.content) == 3
+    assert result.content[0].type == "text"
+    assert result.content[1].type == "resource_link"
+    assert result.content[2].type == "resource_link"
+    return result.structured_content
+
+
 # =============================================================================
 # 1. Actual Upstream MCP Connections
 # =============================================================================
@@ -991,18 +1003,18 @@ class TestOutputCachingEndToEnd:
             result = await view.call_tool("get_data", {})
 
             # Verify cached response format
-            assert result["cached"] is True
-            assert "token" in result
-            assert "retrieve_url" in result
-            assert "preview" in result
-            assert "expires_at" in result
-            assert "size_bytes" in result
+            structured = _assert_cached_tool_result(result)
+            assert "token" in structured
+            assert "retrieve_url" in structured
+            assert "preview" in structured
+            assert "expires_at" in structured
+            assert "size_bytes" in structured
 
             # Preview should be truncated
-            assert len(result["preview"]) <= 103  # 100 + "..."
+            assert len(structured["preview"]) <= 103  # 100 + "..."
 
             # Save the token for retrieval
-            token = result["token"]
+            token = structured["token"]
 
             # Now retrieve the full content using the token
             from mcp_proxy.cache import retrieve_by_token
@@ -1063,8 +1075,8 @@ class TestOutputCachingEndToEnd:
             # Step 1: Call tool to get cached response
             cached_response = await view.call_tool("fetch", {})
 
-            assert cached_response["cached"] is True
-            token = cached_response["token"]
+            structured = _assert_cached_tool_result(cached_response)
+            token = structured["token"]
 
             # Step 2: Get the view MCP and call retrieve_cached_output
             view_mcp = proxy.get_view_mcp("cached")
@@ -1092,6 +1104,12 @@ class TestOutputCachingEndToEnd:
 
                 # Verify it matches the original data
                 assert full_content == large_data
+
+                resource_result = await client.read_resource(
+                    f"mcp://easy-mcp-proxy/cache/{token}"
+                )
+                assert len(resource_result) == 1
+                assert json.loads(resource_result[0].text) == large_data
 
     @pytest.mark.asyncio
     async def test_http_cache_endpoint_returns_content(self, tmp_path):
@@ -1139,9 +1157,9 @@ class TestOutputCachingEndToEnd:
             # Step 1: Call tool to cache the output
             cached_response = await view.call_tool("read", {})
 
-            assert cached_response["cached"] is True
-            retrieve_url = cached_response["retrieve_url"]
-            token = cached_response["token"]
+            structured = _assert_cached_tool_result(cached_response)
+            retrieve_url = structured["retrieve_url"]
+            token = structured["token"]
 
             # Step 2: Create HTTP app and retrieve via HTTP
             app = proxy.http_app()
@@ -1261,8 +1279,8 @@ class TestOutputCachingEndToEnd:
 
             # cached_tool should be cached (tool-level override)
             result1 = await view.call_tool("cached_tool", {})
-            assert result1["cached"] is True
-            assert len(result1["preview"]) <= 23  # 20 + "..."
+            structured1 = _assert_cached_tool_result(result1)
+            assert len(structured1["preview"]) <= 23  # 20 + "..."
 
             # uncached_tool should NOT be cached (follows global disabled)
             result2 = await view.call_tool("uncached_tool", {})
@@ -1324,18 +1342,18 @@ class TestOutputCachingEndToEnd:
             result = await view.call_tool("read_file", {"path": "/data/large_file.txt"})
 
             # Verify it's cached
-            assert result["cached"] is True
-            assert "token" in result
-            assert "retrieve_url" in result
-            assert "preview" in result
-            assert result["size_bytes"] > 0
+            structured = _assert_cached_tool_result(result)
+            assert "token" in structured
+            assert "retrieve_url" in structured
+            assert "preview" in structured
+            assert structured["size_bytes"] > 0
 
             # The preview should be truncated
-            preview = result["preview"]
+            preview = structured["preview"]
             assert len(preview) <= 103
 
-            token = result["token"]
-            retrieve_url = result["retrieve_url"]
+            token = structured["token"]
+            retrieve_url = structured["retrieve_url"]
 
             # STEP 2: Create HTTP app
             app = proxy.http_app()

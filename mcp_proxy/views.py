@@ -214,7 +214,11 @@ class ToolView:
         Returns:
             Either the original result or a CachedOutputResponse
         """
-        from mcp_proxy.cache import create_cached_output_with_meta
+        from mcp_proxy.cache import (
+            build_cached_output_tool_result,
+            create_cached_output_with_meta,
+            infer_cached_content_mime_type,
+        )
 
         # Extract content, handling CallToolResult objects properly
         content = self._extract_content_for_cache(result)
@@ -233,9 +237,15 @@ class ToolView:
             preview_chars=cache_config.preview_chars,
         )
 
-        return cached_response.model_dump()
+        mime_type = infer_cached_content_mime_type(content)
+        return build_cached_output_tool_result(cached_response, mime_type)
 
-    async def call_tool(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+    async def call_tool(
+        self,
+        tool_name: str,
+        args: dict[str, Any],
+        tool_info: Any | None = None,
+    ) -> Any:
         """Call a tool, applying hooks if configured."""
         # Check if it's a custom tool
         if tool_name in self.custom_tools:
@@ -245,7 +255,9 @@ class ToolView:
         if tool_name in self.composite_tools:
             return await self._call_composite_tool(tool_name, args)
 
-        server_name = self._get_server_for_tool(tool_name)
+        server_name = getattr(tool_info, "server", None) or self._get_server_for_tool(
+            tool_name
+        )
 
         context = ToolCallContext(
             view_name=self.name,
@@ -270,7 +282,9 @@ class ToolView:
             raise ValueError(f"Unknown tool: {tool_name}")
 
         # Use the original tool name when calling upstream (handles renames)
-        original_name = self._get_original_tool_name(tool_name)
+        original_name = getattr(
+            tool_info, "original_name", None
+        ) or self._get_original_tool_name(tool_name)
 
         # Try to get an active (connected) client first
         active_client = self._get_client(server_name) if self._get_client else None
@@ -362,9 +376,7 @@ class ToolView:
         # Call the custom tool with context
         return await tool_fn(ctx=ctx, **args)
 
-    async def _call_composite_tool(
-        self, tool_name: str, args: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _call_composite_tool(self, tool_name: str, args: dict[str, Any]) -> Any:
         """Call a composite (parallel) tool."""
         parallel_tool = self.composite_tools[tool_name]
         parallel_tool._call_tool_fn = self._call_upstream_tool

@@ -18,6 +18,7 @@ from .caching import (
     get_cache_config,
     get_cache_secret,
     is_cache_enabled,
+    register_cache_resource,
     register_cache_retrieval_tool,
 )
 from .client import ClientManager
@@ -430,16 +431,48 @@ class MCPProxy:
                 self._register_cache_retrieval_tool(stdio_server)
             stdio_server.run(transport="stdio")
         else:
+            import copy
+            import os
+            from pathlib import Path
+
             import uvicorn
+            from uvicorn.config import LOGGING_CONFIG
 
             # http_app() handles its own tool fetching
             app = self.http_app()
+            log_config = copy.deepcopy(LOGGING_CONFIG)
+            log_file = os.environ.get("MCP_PROXY_LOG_FILE")
+            if log_file:
+                log_path = Path(log_file).expanduser()
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                handlers = log_config.setdefault("handlers", {})
+                handlers["mcp_proxy_file_default"] = {
+                    "class": "logging.FileHandler",
+                    "filename": str(log_path),
+                    "formatter": "default",
+                }
+                handlers["mcp_proxy_file_access"] = {
+                    "class": "logging.FileHandler",
+                    "filename": str(log_path),
+                    "formatter": "access",
+                }
+
+                logger_config = log_config["loggers"].setdefault("uvicorn", {})
+                logger_handlers = logger_config.setdefault("handlers", ["default"])
+                if "mcp_proxy_file_default" not in logger_handlers:
+                    logger_handlers.append("mcp_proxy_file_default")
+
+                access_config = log_config["loggers"].setdefault("uvicorn.access", {})
+                access_handlers = access_config.setdefault("handlers", ["access"])
+                if "mcp_proxy_file_access" not in access_handlers:
+                    access_handlers.append("mcp_proxy_file_access")
             uvicorn.run(
                 app,
                 host="0.0.0.0",
                 port=port or 8000,
                 ws="wsproto",
                 access_log=access_log,
+                log_config=log_config,
                 # Force shutdown after 2 seconds instead of waiting for
                 # WebSocket clients to disconnect gracefully
                 timeout_graceful_shutdown=2,
@@ -556,12 +589,17 @@ class MCPProxy:
         """Register the get_tool_instructions tool on an MCP instance."""
         proxy = self  # Capture reference for closure
 
-        def get_tool_instructions() -> str:
+        def get_tool_instructions(tool_name: str | None = None) -> str:
             """Get aggregated instructions from all upstream MCP servers.
 
             Call this at the start of every session to understand how to use
             the memory tools and other available capabilities effectively.
+
+            The optional ``tool_name`` parameter is accepted for compatibility
+            with clients that expect per-tool help. It is currently ignored and
+            the tool always returns aggregated instructions.
             """
+            del tool_name
             instructions = proxy.get_aggregated_instructions()
             if instructions:
                 return instructions
@@ -577,8 +615,9 @@ class MCPProxy:
         )(get_tool_instructions)
 
     def _register_cache_retrieval_tool(self, mcp: FastMCP) -> None:
-        """Register the retrieve_cached_output tool on an MCP instance."""
+        """Register cache retrieval helpers on an MCP instance."""
         register_cache_retrieval_tool(mcp, get_cache_secret(self.config))
+        register_cache_resource(mcp, get_cache_secret(self.config))
 
     def _register_view_on_mcp(
         self,

@@ -316,6 +316,49 @@ class TestSearchModeCallThrough:
         assert result == {"results": ["file1.py", "file2.py"]}
 
     @pytest.mark.asyncio
+    async def test_search_mode_call_tool_accepts_stringified_json_arguments(self):
+        """The call_tool meta-tool should accept JSON-string arguments."""
+        from unittest.mock import AsyncMock
+
+        from mcp_proxy.models import ProxyConfig
+        from mcp_proxy.proxy import MCPProxy
+
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={
+                "view": {
+                    "exposure_mode": "search",
+                    "tools": {
+                        "server": {"search_code": {"description": "Search code"}}
+                    },
+                }
+            },
+        )
+        proxy = MCPProxy(config)
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"results": ["file1.py"]}
+        proxy.upstream_clients = {"server": mock_client}
+        proxy.views["view"]._upstream_clients = {"server": mock_client}
+
+        view_mcp = proxy.get_view_mcp("view")
+
+        call_tool_fn = None
+        for tool in view_mcp._tool_manager._tools.values():
+            if tool.name == "view_call_tool":
+                call_tool_fn = tool.fn
+                break
+
+        assert call_tool_fn is not None, "view_call_tool should be registered"
+
+        result = await call_tool_fn(
+            tool_name="search_code", arguments='{"query": "test"}'
+        )
+
+        mock_client.call_tool.assert_called_once_with("search_code", {"query": "test"})
+        assert result == {"results": ["file1.py"]}
+
+    @pytest.mark.asyncio
     async def test_call_tool_raises_for_unknown_tool(self):
         """call_tool meta-tool should raise ValueError for unknown tools."""
         from mcp_proxy.models import ProxyConfig, ToolViewConfig, UpstreamServerConfig
@@ -477,6 +520,133 @@ class TestSearchPerServerMode:
         # The tool is validated before calling upstream
         with pytest.raises(ValueError, match="Unknown tool 'search_memories'"):
             await github_call_fn(tool_name="search_memories", arguments={})
+
+    async def test_search_per_server_call_tool_applies_parameter_renames(self):
+        """Per-server call_tool should map renamed params back for upstream."""
+        from unittest.mock import AsyncMock
+
+        from mcp_proxy.models import (
+            ParameterConfig,
+            ProxyConfig,
+            ToolConfig,
+            ToolViewConfig,
+            UpstreamServerConfig,
+        )
+        from mcp_proxy.proxy import MCPProxy
+
+        config = ProxyConfig(
+            mcp_servers={
+                "github": UpstreamServerConfig(
+                    command="echo",
+                    tools={
+                        "get_pull_request_reviews": ToolConfig(
+                            parameters={
+                                "pull_number": ParameterConfig(rename="pullNumber")
+                            }
+                        )
+                    },
+                )
+            },
+            tool_views={
+                "all": ToolViewConfig(
+                    exposure_mode="search_per_server",
+                    tools={"github": {"get_pull_request_reviews": {}}},
+                )
+            },
+        )
+        proxy = MCPProxy(config)
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"reviews": []}
+        proxy.upstream_clients = {"github": mock_client}
+        proxy.views["all"]._upstream_clients = {"github": mock_client}
+
+        view_mcp = proxy.get_view_mcp("all")
+
+        github_call_fn = None
+        for tool in view_mcp._tool_manager._tools.values():
+            if tool.name == "github_call_tool":
+                github_call_fn = tool.fn
+                break
+
+        assert github_call_fn is not None
+
+        result = await github_call_fn(
+            tool_name="get_pull_request_reviews",
+            arguments={"owner": "acme", "repo": "widgets", "pullNumber": 129},
+        )
+
+        mock_client.call_tool.assert_called_once_with(
+            "get_pull_request_reviews",
+            {"owner": "acme", "repo": "widgets", "pull_number": 129},
+        )
+        assert result == {"reviews": []}
+
+    async def test_search_per_server_call_tool_routes_include_all_duplicates_by_server(
+        self,
+    ):
+        """include_all per-server calls should route duplicate names by server."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from mcp_proxy.models import ProxyConfig, ToolViewConfig, UpstreamServerConfig
+        from mcp_proxy.proxy import MCPProxy
+
+        config = ProxyConfig(
+            mcp_servers={
+                "github": UpstreamServerConfig(command="echo"),
+                "github-redis": UpstreamServerConfig(command="echo"),
+            },
+            tool_views={
+                "all": ToolViewConfig(
+                    exposure_mode="search_per_server",
+                    include_all=True,
+                )
+            },
+        )
+        proxy = MCPProxy(config)
+
+        primary_tool = MagicMock()
+        primary_tool.name = "search_code"
+        primary_tool.description = "Search primary GitHub"
+        redis_tool = MagicMock()
+        redis_tool.name = "search_code"
+        redis_tool.description = "Search Redis GitHub"
+        proxy._upstream_tools = {
+            "github": [primary_tool],
+            "github-redis": [redis_tool],
+        }
+
+        primary_client = AsyncMock()
+        primary_client.__aenter__.return_value = primary_client
+        primary_client.call_tool.return_value = {"server": "primary"}
+        redis_client = AsyncMock()
+        redis_client.__aenter__.return_value = redis_client
+        redis_client.call_tool.return_value = {"server": "redis"}
+        proxy.upstream_clients = {
+            "github": primary_client,
+            "github-redis": redis_client,
+        }
+        proxy.views["all"]._upstream_clients = proxy.upstream_clients
+
+        view_mcp = proxy.get_view_mcp("all")
+        redis_call_fn = None
+        for tool in view_mcp._tool_manager._tools.values():
+            if tool.name == "github-redis_call_tool":
+                redis_call_fn = tool.fn
+                break
+
+        assert redis_call_fn is not None
+
+        result = await redis_call_fn(
+            tool_name="search_code",
+            arguments={"query": "repo:redis/redis stream"},
+        )
+
+        redis_client.call_tool.assert_called_once_with(
+            "search_code", {"query": "repo:redis/redis stream"}
+        )
+        primary_client.call_tool.assert_not_called()
+        assert result == {"server": "redis"}
 
     async def test_search_per_server_with_include_all(self):
         """search_per_server should work with include_all: true."""

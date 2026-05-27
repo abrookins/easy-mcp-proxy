@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from fastmcp import FastMCP
 
-from .schema import create_tool_with_schema, transform_args
+from .schema import create_tool_with_schema, normalize_dict_arguments, transform_args
 
 if TYPE_CHECKING:
     from mcp_proxy.views import ToolView
@@ -33,8 +33,8 @@ def make_view_wrapper_dict(
 ) -> Callable[..., Any]:
     """Create a dict-based wrapper for view tool calls."""
 
-    async def wrapper(arguments: dict | None = None) -> Any:
-        transformed = transform_args(arguments or {}, param_cfg)
+    async def wrapper(arguments: dict | str | None = None) -> Any:
+        transformed = transform_args(normalize_dict_arguments(arguments), param_cfg)
         return await view.call_tool(name, transformed)
 
     return wrapper
@@ -77,8 +77,8 @@ def make_direct_wrapper_dict(
 ) -> Callable[..., Any]:
     """Create a dict-based wrapper for direct tool calls."""
 
-    async def wrapper(arguments: dict | None = None) -> Any:
-        transformed = transform_args(arguments or {}, param_cfg)
+    async def wrapper(arguments: dict | str | None = None) -> Any:
+        transformed = transform_args(normalize_dict_arguments(arguments), param_cfg)
         return await _execute_direct_call(proxy, srv, orig_name, transformed)
 
     return wrapper

@@ -1,12 +1,40 @@
 """Schema transformation functions for MCP Proxy."""
 
 import copy
+import json
 from typing import Any, Callable
 
 from fastmcp.server.tasks.config import TaskConfig
 from fastmcp.tools.tool import FunctionTool
 
 from mcp_proxy.models import ToolConfig
+
+
+def normalize_dict_arguments(
+    args: dict[str, Any] | str | None,
+) -> dict[str, Any]:
+    """Normalize dict-style wrapper arguments.
+
+    Some MCP clients stringify nested JSON objects when calling proxy wrappers
+    like ``*_call_tool(arguments=...)``. Accept both real dictionaries and
+    JSON strings that decode to dictionaries.
+    """
+    if args is None:
+        return {}
+    if isinstance(args, dict):
+        return args
+
+    try:
+        parsed = json.loads(args)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            "arguments must be a dictionary or JSON object string"
+        ) from exc
+
+    if not isinstance(parsed, dict):
+        raise ValueError("arguments JSON must decode to an object")
+
+    return parsed
 
 
 def resolve_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:

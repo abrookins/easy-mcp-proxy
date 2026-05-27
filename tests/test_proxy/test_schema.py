@@ -2,9 +2,11 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from mcp_proxy.models import ProxyConfig, ToolConfig, UpstreamServerConfig
 from mcp_proxy.proxy import MCPProxy
-from mcp_proxy.proxy.schema import resolve_schema_refs
+from mcp_proxy.proxy.schema import normalize_dict_arguments, resolve_schema_refs
 
 
 class TestInputSchemaPreservation:
@@ -309,3 +311,23 @@ class TestSchemaRefResolution:
         )
         # Non-existent local refs should also be left as-is
         assert resolved["properties"]["other"]["$ref"] == "#/$defs/NonExistent"
+
+
+class TestNormalizeDictArguments:
+    """Tests for dict-style argument normalization."""
+
+    def test_accepts_json_object_string(self):
+        """JSON object strings should be parsed into dictionaries."""
+        assert normalize_dict_arguments('{"query": "test"}') == {"query": "test"}
+
+    def test_rejects_invalid_json_string(self):
+        """Invalid JSON strings should raise ValueError."""
+        with pytest.raises(
+            ValueError, match="arguments must be a dictionary or JSON object string"
+        ):
+            normalize_dict_arguments('{"query": ')
+
+    def test_rejects_json_that_is_not_an_object(self):
+        """JSON strings must decode to objects, not arrays or scalars."""
+        with pytest.raises(ValueError, match="arguments JSON must decode to an object"):
+            normalize_dict_arguments('["not", "an", "object"]')
