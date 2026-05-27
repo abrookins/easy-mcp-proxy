@@ -245,6 +245,24 @@ class TestHTTPAppConfiguration:
             f"Expected /views/research, got: {route_paths}"
         )
 
+    def test_http_app_accepts_trailing_mcp_slashes_without_redirect(self):
+        """MCP endpoints with trailing slashes should not emit bare redirects."""
+        config = ProxyConfig(
+            mcp_servers={},
+            tool_views={"research": ToolViewConfig(description="Research")},
+        )
+        proxy = MCPProxy(config)
+        app = proxy.http_app()
+
+        with TestClient(
+            app, follow_redirects=False, raise_server_exceptions=False
+        ) as client:
+            for path in ("/mcp/", "/search/mcp/", "/view/research/mcp/"):
+                response = client.get(path)
+                assert response.status_code != 307
+                assert response.headers.get("content-type") is not None
+                assert response.headers.get("location") is None
+
 
 class TestHTTPViewListing:
     """Tests for listing available views."""

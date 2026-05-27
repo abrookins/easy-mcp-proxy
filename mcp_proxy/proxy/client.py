@@ -1,6 +1,8 @@
 """Client management for MCP Proxy."""
 
+import asyncio
 import logging
+import os
 from contextlib import AsyncExitStack
 from typing import Any
 
@@ -11,6 +13,8 @@ from mcp_proxy.models import ProxyConfig, UpstreamServerConfig
 from mcp_proxy.utils import expand_env_vars
 
 logger = logging.getLogger(__name__)
+UPSTREAM_TIMEOUT_ENV = "MCP_PROXY_UPSTREAM_TIMEOUT_SECONDS"
+DEFAULT_UPSTREAM_TIMEOUT_SECONDS = 10.0
 
 
 class ClientManager:
@@ -22,6 +26,9 @@ class ClientManager:
         self._upstream_tools: dict[str, list[Any]] = {}  # Cached tools from upstreams
         self._active_clients: dict[str, Client] = {}  # Clients with active connections
         self._exit_stack: AsyncExitStack | None = None  # Manages client lifecycles
+        self.upstream_timeout_seconds = float(
+            os.environ.get(UPSTREAM_TIMEOUT_ENV, DEFAULT_UPSTREAM_TIMEOUT_SECONDS)
+        )
 
     def create_client_from_config(self, config: UpstreamServerConfig) -> Client:
         """Create an MCP client from server configuration."""
@@ -78,10 +85,16 @@ class ClientManager:
             raise ValueError(f"No client for server '{server_name}'")
 
         client = self.upstream_clients[server_name]
-        async with client:
-            tools = await client.list_tools()
-            self._upstream_tools[server_name] = tools
-            return tools
+
+        async def fetch_tools() -> list[Any]:
+            async with client:
+                return await client.list_tools()
+
+        tools = await asyncio.wait_for(
+            fetch_tools(), timeout=self.upstream_timeout_seconds
+        )
+        self._upstream_tools[server_name] = tools
+        return tools
 
     async def fetch_tools_from_active_client(self, server_name: str) -> list[Any]:
         """Fetch tools from an already-connected client.
@@ -99,7 +112,9 @@ class ClientManager:
         if client is None:
             raise ValueError(f"No active client for server '{server_name}'")
 
-        tools = await client.list_tools()
+        tools = await asyncio.wait_for(
+            client.list_tools(), timeout=self.upstream_timeout_seconds
+        )
         self._upstream_tools[server_name] = tools
         return tools
 
@@ -165,7 +180,10 @@ class ClientManager:
                     self.config.mcp_servers[server_name]
                 )
                 # Enter the client context - this starts the connection/subprocess
-                await self._exit_stack.enter_async_context(client)
+                await asyncio.wait_for(
+                    self._exit_stack.enter_async_context(client),
+                    timeout=self.upstream_timeout_seconds,
+                )
                 self._active_clients[server_name] = client
                 # Also populate upstream_clients for fallback/compatibility
                 self.upstream_clients[server_name] = client
@@ -253,7 +271,10 @@ class ClientManager:
             client = self.create_client_from_config(
                 self.config.mcp_servers[server_name]
             )
-            await self._exit_stack.enter_async_context(client)
+            await asyncio.wait_for(
+                self._exit_stack.enter_async_context(client),
+                timeout=self.upstream_timeout_seconds,
+            )
             self._active_clients[server_name] = client
             logger.info("Successfully reconnected to %s", server_name)
         except Exception as e:

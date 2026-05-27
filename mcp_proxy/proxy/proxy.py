@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from fastmcp import Client, FastMCP
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
@@ -39,6 +40,21 @@ from .tools import (
     _process_view_include_all_fallback,
     _process_view_include_all_with_upstream,
 )
+
+
+class NormalizeMcpTrailingSlashMiddleware:
+    """Normalize trailing-slash MCP endpoint paths without redirecting clients."""
+
+    def __init__(self, app: Any):
+        self.app = app
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] == "http":
+            request_path = scope["path"]
+            if request_path.endswith("/mcp/"):
+                scope = dict(scope)
+                scope["path"] = request_path[:-1]
+        await self.app(scope, receive, send)
 
 
 class MCPProxy:
@@ -914,4 +930,8 @@ class MCPProxy:
         else:
             routes.append(Mount("/", app=default_mcp_app))
 
-        return Starlette(routes=routes, lifespan=combined_lifespan)
+        return Starlette(
+            routes=routes,
+            lifespan=combined_lifespan,
+            middleware=[Middleware(NormalizeMcpTrailingSlashMiddleware)],
+        )

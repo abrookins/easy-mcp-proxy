@@ -1,5 +1,6 @@
 """Tests for proxy connection management."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from mcp_proxy.models import ProxyConfig, UpstreamServerConfig
@@ -92,6 +93,44 @@ class TestProxyConnectionManagement:
         # Bad server should not be connected
         # Good server should be connected
         # (Order depends on dict iteration - just check at least one works)
+        await proxy.disconnect_clients()
+
+    async def test_connect_clients_times_out_hanging_server_and_continues(
+        self, monkeypatch
+    ):
+        """connect_clients should not let one hanging server block startup."""
+        monkeypatch.setenv("MCP_PROXY_UPSTREAM_TIMEOUT_SECONDS", "0.01")
+        config = ProxyConfig(
+            mcp_servers={
+                "hanging_server": UpstreamServerConfig(command="sleep"),
+                "good_server": UpstreamServerConfig(command="echo"),
+            },
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        async def hang_on_enter():
+            await asyncio.sleep(60)
+
+        hanging_client = AsyncMock()
+        hanging_client.__aenter__ = AsyncMock(side_effect=hang_on_enter)
+        hanging_client.__aexit__ = AsyncMock()
+
+        good_client = AsyncMock()
+        good_client.__aenter__ = AsyncMock(return_value=good_client)
+        good_client.__aexit__ = AsyncMock()
+
+        with patch.object(
+            proxy._client_manager,
+            "create_client_from_config",
+            side_effect=[hanging_client, good_client],
+        ):
+            await proxy.connect_clients()
+
+        assert not proxy.has_active_connection("hanging_server")
+        assert proxy.has_active_connection("good_server")
+        assert proxy.get_active_client("good_server") is good_client
+
         await proxy.disconnect_clients()
 
     async def test_connect_clients_idempotent(self):
@@ -422,6 +461,42 @@ class TestProxyClientFetchUpstreamTools:
 
         # Should not raise
         await manager.refresh_tools_from_active_clients()
+
+    async def test_refresh_tools_from_active_clients_times_out_and_continues(
+        self, monkeypatch
+    ):
+        """refresh_tools_from_active_clients should skip hanging servers."""
+        from mcp_proxy.proxy.client import ClientManager
+
+        monkeypatch.setenv("MCP_PROXY_UPSTREAM_TIMEOUT_SECONDS", "0.01")
+
+        async def hang_listing_tools():
+            await asyncio.sleep(60)
+
+        bad_client = AsyncMock()
+        bad_client.list_tools = AsyncMock(side_effect=hang_listing_tools)
+
+        good_tool = MagicMock()
+        good_tool.name = "good_tool"
+
+        good_client = AsyncMock()
+        good_client.list_tools.return_value = [good_tool]
+
+        config = ProxyConfig(
+            mcp_servers={
+                "hanging_server": UpstreamServerConfig(command="sleep"),
+                "good_server": UpstreamServerConfig(command="echo"),
+            },
+            tool_views={},
+        )
+        manager = ClientManager(config)
+        manager._active_clients["hanging_server"] = bad_client
+        manager._active_clients["good_server"] = good_client
+
+        await manager.refresh_tools_from_active_clients()
+
+        assert "hanging_server" not in manager._upstream_tools
+        assert manager._upstream_tools["good_server"] == [good_tool]
 
     async def test_connect_clients_with_fetch_tools(self):
         """connect_clients with fetch_tools=True should fetch tools."""
