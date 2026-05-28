@@ -7,6 +7,7 @@ import pytest
 from mcp_proxy.models import ProxyConfig, ToolConfig, UpstreamServerConfig
 from mcp_proxy.proxy import MCPProxy
 from mcp_proxy.proxy.schema import normalize_dict_arguments, resolve_schema_refs
+from tests.helpers import get_required_tool
 
 
 class TestInputSchemaPreservation:
@@ -147,13 +148,7 @@ class TestToolExecutionWithInputSchema:
 
         # Get the view MCP and find the tool
         view_mcp = proxy.get_view_mcp("view")
-        registered_tool = None
-        for tool in view_mcp._tool_manager._tools.values():
-            if tool.name == "my_tool":
-                registered_tool = tool
-                break
-
-        assert registered_tool is not None
+        registered_tool = await get_required_tool(view_mcp, "my_tool")
 
         # Call with arguments
         await registered_tool.fn(arguments={"query": "test", "limit": 5})

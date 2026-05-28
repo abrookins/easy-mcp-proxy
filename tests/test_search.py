@@ -3,6 +3,7 @@
 import pytest
 
 from mcp_proxy.search import DEFAULT_THRESHOLD, SearchTool, ToolSearcher
+from tests.helpers import get_required_tool, get_tool_names
 
 
 class TestToolSearcher:
@@ -259,7 +260,7 @@ class TestSearchModeCallThrough:
         view_mcp = proxy.get_view_mcp("view")
 
         # Should have search tool
-        tool_names = [t.name for t in view_mcp._tool_manager._tools.values()]
+        tool_names = await get_tool_names(view_mcp)
         assert "view_search_tools" in tool_names
 
         # FAILING ASSERTION: Should also have call_tool meta-tool
@@ -296,15 +297,8 @@ class TestSearchModeCallThrough:
 
         view_mcp = proxy.get_view_mcp("view")
 
-        # Find the call_tool meta-tool
-        call_tool_fn = None
-        for tool in view_mcp._tool_manager._tools.values():
-            if tool.name == "view_call_tool":
-                call_tool_fn = tool.fn
-                break
-
-        # call_tool should exist
-        assert call_tool_fn is not None, "view_call_tool should be registered"
+        call_tool = await get_required_tool(view_mcp, "view_call_tool")
+        call_tool_fn = call_tool.fn
 
         # Call the meta-tool to execute search_code
         result = await call_tool_fn(
@@ -343,13 +337,8 @@ class TestSearchModeCallThrough:
 
         view_mcp = proxy.get_view_mcp("view")
 
-        call_tool_fn = None
-        for tool in view_mcp._tool_manager._tools.values():
-            if tool.name == "view_call_tool":
-                call_tool_fn = tool.fn
-                break
-
-        assert call_tool_fn is not None, "view_call_tool should be registered"
+        call_tool = await get_required_tool(view_mcp, "view_call_tool")
+        call_tool_fn = call_tool.fn
 
         result = await call_tool_fn(
             tool_name="search_code", arguments='{"query": "test"}'
@@ -380,14 +369,8 @@ class TestSearchModeCallThrough:
         proxy = MCPProxy(config)
         mcp = proxy.get_view_mcp("view")
 
-        # Find the call_tool function
-        call_tool_fn = None
-        for tool in mcp._tool_manager._tools.values():
-            if tool.name == "view_call_tool":
-                call_tool_fn = tool.fn
-                break
-
-        assert call_tool_fn is not None
+        call_tool = await get_required_tool(mcp, "view_call_tool")
+        call_tool_fn = call_tool.fn
 
         # Call with unknown tool name should raise
         with pytest.raises(ValueError, match="Unknown tool 'nonexistent'"):
@@ -420,7 +403,7 @@ class TestSearchPerServerMode:
         proxy = MCPProxy(config)
         view_mcp = proxy.get_view_mcp("all")
 
-        tool_names = [t.name for t in view_mcp._tool_manager._tools.values()]
+        tool_names = await get_tool_names(view_mcp)
 
         # Should have search/call for each server
         assert "github_search_tools" in tool_names
@@ -507,14 +490,8 @@ class TestSearchPerServerMode:
         proxy = MCPProxy(config)
         view_mcp = proxy.get_view_mcp("all")
 
-        # Find github's call_tool function
-        github_call_fn = None
-        for tool in view_mcp._tool_manager._tools.values():
-            if tool.name == "github_call_tool":
-                github_call_fn = tool.fn
-                break
-
-        assert github_call_fn is not None
+        github_call_tool = await get_required_tool(view_mcp, "github_call_tool")
+        github_call_fn = github_call_tool.fn
 
         # Should fail when calling a tool that doesn't exist on this server
         # The tool is validated before calling upstream
@@ -563,13 +540,8 @@ class TestSearchPerServerMode:
 
         view_mcp = proxy.get_view_mcp("all")
 
-        github_call_fn = None
-        for tool in view_mcp._tool_manager._tools.values():
-            if tool.name == "github_call_tool":
-                github_call_fn = tool.fn
-                break
-
-        assert github_call_fn is not None
+        github_call_tool = await get_required_tool(view_mcp, "github_call_tool")
+        github_call_fn = github_call_tool.fn
 
         result = await github_call_fn(
             tool_name="get_pull_request_reviews",
@@ -629,13 +601,8 @@ class TestSearchPerServerMode:
         proxy.views["all"]._upstream_clients = proxy.upstream_clients
 
         view_mcp = proxy.get_view_mcp("all")
-        redis_call_fn = None
-        for tool in view_mcp._tool_manager._tools.values():
-            if tool.name == "github-redis_call_tool":
-                redis_call_fn = tool.fn
-                break
-
-        assert redis_call_fn is not None
+        redis_call_tool = await get_required_tool(view_mcp, "github-redis_call_tool")
+        redis_call_fn = redis_call_tool.fn
 
         result = await redis_call_fn(
             tool_name="search_code",
@@ -684,7 +651,7 @@ class TestSearchPerServerMode:
         }
 
         view_mcp = proxy.get_view_mcp("all")
-        tool_names = [t.name for t in view_mcp._tool_manager._tools.values()]
+        tool_names = await get_tool_names(view_mcp)
 
         # Should have per-server search tools
         assert "github_search_tools" in tool_names

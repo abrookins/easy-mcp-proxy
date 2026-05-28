@@ -4,8 +4,8 @@ import copy
 import json
 from typing import Any, Callable
 
-from fastmcp.server.tasks.config import TaskConfig
-from fastmcp.tools.tool import FunctionTool
+from fastmcp.tools.function_tool import FunctionTool
+from fastmcp.utilities.tasks import TaskConfig
 
 from mcp_proxy.models import ToolConfig
 
@@ -117,7 +117,6 @@ def create_tool_with_schema(
         description=description,
         fn=fn,
         parameters=input_schema,
-        enabled=True,
         tags=set(),
         task_config=TaskConfig(),
     )

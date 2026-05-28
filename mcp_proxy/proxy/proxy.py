@@ -718,7 +718,7 @@ class MCPProxy:
                     input_schema=input_schema,
                     fn=wrapper,
                 )
-                mcp._tool_manager._tools[_tool_name] = tool
+                mcp.add_tool(tool)
             elif view:
                 register_view_tool(
                     mcp, view, _tool_name, _tool_desc, _input_schema, _param_config

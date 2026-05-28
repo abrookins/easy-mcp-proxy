@@ -124,6 +124,7 @@ class TestMCPClientIntegration:
     @pytest.mark.asyncio
     async def test_tool_can_return_mcp_and_signed_http_resource_links(self, tmp_path):
         """A tool can return multiple resource links for the same cached output."""
+        import json
         from unittest.mock import patch
 
         with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
@@ -145,10 +146,10 @@ class TestMCPClientIntegration:
                 name="cached-output",
                 mime_type="application/json",
             )
-            def cached_output_resource(token: str) -> str:
+            def cached_output_resource(token: str) -> dict:
                 content = retrieve_by_token(token, "test-secret")
                 assert content is not None
-                return content
+                return json.loads(content)
 
             @mcp.tool(name="get_cached_output_links")
             def get_cached_output_links() -> list[types.ContentBlock]:
@@ -201,7 +202,7 @@ class TestMCPClientIntegration:
                 resource_contents = await client.read_resource(mcp_link.uri)
                 assert len(resource_contents) == 1
                 assert resource_contents[0].mimeType == "application/json"
-                assert resource_contents[0].text == '{"large":"payload"}'
+                assert json.loads(resource_contents[0].text) == {"large": "payload"}
 
             http_app = Starlette(routes=create_cache_routes("test-secret"))
             http_client = TestClient(http_app)
