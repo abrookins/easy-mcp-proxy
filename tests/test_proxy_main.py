@@ -7,6 +7,7 @@ import pytest
 from mcp_proxy.hooks import HookResult
 from mcp_proxy.models import ProxyConfig, UpstreamServerConfig
 from mcp_proxy.proxy import MCPProxy, ToolInfo
+from tests.helpers import get_required_tool, get_tool_names
 
 
 class TestToolInfo:
@@ -351,7 +352,7 @@ class TestMCPProxyInstructions:
 
         assert proxy.upstream_instructions.get("server") == "Test instructions"
 
-    def test_get_tool_instructions_tool_registered(self):
+    async def test_get_tool_instructions_tool_registered(self):
         """get_tool_instructions tool should be registered on view MCP."""
         config = ProxyConfig(
             mcp_servers={"server": {"command": "echo"}},
@@ -363,8 +364,7 @@ class TestMCPProxyInstructions:
         view_mcp = proxy.get_view_mcp("myview")
 
         # Check that get_tool_instructions tool is registered
-        tools = view_mcp._tool_manager._tools
-        assert "get_tool_instructions" in tools
+        assert "get_tool_instructions" in await get_tool_names(view_mcp)
 
     @pytest.mark.asyncio
     async def test_get_tool_instructions_tool_returns_instructions(self):
@@ -653,14 +653,7 @@ class TestMCPProxyToolExecution:
         # Get the view MCP
         view_mcp = proxy.get_view_mcp("view")
 
-        # Find the registered tool
-        registered_tool = None
-        for tool in view_mcp._tool_manager._tools.values():
-            if tool.name == "my_tool":
-                registered_tool = tool
-                break
-
-        assert registered_tool is not None, "Tool should be registered"
+        registered_tool = await get_required_tool(view_mcp, "my_tool")
 
         # Call the tool function with arguments dict (FastMCP doesn't support **kwargs)
         result = await registered_tool.fn(arguments={"arg": "value"})
@@ -691,13 +684,7 @@ class TestMCPProxyToolExecution:
 
         view_mcp = proxy.get_view_mcp("view")
 
-        registered_tool = None
-        for tool in view_mcp._tool_manager._tools.values():
-            if tool.name == "my_tool":
-                registered_tool = tool
-                break
-
-        assert registered_tool is not None, "Tool should be registered"
+        registered_tool = await get_required_tool(view_mcp, "my_tool")
 
         result = await registered_tool.fn(arguments='{"arg": "value"}')
 
@@ -741,14 +728,7 @@ class TestMCPProxyToolExecution:
         # Get the view MCP
         view_mcp = proxy.get_view_mcp("view")
 
-        # Find the registered composite tool
-        registered_tool = None
-        for tool in view_mcp._tool_manager._tools.values():
-            if tool.name == "multi_tool":
-                registered_tool = tool
-                break
-
-        assert registered_tool is not None, "Composite tool should be registered"
+        registered_tool = await get_required_tool(view_mcp, "multi_tool")
 
         # Call the tool function with arguments dict
         result = await registered_tool.fn(arguments={"query": "test"})
@@ -1890,14 +1870,7 @@ class TestToolExecutionWithInputSchema:
         # Recreate view MCP to pick up schema
         view_mcp = proxy.get_view_mcp("view")
 
-        # Find the registered tool
-        registered_tool = None
-        for tool in view_mcp._tool_manager._tools.values():
-            if tool.name == "my_tool":
-                registered_tool = tool
-                break
-
-        assert registered_tool is not None, "Tool should be registered"
+        registered_tool = await get_required_tool(view_mcp, "my_tool")
 
         # Call the tool function with **kwargs (schema-based registration)
         result = await registered_tool.fn(query="test_query")
@@ -1942,9 +1915,7 @@ class TestToolExecutionWithInputSchema:
         test_mcp = FastMCP(name="test")
         proxy._register_tools_on_mcp(test_mcp, tools_with_schema)  # No view
 
-        # Find and call the registered tool
-        registered_tool = test_mcp._tool_manager._tools.get("direct_tool")
-        assert registered_tool is not None
+        registered_tool = await get_required_tool(test_mcp, "direct_tool")
 
         # Mock _create_client_from_config to return our mock client
         with patch.object(
@@ -1983,8 +1954,7 @@ class TestToolExecutionWithInputSchema:
         test_mcp = FastMCP(name="test")
         proxy._register_tools_on_mcp(test_mcp, tools_with_schema)
 
-        registered_tool = test_mcp._tool_manager._tools.get("test_tool")
-        assert registered_tool is not None
+        registered_tool = await get_required_tool(test_mcp, "test_tool")
 
         # Calling should raise because server is not configured
         with pytest.raises(
@@ -2025,7 +1995,7 @@ class TestToolExecutionWithInputSchema:
         test_mcp = FastMCP(name="test")
         proxy._register_tools_on_mcp(test_mcp, tools_with_schema)
 
-        registered_tool = test_mcp._tool_manager._tools.get("direct_tool")
+        registered_tool = await get_required_tool(test_mcp, "direct_tool")
         result = await registered_tool.fn(arg1="test")
 
         # Should use active client
@@ -2062,7 +2032,7 @@ class TestToolExecutionWithInputSchema:
         test_mcp = FastMCP(name="test")
         proxy._register_tools_on_mcp(test_mcp, tools_without_schema)
 
-        registered_tool = test_mcp._tool_manager._tools.get("dict_tool")
+        registered_tool = await get_required_tool(test_mcp, "dict_tool")
         result = await registered_tool.fn(arguments={"arg1": "test"})
 
         # Should use active client
@@ -3068,7 +3038,7 @@ class TestCacheConfiguration:
 
         assert context is None
 
-    def test_register_cache_retrieval_tool(self, tmp_path):
+    async def test_register_cache_retrieval_tool(self, tmp_path):
         """Test _register_cache_retrieval_tool registers the tool."""
         from fastmcp import FastMCP
 
@@ -3084,10 +3054,10 @@ class TestCacheConfiguration:
         mcp = FastMCP("test")
         proxy._register_cache_retrieval_tool(mcp)
 
-        # Check that the tool was registered (tools is a dict)
-        assert "retrieve_cached_output" in mcp._tool_manager._tools
+        # Check that the tool was registered
+        assert "retrieve_cached_output" in await get_tool_names(mcp)
 
-    def test_register_cache_retrieval_tool_returns_content(self, tmp_path):
+    async def test_register_cache_retrieval_tool_returns_content(self, tmp_path):
         """Test retrieve_cached_output tool returns cached content."""
         from unittest.mock import patch
 
@@ -3121,12 +3091,12 @@ class TestCacheConfiguration:
             proxy._register_cache_retrieval_tool(mcp)
 
             # Get the registered tool function
-            tool = mcp._tool_manager._tools["retrieve_cached_output"]
+            tool = await get_required_tool(mcp, "retrieve_cached_output")
             result = tool.fn(token=response.token)
 
             assert result == {"content": "test content"}
 
-    def test_register_cache_retrieval_tool_returns_error_for_invalid_token(
+    async def test_register_cache_retrieval_tool_returns_error_for_invalid_token(
         self, tmp_path
     ):
         """Test retrieve_cached_output tool returns error for invalid token."""
@@ -3152,12 +3122,12 @@ class TestCacheConfiguration:
             proxy._register_cache_retrieval_tool(mcp)
 
             # Get the registered tool function
-            tool = mcp._tool_manager._tools["retrieve_cached_output"]
+            tool = await get_required_tool(mcp, "retrieve_cached_output")
             result = tool.fn(token="nonexistent")
 
             assert "error" in result
 
-    def test_register_cache_resource_raises_for_invalid_token(self, tmp_path):
+    async def test_register_cache_resource_raises_for_invalid_token(self, tmp_path):
         """Test cached-output resource raises for an invalid token."""
         from unittest.mock import patch
 
@@ -3180,11 +3150,11 @@ class TestCacheConfiguration:
             mcp = FastMCP("test")
             proxy._register_cache_retrieval_tool(mcp)
 
-            template = next(iter(mcp._resource_manager._templates.values()))
+            template = next(iter(await mcp.list_resource_templates()))
             with pytest.raises(ValueError, match="Token not found"):
                 template.fn(token="nonexistent")
 
-    def test_get_view_mcp_registers_cache_tool_when_enabled(self, tmp_path):
+    async def test_get_view_mcp_registers_cache_tool_when_enabled(self, tmp_path):
         """Test get_view_mcp registers cache retrieval tool when enabled."""
         from unittest.mock import patch
 
@@ -3206,4 +3176,4 @@ class TestCacheConfiguration:
             mcp = proxy.get_view_mcp("test_view")
 
             # Check that the cache retrieval tool was registered
-            assert "retrieve_cached_output" in mcp._tool_manager._tools
+            assert "retrieve_cached_output" in await get_tool_names(mcp)

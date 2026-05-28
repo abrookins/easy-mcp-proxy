@@ -7,6 +7,7 @@ from fastmcp import Client
 
 from mcp_proxy.models import ProxyConfig, UpstreamServerConfig
 from mcp_proxy.proxy import MCPProxy
+from tests.helpers import get_required_tool
 
 
 class TestMCPProxyRun:
@@ -56,14 +57,7 @@ class TestMCPProxyToolExecution:
         # Get the view MCP
         view_mcp = proxy.get_view_mcp("view")
 
-        # Find the registered tool
-        registered_tool = None
-        for tool in view_mcp._tool_manager._tools.values():
-            if tool.name == "my_tool":
-                registered_tool = tool
-                break
-
-        assert registered_tool is not None, "Tool should be registered"
+        registered_tool = await get_required_tool(view_mcp, "my_tool")
 
         # Call the tool function with arguments dict (FastMCP doesn't support **kwargs)
         result = await registered_tool.fn(arguments={"arg": "value"})
@@ -107,14 +101,7 @@ class TestMCPProxyToolExecution:
         # Get the view MCP
         view_mcp = proxy.get_view_mcp("view")
 
-        # Find the registered composite tool
-        registered_tool = None
-        for tool in view_mcp._tool_manager._tools.values():
-            if tool.name == "multi_tool":
-                registered_tool = tool
-                break
-
-        assert registered_tool is not None, "Composite tool should be registered"
+        registered_tool = await get_required_tool(view_mcp, "multi_tool")
 
         # Call the tool function with arguments dict
         result = await registered_tool.fn(arguments={"query": "test"})

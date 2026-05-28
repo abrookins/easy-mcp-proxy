@@ -98,7 +98,7 @@ def register_tool_with_schema(
         input_schema=input_schema,
         fn=wrapper,
     )
-    mcp._tool_manager._tools[tool_name] = tool
+    mcp.add_tool(tool)
 
 
 def register_tool_without_schema(

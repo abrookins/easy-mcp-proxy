@@ -6,6 +6,7 @@ from fastmcp import FastMCP
 
 from mcp_proxy.models import ProxyConfig
 from mcp_proxy.proxy import MCPProxy
+from tests.helpers import get_tool_names
 
 
 class TestMCPProxyToolRegistration:
@@ -62,7 +63,7 @@ class TestRegisterViewOnMcp:
         proxy._register_view_on_mcp(mcp, view, "test_view", None)
 
         # Instructions tool should be registered
-        assert "get_tool_instructions" in mcp._tool_manager._tools
+        assert "get_tool_instructions" in await get_tool_names(mcp)
 
     async def test_register_view_on_mcp_search_mode(self):
         """_register_view_on_mcp registers search tools in search mode."""
@@ -82,8 +83,9 @@ class TestRegisterViewOnMcp:
         proxy._register_view_on_mcp(mcp, view, "test_view", None)
 
         # Search tools should be registered (with view name prefix)
-        assert "test_view_search_tools" in mcp._tool_manager._tools
-        assert "test_view_call_tool" in mcp._tool_manager._tools
+        tool_names = await get_tool_names(mcp)
+        assert "test_view_search_tools" in tool_names
+        assert "test_view_call_tool" in tool_names
 
     async def test_register_view_on_mcp_search_per_server_mode(self):
         """_register_view_on_mcp registers per-server search tools."""
@@ -103,8 +105,9 @@ class TestRegisterViewOnMcp:
         proxy._register_view_on_mcp(mcp, view, "test_view", None)
 
         # Per-server search tools should be registered
-        assert "server_search_tools" in mcp._tool_manager._tools
-        assert "server_call_tool" in mcp._tool_manager._tools
+        tool_names = await get_tool_names(mcp)
+        assert "server_search_tools" in tool_names
+        assert "server_call_tool" in tool_names
 
     async def test_register_view_on_mcp_with_cache_context(self):
         """_register_view_on_mcp registers cache retrieval with cache_context."""
@@ -128,4 +131,4 @@ class TestRegisterViewOnMcp:
         proxy._register_view_on_mcp(mcp, view, "test_view", cache_context)
 
         # Cache retrieval tool should be registered
-        assert "retrieve_cached_output" in mcp._tool_manager._tools
+        assert "retrieve_cached_output" in await get_tool_names(mcp)
