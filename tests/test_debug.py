@@ -562,6 +562,30 @@ class TestInstrumentView:
         result = await view.call_tool("tool", {})
         assert result == {"result": "direct"}
 
+    async def test_instrument_view_preserves_call_tool_kwargs(self, monkeypatch):
+        """Instrumented view should pass through optional call_tool kwargs."""
+        monkeypatch.delenv("MCP_PROXY_DEBUG", raising=False)
+        enable_debug()
+        configure_debug_logging()
+
+        class ViewWithToolInfo(MockView):
+            async def call_tool(self, tool_name: str, args: dict, tool_info=None):
+                return {"tool_info": tool_info, "tool_name": tool_name, "args": args}
+
+        view = ViewWithToolInfo("test_view")
+        tool_info = object()
+
+        instrument_view(view)
+
+        result = await view.call_tool("tool", {"arg": "value"}, tool_info=tool_info)
+
+        assert result == {
+            "tool_info": tool_info,
+            "tool_name": "tool",
+            "args": {"arg": "value"},
+        }
+        disable_debug()
+
     async def test_instrument_view_logs_slow_call(self, monkeypatch, caplog):
         """Instrumented view should log slow calls."""
         import asyncio

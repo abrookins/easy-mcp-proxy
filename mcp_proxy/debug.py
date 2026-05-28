@@ -336,10 +336,10 @@ def instrument_view(view: Any) -> None:
 
     @functools.wraps(original_call_tool)
     async def instrumented_call_tool(
-        tool_name: str, args: dict[str, Any]
-    ) -> dict[str, Any]:
+        tool_name: str, args: dict[str, Any], *call_args: Any, **call_kwargs: Any
+    ) -> Any:
         if not is_debug_enabled():
-            return await original_call_tool(tool_name, args)
+            return await original_call_tool(tool_name, args, *call_args, **call_kwargs)
 
         # Set up request context if not already set
         req_id = get_request_id()
@@ -355,7 +355,9 @@ def instrument_view(view: Any) -> None:
         )
 
         try:
-            result = await original_call_tool(tool_name, args)
+            result = await original_call_tool(
+                tool_name, args, *call_args, **call_kwargs
+            )
             metrics.complete(success=True)
             elapsed = metrics.elapsed_ms
             result_summary = _summarize_result(result)
