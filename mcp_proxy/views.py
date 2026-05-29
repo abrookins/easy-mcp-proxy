@@ -12,6 +12,7 @@ from mcp_proxy.hooks import (
 )
 from mcp_proxy.models import OutputCacheConfig, ToolConfig, ToolViewConfig
 from mcp_proxy.parallel import ParallelTool
+from mcp_proxy.upstream_errors import is_retriable_upstream_error
 
 
 class CacheContext:
@@ -39,6 +40,8 @@ class ToolView:
         self._post_call_hook: Callable | None = None
         self._tool_to_server: dict[str, str] = {}
         self._tool_to_original_name: dict[str, str] = {}  # renamed -> original
+        self._tool_parameter_config: dict[str, dict[str, Any]] = {}
+        self._tool_input_schemas: dict[str, dict[str, Any]] = {}
         self._upstream_clients: dict[str, Any] = {}
         self._get_client: Callable[[str], Any | None] | None = None  # Get active client
         self._reconnect_client: Callable[[str], Any] | None = None  # Reconnect callback
@@ -52,9 +55,15 @@ class ToolView:
                 # If tool has a name override, use that as the exposed name
                 exposed_name = tool_config.name if tool_config.name else tool_name
                 self._tool_to_server[exposed_name] = server_name
+                self._store_tool_parameter_config(exposed_name, tool_config)
                 if tool_config.name:
                     # Track the rename mapping
                     self._tool_to_original_name[exposed_name] = tool_name
+                if tool_config.aliases:
+                    for alias in tool_config.aliases:
+                        self._tool_to_server[alias.name] = server_name
+                        self._tool_to_original_name[alias.name] = tool_name
+                        self._store_tool_parameter_config(alias.name, tool_config)
 
         # Load composite tools from config
         for comp_name, comp_config in config.composite_tools.items():
@@ -117,6 +126,16 @@ class ToolView:
         """Get the upstream server name for a tool."""
         return self._tool_to_server.get(tool_name, "")
 
+    def _store_tool_parameter_config(
+        self, exposed_name: str, tool_config: ToolConfig
+    ) -> None:
+        """Store parameter config for direct ToolView calls."""
+        if tool_config.parameters:
+            self._tool_parameter_config[exposed_name] = {
+                param_name: param_config.model_dump()
+                for param_name, param_config in tool_config.parameters.items()
+            }
+
     def update_tool_mapping(self, tools: list[Any]) -> None:
         """Update the tool-to-server mapping with discovered tools.
 
@@ -139,6 +158,10 @@ class ToolView:
                 # Track rename mapping if tool was renamed
                 if original_name != tool_name:
                     self._tool_to_original_name[tool_name] = original_name
+            if getattr(tool, "parameter_config", None):
+                self._tool_parameter_config[tool_name] = tool.parameter_config
+            if getattr(tool, "input_schema", None):
+                self._tool_input_schemas[tool_name] = tool.input_schema
 
     def _transform_tool(self, tool: Any, config: ToolConfig) -> Any:
         """Transform a tool with name/description overrides."""
@@ -161,6 +184,26 @@ class ToolView:
     def _get_original_tool_name(self, exposed_name: str) -> str:
         """Get the original tool name for a possibly-renamed tool."""
         return self._tool_to_original_name.get(exposed_name, exposed_name)
+
+    def _prepare_upstream_args(
+        self,
+        tool_name: str,
+        args: dict[str, Any],
+        tool_info: Any | None = None,
+    ) -> dict[str, Any]:
+        """Apply view-level argument transformations before hooks/upstream calls."""
+        from mcp_proxy.proxy.schema import normalize_args_for_schema, transform_args
+
+        parameter_config = getattr(tool_info, "parameter_config", None)
+        if parameter_config is None:
+            parameter_config = self._tool_parameter_config.get(tool_name)
+
+        input_schema = getattr(tool_info, "input_schema", None)
+        if input_schema is None:
+            input_schema = self._tool_input_schemas.get(tool_name)
+
+        transformed_args = transform_args(args, parameter_config)
+        return normalize_args_for_schema(transformed_args, input_schema)
 
     def _extract_content_for_cache(self, result: Any) -> str:
         """Extract cacheable content from a tool result.
@@ -265,6 +308,8 @@ class ToolView:
             upstream_server=server_name,
         )
 
+        args = self._prepare_upstream_args(tool_name, args, tool_info)
+
         # Apply pre-call hook
         if self._pre_call_hook:
             hook_result = await execute_pre_call(self._pre_call_hook, args, context)
@@ -292,7 +337,9 @@ class ToolView:
             try:
                 # Use the active client directly (no context manager needed)
                 result = await active_client.call_tool(original_name, args)
-            except Exception:
+            except Exception as exc:
+                if not is_retriable_upstream_error(exc):
+                    raise
                 # Connection may have died - try to reconnect
                 if self._reconnect_client:
                     try:
@@ -304,7 +351,9 @@ class ToolView:
                             result = await active_client.call_tool(original_name, args)
                         else:
                             raise
-                    except Exception:
+                    except Exception as retry_exc:
+                        if not is_retriable_upstream_error(retry_exc):
+                            raise
                         # Reconnect failed, fall through to fresh client
                         client = self._upstream_clients[server_name]
                         async with client:

@@ -95,6 +95,76 @@ class TestToolViewActiveClient:
         assert result == {"reconnected": True}
         assert call_count == 2
 
+    async def test_call_tool_does_not_reconnect_on_mcp_error(self):
+        """call_tool should not retry deterministic upstream MCP errors."""
+        from unittest.mock import AsyncMock
+
+        import pytest
+        from mcp.shared.exceptions import McpError
+        from mcp.types import ErrorData
+
+        config = ToolViewConfig(tools={"server": {"my_tool": ToolConfig()}})
+        view = ToolView(name="test", config=config)
+
+        error = McpError(ErrorData(code=-32602, message="Invalid input"))
+        active_client = AsyncMock()
+        active_client.call_tool = AsyncMock(side_effect=error)
+
+        stored_client = AsyncMock()
+        stored_client.call_tool = AsyncMock()
+        stored_client.__aenter__ = AsyncMock(return_value=stored_client)
+        stored_client.__aexit__ = AsyncMock()
+
+        view._upstream_clients = {"server": stored_client}
+        view._get_client = lambda s: active_client if s == "server" else None
+        view._reconnect_client = AsyncMock()
+
+        with pytest.raises(McpError, match="Invalid input"):
+            await view.call_tool("my_tool", {"arg": "value"})
+
+        view._reconnect_client.assert_not_called()
+        stored_client.call_tool.assert_not_called()
+
+    async def test_call_tool_does_not_fallback_on_mcp_error_after_reconnect(self):
+        """call_tool should not fallback if the reconnected client gets MCP errors."""
+        from unittest.mock import AsyncMock
+
+        import pytest
+        from mcp.shared.exceptions import McpError
+        from mcp.types import ErrorData
+
+        config = ToolViewConfig(tools={"server": {"my_tool": ToolConfig()}})
+        view = ToolView(name="test", config=config)
+
+        failing_client = AsyncMock()
+        failing_client.call_tool = AsyncMock(side_effect=Exception("Connection lost"))
+
+        error = McpError(ErrorData(code=-32602, message="Invalid input"))
+        validation_client = AsyncMock()
+        validation_client.call_tool = AsyncMock(side_effect=error)
+
+        clients = [failing_client, validation_client]
+
+        def get_client(server_name):
+            if server_name == "server":
+                return clients.pop(0)
+            return None
+
+        stored_client = AsyncMock()
+        stored_client.call_tool = AsyncMock()
+        stored_client.__aenter__ = AsyncMock(return_value=stored_client)
+        stored_client.__aexit__ = AsyncMock()
+
+        view._upstream_clients = {"server": stored_client}
+        view._get_client = get_client
+        view._reconnect_client = AsyncMock()
+
+        with pytest.raises(McpError, match="Invalid input"):
+            await view.call_tool("my_tool", {"arg": "value"})
+
+        view._reconnect_client.assert_called_once_with("server")
+        stored_client.call_tool.assert_not_called()
+
     async def test_call_tool_falls_back_to_fresh_client_after_reconnect_fails(self):
         """call_tool should fall back to fresh client if reconnect fails."""
         from unittest.mock import AsyncMock

@@ -682,6 +682,62 @@ class TestReconnectionLogic:
             assert result == {"result": "success"}
             assert call_count == 2  # First call failed, second succeeded
 
+    async def test_call_upstream_tool_does_not_reconnect_on_mcp_error(self):
+        """call_upstream_tool should not retry upstream MCP validation errors."""
+        import pytest
+        from mcp.shared.exceptions import McpError
+        from mcp.types import ErrorData
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        error = McpError(ErrorData(code=-32602, message="Invalid input"))
+        active_client = AsyncMock()
+        active_client.call_tool = AsyncMock(side_effect=error)
+        proxy._active_clients["server"] = active_client
+
+        with patch.object(
+            proxy._client_manager, "_reconnect_client", new_callable=AsyncMock
+        ) as mock_reconnect:
+            with pytest.raises(McpError, match="Invalid input"):
+                await proxy.call_upstream_tool("server", "test_tool", {})
+
+        mock_reconnect.assert_not_called()
+
+    async def test_call_upstream_tool_does_not_fallback_on_mcp_error_after_reconnect(
+        self,
+    ):
+        """call_upstream_tool should not fallback after reconnected MCP errors."""
+        import pytest
+        from mcp.shared.exceptions import McpError
+        from mcp.types import ErrorData
+
+        config = ProxyConfig(
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        failing_client = AsyncMock()
+        failing_client.call_tool = AsyncMock(side_effect=Exception("Connection lost"))
+        proxy._active_clients["server"] = failing_client
+
+        error = McpError(ErrorData(code=-32602, message="Invalid input"))
+        validation_client = AsyncMock()
+        validation_client.call_tool = AsyncMock(side_effect=error)
+
+        async def reconnect(server_name):
+            proxy._active_clients[server_name] = validation_client
+
+        with patch.object(
+            proxy._client_manager, "_reconnect_client", side_effect=reconnect
+        ):
+            with pytest.raises(McpError, match="Invalid input"):
+                await proxy.call_upstream_tool("server", "test_tool", {})
+
     async def test_call_upstream_tool_falls_back_to_fresh_client(self):
         """call_upstream_tool should fall back to fresh client if reconnect fails."""
         config = ProxyConfig(

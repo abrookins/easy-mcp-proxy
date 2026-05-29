@@ -203,3 +203,57 @@ class TestParameterBinding:
         assert call_args[0][0] == "list_files"
         assert call_args[0][1]["path"] == "/data"
         assert call_args[0][1]["pattern"] == "*.txt"
+
+    def test_normalize_args_for_schema_maps_camel_case_to_snake_case(self):
+        """normalize_args_for_schema should accept camelCase aliases."""
+        from mcp_proxy.proxy.schema import normalize_args_for_schema
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "owner": {"type": "string"},
+                "repo": {"type": "string"},
+                "pull_number": {"type": "number"},
+            },
+        }
+
+        result = normalize_args_for_schema(
+            {"owner": "redis", "repo": "agent-memory-server", "pullNumber": 234},
+            schema,
+        )
+
+        assert result == {
+            "owner": "redis",
+            "repo": "agent-memory-server",
+            "pull_number": 234,
+        }
+
+    def test_normalize_args_for_schema_preserves_native_camel_case(self):
+        """normalize_args_for_schema should not rewrite schema-defined camelCase."""
+        from mcp_proxy.proxy.schema import normalize_args_for_schema
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "pullNumber": {"type": "number"},
+            },
+        }
+
+        result = normalize_args_for_schema({"pullNumber": 234}, schema)
+
+        assert result == {"pullNumber": 234}
+
+    def test_normalize_args_for_schema_leaves_unknown_aliases(self):
+        """normalize_args_for_schema should not guess absent schema properties."""
+        from mcp_proxy.proxy.schema import normalize_args_for_schema
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "pull_number": {"type": "number"},
+            },
+        }
+
+        result = normalize_args_for_schema({"issueNumber": 42}, schema)
+
+        assert result == {"issueNumber": 42}

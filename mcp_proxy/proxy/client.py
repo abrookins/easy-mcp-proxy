@@ -10,6 +10,7 @@ from fastmcp import Client
 from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
 
 from mcp_proxy.models import ProxyConfig, UpstreamServerConfig
+from mcp_proxy.upstream_errors import is_retriable_upstream_error
 from mcp_proxy.utils import expand_env_vars
 
 logger = logging.getLogger(__name__)
@@ -231,6 +232,8 @@ class ClientManager:
             try:
                 return await active_client.call_tool(tool_name, args)
             except Exception as e:
+                if not is_retriable_upstream_error(e):
+                    raise
                 # Connection may have died - try to reconnect
                 logger.warning(
                     "Active client for %s failed, attempting reconnect: %s",
@@ -243,6 +246,8 @@ class ClientManager:
                     if active_client:
                         return await active_client.call_tool(tool_name, args)
                 except Exception as reconnect_error:
+                    if not is_retriable_upstream_error(reconnect_error):
+                        raise
                     logger.warning(
                         "Reconnect to %s failed: %s", server_name, reconnect_error
                     )

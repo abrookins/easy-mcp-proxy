@@ -2,6 +2,7 @@
 
 import copy
 import json
+import re
 from typing import Any, Callable
 
 from fastmcp.tools.function_tool import FunctionTool
@@ -227,5 +228,45 @@ def transform_args(
         elif config.get("default") is not None and param_name not in new_args:
             # Inject default for non-renamed optional param
             new_args[param_name] = config["default"]
+
+    return new_args
+
+
+def _camel_to_snake(name: str) -> str:
+    """Convert a camelCase/PascalCase name to snake_case."""
+    with_boundaries = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", with_boundaries).lower()
+
+
+def normalize_args_for_schema(
+    args: dict[str, Any],
+    input_schema: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Map common camelCase aliases back to schema property names.
+
+    Some clients still send camelCase names for snake_case schemas. Only rename
+    keys when the snake_case target exists in the exposed schema and the
+    original key does not, so tools with native camelCase parameters are left
+    alone.
+    """
+    if not input_schema:
+        return args
+
+    properties = input_schema.get("properties")
+    if not isinstance(properties, dict) or not properties:
+        return args
+
+    new_args = dict(args)
+    for arg_name in list(args):
+        if arg_name in properties:
+            continue
+
+        schema_name = _camel_to_snake(arg_name)
+        if (
+            schema_name != arg_name
+            and schema_name in properties
+            and schema_name not in new_args
+        ):
+            new_args[schema_name] = new_args.pop(arg_name)
 
     return new_args

@@ -48,6 +48,69 @@ class TestToolViewCallTool:
         mock_client.call_tool.assert_called_once_with("my_tool", {"arg": "value"})
         assert result == {"result": "success"}
 
+    async def test_call_tool_applies_tool_info_parameter_config(self):
+        """ToolView.call_tool() should map exposed parameter names for upstream."""
+        from unittest.mock import AsyncMock
+
+        view = ToolView("test", ToolViewConfig())
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"result": "success"}
+        view._upstream_clients = {"github": mock_client}
+        tool_info = ToolInfo(
+            name="get_pull_request_status",
+            server="github",
+            original_name="get_pull_request_status",
+            parameter_config={"pull_number": {"rename": "pullNumber"}},
+        )
+
+        await view.call_tool(
+            "get_pull_request_status",
+            {"owner": "redis", "repo": "agent-memory-server", "pullNumber": 234},
+            tool_info=tool_info,
+        )
+
+        mock_client.call_tool.assert_called_once_with(
+            "get_pull_request_status",
+            {"owner": "redis", "repo": "agent-memory-server", "pull_number": 234},
+        )
+
+    async def test_call_tool_normalizes_camel_case_args_from_schema(self):
+        """ToolView.call_tool() should tolerate camelCase for snake_case schemas."""
+        from unittest.mock import AsyncMock
+
+        view = ToolView("test", ToolViewConfig())
+        view.update_tool_mapping(
+            [
+                ToolInfo(
+                    name="get_pull_request_status",
+                    server="github",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "owner": {"type": "string"},
+                            "repo": {"type": "string"},
+                            "pull_number": {"type": "number"},
+                        },
+                    },
+                )
+            ]
+        )
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"result": "success"}
+        view._upstream_clients = {"github": mock_client}
+
+        await view.call_tool(
+            "get_pull_request_status",
+            {"owner": "redis", "repo": "agent-memory-server", "pullNumber": 234},
+        )
+
+        mock_client.call_tool.assert_called_once_with(
+            "get_pull_request_status",
+            {"owner": "redis", "repo": "agent-memory-server", "pull_number": 234},
+        )
+
     async def test_call_tool_applies_pre_hook(self):
         """ToolView.call_tool() should apply pre-call hooks."""
         from unittest.mock import AsyncMock
