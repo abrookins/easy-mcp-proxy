@@ -54,8 +54,11 @@ Tool Output → Check Size → If large → Write to /tmp/mcp-proxy-cache/{token
 
 **Retrieval methods**:
 1. `retrieve_cached_output(token)` tool - LLM can pull into context
-2. HTTP GET to `retrieve_url` - Generated code can fetch directly
-3. Both use the same `verify_and_retrieve()` function
+2. `preview_cached_output(token, line_offset, line_count)` - text windows
+3. `query_cached_output(token, jmespath_expression)` - JSON subsets
+4. HTTP GET to `retrieve_url` - Generated code can fetch directly
+5. HTTP `line_offset`, `line_count`, and `jmespath` query parameters
+6. Full retrieval paths use the same `verify_and_retrieve()` function
 
 ### 2. Configuration Hierarchy
 
@@ -97,7 +100,7 @@ def http_app(self, extra_routes: list[Route] | None = None) -> Starlette:
 ```
 
 Cache routes are added automatically when caching is enabled:
-- `/cache/{token}` - Retrieve cached output
+- `/cache/{token}` - Retrieve cached output, with optional slicing/query params
 
 **Benefit**: Single port, single Tailscale Funnel. No multi-service routing needed.
 
@@ -165,4 +168,3 @@ Cache routes are added automatically when caching is enabled:
 - CLI commands for cache management (`mcp-proxy cache serve`, `mcp-proxy cache clear`)
 - Cache statistics/monitoring
 - Alternative storage backends (Redis, S3)
-

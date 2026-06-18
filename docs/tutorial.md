@@ -441,8 +441,10 @@ When a tool returns output larger than `min_size`, the proxy returns:
 
 The LLM can:
 1. Use the preview if it contains enough information
-2. Call `retrieve_cached_output(token="abc123")` to load the full content
-3. Generate code that fetches the URL directly
+2. Call `preview_cached_output(token="abc123", line_count=200)` for a window
+3. Call `query_cached_output(token="abc123", jmespath_expression="items[].title")`
+   for JSON slices
+4. Generate code that fetches the URL directly
 
 You can also configure caching per-server or per-tool:
 
@@ -466,4 +468,3 @@ You now understand the core features. For more:
 - **[Use Cases](use-cases.md)** — See how features solve specific problems
 - **[Reference](reference.md)** — Complete syntax and options for every feature
 - **[CLI Reference](reference.md#cli-reference)** — All available commands
-

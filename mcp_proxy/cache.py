@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import jmespath
 from fastmcp.tools.tool import ToolResult
 from mcp import types
 from pydantic import BaseModel
@@ -61,7 +62,9 @@ def build_cached_output_tool_result(
     """Build a tool result with MCP and signed-HTTP resource links."""
     preview_text = (
         f"{cached_response.preview}\n\n"
-        "Full output is available via the cached resource links."
+        "Output is cached. Use preview_cached_output for line windows, "
+        "query_cached_output for JSON/JMESPath slices, or the cached resource "
+        "links for full output."
     )
     resource_uri = build_cache_resource_uri(cached_response.token)
     structured_content = cached_response.model_dump()
@@ -153,6 +156,73 @@ def serialize_result(result: Any) -> str:
         return json.dumps(result, indent=2, default=str)
     except (TypeError, ValueError):
         return str(result)
+
+
+def build_line_window_payload(
+    content: str,
+    line_offset: int = 0,
+    line_count: int | None = None,
+) -> dict[str, Any]:
+    """Build a payload containing a configurable line window."""
+    if line_offset < 0:
+        raise ValueError("line_offset must be >= 0")
+    if line_count is not None and line_count < 0:
+        raise ValueError("line_count must be >= 0")
+
+    lines = content.splitlines()
+    total_lines = len(lines)
+    if line_count is None:
+        selected_lines = lines[line_offset:]
+    else:
+        selected_lines = lines[line_offset : line_offset + line_count]
+
+    next_line_offset = line_offset + len(selected_lines)
+    has_more = next_line_offset < total_lines
+
+    return {
+        "content": "\n".join(selected_lines),
+        "line_offset": line_offset,
+        "line_count": line_count,
+        "returned_lines": len(selected_lines),
+        "total_lines": total_lines,
+        "next_line_offset": next_line_offset if has_more else None,
+        "truncated": has_more,
+    }
+
+
+def build_cached_output_payload(
+    content: str,
+    line_offset: int = 0,
+    line_count: int | None = None,
+    jmespath_expression: str | None = None,
+) -> dict[str, Any]:
+    """Build a retrieval payload with optional JSON query and line window."""
+    payload: dict[str, Any] = {}
+    output = content
+
+    if jmespath_expression is not None:
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            return {"error": "Cached output is not valid JSON"}
+
+        try:
+            query_result = jmespath.search(jmespath_expression, parsed)
+        except jmespath.exceptions.JMESPathError as exc:
+            return {"error": f"Invalid JMESPath expression: {exc}"}
+
+        output = serialize_result(query_result)
+        payload["jmespath_expression"] = jmespath_expression
+
+    if line_offset != 0 or line_count is not None:
+        try:
+            window_payload = build_line_window_payload(output, line_offset, line_count)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        return {**payload, **window_payload}
+
+    payload["content"] = output
+    return payload
 
 
 def create_cached_output(
@@ -362,6 +432,14 @@ def create_cache_routes(secret: str, path_prefix: str = "") -> list:
     from starlette.responses import PlainTextResponse, Response
     from starlette.routing import Route
 
+    def parse_optional_int(value: str | None, name: str) -> int | None:
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except ValueError:
+            raise ValueError(f"Invalid {name} parameter") from None
+
     async def retrieve_cache(request: Request) -> Response:
         """HTTP endpoint to retrieve cached output."""
         token = request.path_params["token"]
@@ -387,6 +465,29 @@ def create_cache_routes(secret: str, path_prefix: str = "") -> list:
                 "Not found, expired, or invalid signature", status_code=404
             )
 
-        return PlainTextResponse(content)
+        try:
+            line_offset = parse_optional_int(
+                request.query_params.get("line_offset"), "line_offset"
+            )
+            line_count = parse_optional_int(
+                request.query_params.get("line_count"), "line_count"
+            )
+        except ValueError as exc:
+            return PlainTextResponse(str(exc), status_code=400)
+
+        jmespath_expression = request.query_params.get("jmespath_expression")
+        if jmespath_expression is None:
+            jmespath_expression = request.query_params.get("jmespath")
+
+        payload = build_cached_output_payload(
+            content,
+            line_offset=line_offset or 0,
+            line_count=line_count,
+            jmespath_expression=jmespath_expression,
+        )
+        if "error" in payload:
+            return PlainTextResponse(payload["error"], status_code=400)
+
+        return PlainTextResponse(payload["content"])
 
     return [Route(f"{path_prefix}/cache/{{token}}", retrieve_cache, methods=["GET"])]

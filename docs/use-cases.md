@@ -558,9 +558,11 @@ mcp_servers:
 
 The LLM can:
 1. Use the preview if sufficient
-2. Call `retrieve_cached_output(token="abc123")` to load full content
-3. Generate code that fetches the URL directly
-4. **Delegate to a sub-agent** that processes the data in its own context
+2. Call `preview_cached_output(token="abc123", line_count=200)` for a window
+3. Call `query_cached_output(token="abc123", jmespath_expression="items[].title")`
+   for JSON slices
+4. Generate code that fetches the URL directly
+5. **Delegate to a sub-agent** that processes the data in its own context
 
 ### Advanced: Recursive Language Model (RLM) Pattern
 
@@ -660,4 +662,3 @@ The parent agent receives ~200 tokens instead of ~40,000. It has plenty of conte
 | Large outputs | Output caching | `output_cache.enabled: true` |
 
 For complete syntax and all options, see the **[Reference](reference.md)**.
-

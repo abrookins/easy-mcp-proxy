@@ -8,6 +8,8 @@ import pytest
 
 from mcp_proxy.cache import (
     CachedOutputResponse,
+    build_cached_output_payload,
+    build_line_window_payload,
     clear_cache,
     create_cache_routes,
     create_cached_output,
@@ -119,6 +121,128 @@ class TestSerializeResult:
             result = serialize_result({"key": "value"})
             # Falls back to str() representation
             assert "key" in result
+
+
+class TestBuildLineWindowPayload:
+    """Tests for configurable cached-output line windows."""
+
+    def test_builds_line_window(self):
+        """Test building a bounded line window."""
+        result = build_line_window_payload(
+            "line 1\nline 2\nline 3\nline 4",
+            line_offset=1,
+            line_count=2,
+        )
+
+        assert result == {
+            "content": "line 2\nline 3",
+            "line_offset": 1,
+            "line_count": 2,
+            "returned_lines": 2,
+            "total_lines": 4,
+            "next_line_offset": 3,
+            "truncated": True,
+        }
+
+    def test_builds_tail_window_without_line_count(self):
+        """Test building a line window from an offset to the end."""
+        result = build_line_window_payload("a\nb\nc", line_offset=1)
+
+        assert result == {
+            "content": "b\nc",
+            "line_offset": 1,
+            "line_count": None,
+            "returned_lines": 2,
+            "total_lines": 3,
+            "next_line_offset": None,
+            "truncated": False,
+        }
+
+    def test_rejects_negative_line_offset(self):
+        """Test that negative line offsets are rejected."""
+        with pytest.raises(ValueError, match="line_offset"):
+            build_line_window_payload("a\nb", line_offset=-1)
+
+    def test_rejects_negative_line_count(self):
+        """Test that negative line counts are rejected."""
+        with pytest.raises(ValueError, match="line_count"):
+            build_line_window_payload("a\nb", line_count=-1)
+
+
+class TestBuildCachedOutputPayload:
+    """Tests for cached-output retrieval payloads."""
+
+    def test_returns_full_content_by_default(self):
+        """Test default payload returns full content for compatibility."""
+        assert build_cached_output_payload("full content") == {
+            "content": "full content"
+        }
+
+    def test_returns_line_window(self):
+        """Test payload can return a configurable line window."""
+        result = build_cached_output_payload(
+            "first\nsecond\nthird",
+            line_offset=1,
+            line_count=1,
+        )
+
+        assert result["content"] == "second"
+        assert result["line_offset"] == 1
+        assert result["line_count"] == 1
+        assert result["returned_lines"] == 1
+        assert result["total_lines"] == 3
+        assert result["next_line_offset"] == 2
+        assert result["truncated"] is True
+
+    def test_returns_error_for_invalid_line_window(self):
+        """Test invalid line windows return structured errors."""
+        result = build_cached_output_payload("first\nsecond", line_offset=-1)
+
+        assert result == {"error": "line_offset must be >= 0"}
+
+    def test_applies_jmespath_expression(self):
+        """Test JMESPath extracts a JSON subset."""
+        content = json.dumps({"items": [{"title": "A"}, {"title": "B"}]})
+
+        result = build_cached_output_payload(
+            content,
+            jmespath_expression="items[].title",
+        )
+
+        assert json.loads(result["content"]) == ["A", "B"]
+        assert result["jmespath_expression"] == "items[].title"
+
+    def test_applies_line_window_to_jmespath_result(self):
+        """Test line windows can slice serialized JMESPath results."""
+        content = json.dumps({"items": [{"title": "A"}, {"title": "B"}]})
+
+        result = build_cached_output_payload(
+            content,
+            line_count=2,
+            jmespath_expression="items",
+        )
+
+        assert result["content"] == "[\n  {"
+        assert result["jmespath_expression"] == "items"
+        assert result["truncated"] is True
+
+    def test_returns_error_for_non_json_jmespath_content(self):
+        """Test JMESPath requires JSON cached output."""
+        result = build_cached_output_payload(
+            "not json",
+            jmespath_expression="items",
+        )
+
+        assert result == {"error": "Cached output is not valid JSON"}
+
+    def test_returns_error_for_invalid_jmespath(self):
+        """Test invalid JMESPath expressions return structured errors."""
+        result = build_cached_output_payload(
+            '{"items": []}',
+            jmespath_expression="items[",
+        )
+
+        assert result["error"].startswith("Invalid JMESPath expression:")
 
 
 class TestCreateCachedOutput:
@@ -389,6 +513,129 @@ class TestCacheRoutes:
             http_response = client.get(f"/cache/{response.token}?{query}")
             assert http_response.status_code == 200
             assert http_response.text == "http test content"
+
+    @pytest.mark.asyncio
+    async def test_retrieve_cache_line_window(self, tmp_path):
+        """Test cache retrieval can return a line window via HTTP."""
+        from starlette.testclient import TestClient
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            response = create_cached_output_with_meta(
+                content="first\nsecond\nthird",
+                secret="secret",
+                base_url="http://localhost:8000",
+                ttl_seconds=3600,
+                preview_chars=100,
+            )
+
+            routes = create_cache_routes("secret")
+            from starlette.applications import Starlette
+
+            app = Starlette(routes=routes)
+            client = TestClient(app)
+
+            query = response.retrieve_url.split("?")[1]
+            http_response = client.get(
+                f"/cache/{response.token}?{query}&line_offset=1&line_count=1"
+            )
+            assert http_response.status_code == 200
+            assert http_response.text == "second"
+
+    @pytest.mark.asyncio
+    async def test_retrieve_cache_jmespath_expression(self, tmp_path):
+        """Test cache retrieval can apply a JMESPath expression via HTTP."""
+        from urllib.parse import urlencode
+
+        from starlette.testclient import TestClient
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            response = create_cached_output_with_meta(
+                content=json.dumps({"items": [{"title": "A"}, {"title": "B"}]}),
+                secret="secret",
+                base_url="http://localhost:8000",
+                ttl_seconds=3600,
+                preview_chars=100,
+            )
+
+            routes = create_cache_routes("secret")
+            from starlette.applications import Starlette
+
+            app = Starlette(routes=routes)
+            client = TestClient(app)
+
+            signed_query = response.retrieve_url.split("?")[1]
+            filter_query = urlencode({"jmespath": "items[].title"})
+            http_response = client.get(
+                f"/cache/{response.token}?{signed_query}&{filter_query}"
+            )
+            assert http_response.status_code == 200
+            assert json.loads(http_response.text) == ["A", "B"]
+
+    @pytest.mark.asyncio
+    async def test_retrieve_cache_invalid_line_count(self, tmp_path):
+        """Test invalid line_count query parameters return 400."""
+        from starlette.testclient import TestClient
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            response = create_cached_output_with_meta(
+                content="first\nsecond",
+                secret="secret",
+                base_url="http://localhost:8000",
+                ttl_seconds=3600,
+                preview_chars=100,
+            )
+
+            routes = create_cache_routes("secret")
+            from starlette.applications import Starlette
+
+            app = Starlette(routes=routes)
+            client = TestClient(app)
+
+            query = response.retrieve_url.split("?")[1]
+            http_response = client.get(
+                f"/cache/{response.token}?{query}&line_count=bad"
+            )
+            assert http_response.status_code == 400
+            assert http_response.text == "Invalid line_count parameter"
+
+    @pytest.mark.asyncio
+    async def test_retrieve_cache_invalid_jmespath_content(self, tmp_path):
+        """Test JMESPath errors return 400 via HTTP."""
+        from starlette.testclient import TestClient
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            response = create_cached_output_with_meta(
+                content="not json",
+                secret="secret",
+                base_url="http://localhost:8000",
+                ttl_seconds=3600,
+                preview_chars=100,
+            )
+
+            routes = create_cache_routes("secret")
+            from starlette.applications import Starlette
+
+            app = Starlette(routes=routes)
+            client = TestClient(app)
+
+            query = response.retrieve_url.split("?")[1]
+            http_response = client.get(
+                f"/cache/{response.token}?{query}&jmespath_expression=items"
+            )
+            assert http_response.status_code == 400
+            assert http_response.text == "Cached output is not valid JSON"
 
     @pytest.mark.asyncio
     async def test_retrieve_cache_missing_params(self, tmp_path):

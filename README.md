@@ -152,7 +152,12 @@ cache_secret: "${CACHE_SECRET}"
 cache_base_url: "https://your-proxy.example.com"
 ```
 
-The LLM gets a preview plus a retrieval token—it can load the full content only when needed, or delegate to a sub-agent that fetches and processes the data in its own context window. This enables **Recursive Language Model (RLM)** patterns where agents pass file references instead of file contents, dramatically reducing context usage while maintaining full access to the data.
+The LLM gets a preview plus a retrieval token. It can load the full content,
+request a line window with `preview_cached_output`, or apply a
+`jmespath_expression` with `query_cached_output` when the cached output is JSON.
+This enables **Recursive Language Model (RLM)** patterns where agents pass file
+references instead of file contents, dramatically reducing context usage while
+maintaining full access to the data.
 
 ## What Can It Do?
 

@@ -588,8 +588,14 @@ When output exceeds `min_size`:
 ### Retrieval Methods
 
 1. **Tool**: Call `retrieve_cached_output(token="abc123def456")`
-2. **HTTP**: GET the `retrieve_url` directly
-3. **Code**: `requests.get(retrieve_url).text`
+2. **Tool window**: Call `preview_cached_output(token="abc123def456",
+   line_offset=200, line_count=100)`
+3. **Tool JSON query**: Call `query_cached_output(token="abc123def456",
+   jmespath_expression="items[].title")`
+4. **HTTP**: GET the `retrieve_url` directly
+5. **HTTP filters**: Append `line_offset`, `line_count`, and `jmespath`
+   query parameters
+6. **Code**: `requests.get(retrieve_url).text`
 
 ---
 

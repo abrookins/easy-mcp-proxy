@@ -3055,7 +3055,10 @@ class TestCacheConfiguration:
         proxy._register_cache_retrieval_tool(mcp)
 
         # Check that the tool was registered
-        assert "retrieve_cached_output" in await get_tool_names(mcp)
+        tool_names = await get_tool_names(mcp)
+        assert "retrieve_cached_output" in tool_names
+        assert "preview_cached_output" in tool_names
+        assert "query_cached_output" in tool_names
 
     async def test_register_cache_retrieval_tool_returns_content(self, tmp_path):
         """Test retrieve_cached_output tool returns cached content."""
@@ -3095,6 +3098,70 @@ class TestCacheConfiguration:
             result = tool.fn(token=response.token)
 
             assert result == {"content": "test content"}
+
+    async def test_register_cache_retrieval_tool_filters_content(self, tmp_path):
+        """Test retrieve_cached_output supports line windows and JMESPath."""
+        import json
+        from unittest.mock import patch
+
+        from fastmcp import FastMCP
+
+        from mcp_proxy.cache import create_cached_output_with_meta
+        from mcp_proxy.models import OutputCacheConfig
+
+        config = ProxyConfig(
+            output_cache=OutputCacheConfig(enabled=True),
+            cache_secret="test-secret",
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+        )
+        proxy = MCPProxy(config)
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+
+            text_response = create_cached_output_with_meta(
+                content="first\nsecond\nthird",
+                secret="test-secret",
+                base_url="http://localhost:8000",
+                ttl_seconds=3600,
+                preview_chars=100,
+            )
+            json_response = create_cached_output_with_meta(
+                content=json.dumps({"items": [{"title": "A"}, {"title": "B"}]}),
+                secret="test-secret",
+                base_url="http://localhost:8000",
+                ttl_seconds=3600,
+                preview_chars=100,
+            )
+
+            mcp = FastMCP("test")
+            proxy._register_cache_retrieval_tool(mcp)
+
+            retrieve_tool = await get_required_tool(mcp, "retrieve_cached_output")
+            preview_tool = await get_required_tool(mcp, "preview_cached_output")
+            query_tool = await get_required_tool(mcp, "query_cached_output")
+
+            text_result = retrieve_tool.fn(
+                token=text_response.token,
+                line_offset=1,
+                line_count=1,
+            )
+            preview_result = preview_tool.fn(
+                token=text_response.token,
+                line_offset=2,
+                line_count=1,
+            )
+            json_result = query_tool.fn(
+                token=json_response.token,
+                jmespath_expression="items[].title",
+            )
+
+            assert text_result["content"] == "second"
+            assert text_result["total_lines"] == 3
+            assert preview_result["content"] == "third"
+            assert json.loads(json_result["content"]) == ["A", "B"]
 
     async def test_register_cache_retrieval_tool_returns_error_for_invalid_token(
         self, tmp_path
