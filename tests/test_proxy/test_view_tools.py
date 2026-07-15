@@ -73,6 +73,65 @@ tool_views:
         assert tool.input_schema == {}
         assert tool.description == "Configured"
 
+    def test_get_view_tools_skips_disabled_explicit_tool(self):
+        """Explicit views should hide tools marked enabled=false."""
+        config = ProxyConfig(
+            mcp_servers={"memory": {"url": "https://example.com"}},
+            tool_views={
+                "research": {
+                    "tools": {
+                        "memory": {
+                            "read_skill": {"enabled": False},
+                            "search_memory": {},
+                        }
+                    }
+                }
+            },
+        )
+        proxy = MCPProxy(config)
+
+        tool_names = [tool.name for tool in proxy.get_view_tools("research")]
+        assert "read_skill" not in tool_names
+        assert "search_memory" in tool_names
+
+    def test_get_view_tools_honors_server_disabled_explicit_tool(self):
+        """A view override should not re-enable a server-disabled tool."""
+        config = ProxyConfig(
+            mcp_servers={
+                "memory": {
+                    "url": "https://example.com",
+                    "tools": {"read_skill": {"enabled": False}},
+                }
+            },
+            tool_views={"research": {"tools": {"memory": {"read_skill": {}}}}},
+        )
+        proxy = MCPProxy(config)
+
+        assert proxy.get_view_tools("research") == []
+
+    def test_get_view_tools_skips_excluded_explicit_server(self):
+        """Explicit views should hide all tools from excluded servers."""
+        config = ProxyConfig(
+            mcp_servers={
+                "memory": {"url": "https://example.com/memory"},
+                "skills": {"url": "https://example.com/skills"},
+            },
+            tool_views={
+                "coding-agent": {
+                    "exclude_servers": ["skills"],
+                    "tools": {
+                        "memory": {"search_memory": {}},
+                        "skills": {"find_skills": {}},
+                    },
+                }
+            },
+        )
+        proxy = MCPProxy(config)
+
+        tool_names = [tool.name for tool in proxy.get_view_tools("coding-agent")]
+        assert "search_memory" in tool_names
+        assert "find_skills" not in tool_names
+
 
 class TestDefaultViewIncludesAllUpstreamTools:
     """Tests for default view including all tools from servers without tools config."""
@@ -203,6 +262,39 @@ class TestDefaultViewIncludesAllUpstreamTools:
         assert "tool_b" not in tool_names
         assert len(tools) == 1
 
+    async def test_default_view_skips_disabled_server_tool(self):
+        """The default raw server view should hide disabled configured tools."""
+        config = ProxyConfig(
+            mcp_servers={
+                "server": {
+                    "command": "echo",
+                    "tools": {
+                        "tool_a": {"enabled": False},
+                        "tool_b": {},
+                    },
+                }
+            },
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+
+        disabled_tool = MagicMock()
+        disabled_tool.name = "tool_a"
+        disabled_tool.description = "Tool A"
+        enabled_tool = MagicMock()
+        enabled_tool.name = "tool_b"
+        enabled_tool.description = "Tool B"
+
+        mock_client = AsyncMock()
+        mock_client.list_tools.return_value = [disabled_tool, enabled_tool]
+        proxy.upstream_clients = {"server": mock_client}
+
+        await proxy.fetch_upstream_tools("server")
+
+        tool_names = [tool.name for tool in proxy.get_view_tools(None)]
+        assert "tool_a" not in tool_names
+        assert "tool_b" in tool_names
+
 
 class TestCreateToolInfoFromUpstream:
     """Tests for _create_tool_info_from_upstream function."""
@@ -272,3 +364,25 @@ class TestProcessViewIncludeAllFallback:
         )
 
         assert result == []
+
+    def test_include_all_fallback_skips_disabled_tool(self):
+        """Fallback include_all should hide configured disabled tools."""
+        from mcp_proxy.models import ToolViewConfig, UpstreamServerConfig
+        from mcp_proxy.proxy.tools import _process_view_include_all_fallback
+
+        server_config = UpstreamServerConfig(
+            command="echo",
+            tools={
+                "read_skill": {"enabled": False},
+                "search_memory": {},
+            },
+        )
+        view_config = ToolViewConfig(include_all=True, tools={})
+
+        result = _process_view_include_all_fallback(
+            "server", server_config, view_config
+        )
+
+        tool_names = [tool.name for tool in result]
+        assert "read_skill" not in tool_names
+        assert "search_memory" in tool_names

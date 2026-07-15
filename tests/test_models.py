@@ -94,6 +94,11 @@ class TestToolViewConfig:
         config = ToolViewConfig(include_all=True)
         assert config.include_all is True
 
+    def test_tool_view_config_exclude_servers(self):
+        """ToolViewConfig can exclude servers from a view."""
+        config = ToolViewConfig(exclude_servers=["skills"])
+        assert config.exclude_servers == ["skills"]
+
 
 class TestServerToolsConfig:
     """Tests for ServerToolsConfig (nested tool dict)."""

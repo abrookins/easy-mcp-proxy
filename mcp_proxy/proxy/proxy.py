@@ -652,6 +652,9 @@ class MCPProxy:
 
         if view_config.include_all:
             for server_name, server_config in self.config.mcp_servers.items():
+                if server_name in view_config.exclude_servers:
+                    continue
+
                 upstream_tools = self._upstream_tools.get(server_name, [])
                 if upstream_tools:
                     tools.extend(
@@ -950,7 +953,7 @@ class MCPProxy:
         - /view/<name>/mcp: Named views from tool_views config
         - /search/mcp: Virtual view exposing all tools with search_per_server mode
         """
-        from contextlib import asynccontextmanager
+        from contextlib import AsyncExitStack, asynccontextmanager
 
         from mcp_proxy.auth import create_auth_provider
 
@@ -1048,7 +1051,17 @@ class MCPProxy:
                 self._register_cache_retrieval_tool(search_mcp)
 
             try:
-                async with default_mcp_app.lifespan(default_mcp_app):
+                async with AsyncExitStack() as lifespan_stack:
+                    await lifespan_stack.enter_async_context(
+                        default_mcp_app.lifespan(default_mcp_app)
+                    )
+                    await lifespan_stack.enter_async_context(
+                        search_mcp_app.lifespan(search_mcp_app)
+                    )
+                    for view_mcp_app in view_mcp_apps.values():
+                        await lifespan_stack.enter_async_context(
+                            view_mcp_app.lifespan(view_mcp_app)
+                        )
                     yield
             finally:
                 await self.disconnect_clients()

@@ -81,6 +81,107 @@ class TestIncludeAllFetchesFromUpstream:
         assert "tool_a" in tool_names
         assert "tool_b" in tool_names
 
+    async def test_include_all_skips_excluded_server(self):
+        """include_all should hide every tool from excluded servers."""
+        config = ProxyConfig(
+            mcp_servers={
+                "memory": {"command": "echo"},
+                "skills": {"command": "echo"},
+            },
+            tool_views={
+                "coding-agent": {
+                    "include_all": True,
+                    "exclude_servers": ["skills"],
+                    "tools": {},
+                }
+            },
+        )
+        proxy = MCPProxy(config)
+
+        memory_tool = MagicMock()
+        memory_tool.name = "search_memory"
+        memory_tool.description = "Search memory"
+        skills_tool = MagicMock()
+        skills_tool.name = "find_skills"
+        skills_tool.description = "Find skills"
+
+        memory_client = AsyncMock()
+        memory_client.list_tools.return_value = [memory_tool]
+        skills_client = AsyncMock()
+        skills_client.list_tools.return_value = [skills_tool]
+        proxy.upstream_clients = {
+            "memory": memory_client,
+            "skills": skills_client,
+        }
+
+        await proxy.fetch_upstream_tools("memory")
+        await proxy.fetch_upstream_tools("skills")
+
+        tool_servers = {
+            tool.name: tool.server for tool in proxy.get_view_tools("coding-agent")
+        }
+        assert tool_servers == {"search_memory": "memory"}
+
+    async def test_include_all_skips_server_disabled_upstream_tool(self):
+        """include_all should hide upstream tools disabled on the server."""
+        config = ProxyConfig(
+            mcp_servers={
+                "server": {
+                    "command": "echo",
+                    "tools": {"read_skill": {"enabled": False}},
+                }
+            },
+            tool_views={"view": {"include_all": True, "tools": {}}},
+        )
+        proxy = MCPProxy(config)
+
+        disabled_tool = MagicMock()
+        disabled_tool.name = "read_skill"
+        disabled_tool.description = "Read a skill"
+        enabled_tool = MagicMock()
+        enabled_tool.name = "search_memory"
+        enabled_tool.description = "Search memory"
+
+        mock_client = AsyncMock()
+        mock_client.list_tools.return_value = [disabled_tool, enabled_tool]
+        proxy.upstream_clients = {"server": mock_client}
+
+        await proxy.fetch_upstream_tools("server")
+
+        tool_names = [tool.name for tool in proxy.get_view_tools("view")]
+        assert "read_skill" not in tool_names
+        assert "search_memory" in tool_names
+
+    async def test_include_all_skips_view_disabled_upstream_tool(self):
+        """include_all should hide upstream tools disabled in the view."""
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={
+                "view": {
+                    "include_all": True,
+                    "tools": {"server": {"read_skill": {"enabled": False}}},
+                }
+            },
+        )
+        proxy = MCPProxy(config)
+
+        disabled_tool = MagicMock()
+        disabled_tool.name = "read_skill"
+        disabled_tool.description = "Read a skill"
+        enabled_tool = MagicMock()
+        enabled_tool.name = "search_memory"
+        enabled_tool.description = "Search memory"
+
+        mock_client = AsyncMock()
+        mock_client.list_tools.return_value = [disabled_tool, enabled_tool]
+        proxy.upstream_clients = {"server": mock_client}
+
+        await proxy.fetch_upstream_tools("server")
+
+        tool_names = [tool.name for tool in proxy.get_view_tools("view")]
+        assert "read_skill" not in tool_names
+        assert "search_memory" in tool_names
+
     @pytest.mark.asyncio
     async def test_include_all_with_view_override_for_upstream_tool(self):
         """include_all should apply view overrides to upstream tools."""

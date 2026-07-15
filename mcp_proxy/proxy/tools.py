@@ -33,6 +33,11 @@ def _get_param_config(tool_config: ToolConfig | None) -> dict[str, Any] | None:
     return {k: v.model_dump() for k, v in tool_config.parameters.items()}
 
 
+def _is_enabled(*tool_configs: ToolConfig | None) -> bool:
+    """Return False if any applicable tool config disables the tool."""
+    return all(config is None or config.enabled for config in tool_configs)
+
+
 def _create_tool_info_from_upstream(
     upstream_tool: Any,
     server_name: str,
@@ -102,6 +107,9 @@ def _process_server_with_tools_config(
     upstream_by_name = {t.name: t for t in upstream_tools}
 
     for tool_name, tool_config in server_config.tools.items():
+        if not _is_enabled(tool_config):
+            continue
+
         # Get schema from upstream if available
         upstream_tool = upstream_by_name.get(tool_name)
         tool_schema = _get_input_schema(upstream_tool)
@@ -190,6 +198,9 @@ def _process_upstream_tool_with_override(
 
     # Get effective config (view override takes precedence)
     effective_config = view_override or server_tool_config
+    if not _is_enabled(view_override, server_tool_config):
+        return tools
+
     transformed_schema = transform_schema(tool_schema, effective_config)
     param_config = _get_param_config(effective_config) if effective_config else None
 
@@ -283,6 +294,9 @@ def _process_view_include_all_fallback(
         if server_name in view_config.tools:
             view_override = view_config.tools[server_name].get(tool_name)
 
+        if not _is_enabled(view_override, tool_config):
+            continue
+
         # Determine effective config (view override takes precedence)
         effective_config = view_override or tool_config
         transformed_schema = transform_schema(None, effective_config)
@@ -326,6 +340,9 @@ def _process_view_explicit_tools(
     tools: list[ToolInfo] = []
 
     for server_name, server_tools in view_config.tools.items():
+        if server_name in view_config.exclude_servers:
+            continue
+
         # Get upstream tools for this server to find schemas
         upstream_tools = upstream_tools_cache.get(server_name, [])
         upstream_by_name = {t.name: t for t in upstream_tools}
@@ -337,6 +354,10 @@ def _process_view_explicit_tools(
         )
 
         for tool_name, tool_config in server_tools.items():
+            server_tool_config = server_tool_configs.get(tool_name)
+            if not _is_enabled(tool_config, server_tool_config):
+                continue
+
             # Get schema and description from upstream if available
             upstream_tool = upstream_by_name.get(tool_name)
             if upstream_tool:
@@ -351,7 +372,6 @@ def _process_view_explicit_tools(
 
             # Merge server tool config with view tool config
             # Server config provides defaults, view config can override
-            server_tool_config = server_tool_configs.get(tool_name)
             merged_config = _merge_tool_configs(server_tool_config, tool_config)
 
             # Transform schema based on merged parameter config

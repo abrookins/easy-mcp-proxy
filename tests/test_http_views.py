@@ -99,6 +99,41 @@ class TestHTTPViewRouting:
         response = client.get("/view/nonexistent/mcp")
         assert response.status_code == 404
 
+    @pytest.mark.parametrize("endpoint", ["/view/coding-agent/mcp", "/search/mcp"])
+    def test_mcp_mounts_initialize(self, endpoint):
+        """Every mounted MCP app should enter its lifespan before serving."""
+        config = ProxyConfig(
+            mcp_servers={},
+            tool_views={
+                "coding-agent": ToolViewConfig(
+                    exposure_mode="search_per_server", include_all=True
+                )
+            },
+        )
+        proxy = MCPProxy(config)
+        app = proxy.http_app()
+
+        initialize_request = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "test-client", "version": "0.0.0"},
+            },
+        }
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.post(
+                endpoint,
+                json=initialize_request,
+                headers={"accept": "application/json, text/event-stream"},
+            )
+
+        assert response.status_code == 200
+        assert "protocolVersion" in response.text
+
     def test_view_info_nonexistent_returns_404(self):
         """GET /views/<nonexistent> should return 404."""
         config = ProxyConfig(

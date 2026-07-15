@@ -197,6 +197,7 @@ tool_views:
     description: "View description"     # Optional
     exposure_mode: direct               # direct|search|search_per_server
     include_all: false                  # Include all tools from all servers
+    exclude_servers: []                 # Servers to omit from this view
     tools:                              # Explicit tool selection
       server_name:
         tool_name: {}
@@ -215,6 +216,7 @@ tool_views:
 | `description` | string | - | Human-readable description |
 | `exposure_mode` | string | `direct` | How tools are exposed |
 | `include_all` | boolean | `false` | Include all tools from all servers |
+| `exclude_servers` | list | `[]` | Servers to omit from the view |
 | `tools` | object | - | Server → tool mapping |
 | `composite_tools` | object | - | Concurrent composition definitions |
 | `custom_tools` | list | - | Python tool modules |
