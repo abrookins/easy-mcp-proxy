@@ -244,7 +244,7 @@ tool_views:
 
 ### Search Mode
 
-Two meta-tools for the entire view:
+Three meta-tools for the entire view:
 
 ```yaml
 tool_views:
@@ -255,6 +255,7 @@ tool_views:
 
 **Result**: Client sees:
 - `myview_search_tools(query: str)` — Search tools by description
+- `myview_describe_tool(tool_name: str)` — Inspect one exact exposed schema
 - `myview_call_tool(tool_name: str, arguments: dict)` — Call tool by name
 
 ### Search Per Server Mode
@@ -270,8 +271,10 @@ tool_views:
 
 **Result**: For each server (e.g., `filesystem`, `github`):
 - `filesystem_search_tools(query: str)`
+- `filesystem_describe_tool(tool_name: str)`
 - `filesystem_call_tool(tool_name: str, arguments: dict)`
 - `github_search_tools(query: str)`
+- `github_describe_tool(tool_name: str)`
 - `github_call_tool(tool_name: str, arguments: dict)`
 
 ---
@@ -643,7 +646,8 @@ When running with `--transport http`:
 curl http://localhost:8000/search/mcp
 ```
 
-This provides `{server}_search_tools` and `{server}_call_tool` for each upstream server.
+This provides `{server}_search_tools`, `{server}_describe_tool`, and
+`{server}_call_tool` for each upstream server.
 
 ---
 
@@ -696,8 +700,14 @@ Arguments:
 
 Options:
   --server TEXT        Filter by server
+  --view TEXT          Inspect canonical metadata for one exposed view
   --json               Output as JSON
 ```
+
+`SERVER.TOOL` without `--view` shows raw upstream metadata. With `--view`, the
+tool name is the final exposed name and output reflects renames, hidden
+parameters, defaults, and description overrides. See [Tool Discovery,
+Inspection, and Safe Calls](tool-discovery.md) for CLI and web examples.
 
 ### call
 

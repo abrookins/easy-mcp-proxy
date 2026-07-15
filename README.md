@@ -78,7 +78,7 @@ This requires [authentication](docs/reference.md#authentication) to be configure
 
 ### Reduce Tool Count with Search Mode
 
-Too many tools overwhelming your LLM? Expose hundreds of tools through just two meta-tools:
+Too many tools overwhelming your LLM? Expose hundreds of tools through three meta-tools:
 
 ```yaml
 tool_views:
@@ -87,7 +87,9 @@ tool_views:
     include_all: true
 ```
 
-This creates `everything_search_tools` (find tools by description) and `everything_call_tool` (call by name). The LLM searches first, then calls—no need to list every tool.
+This creates `everything_search_tools` (find tools), `everything_describe_tool`
+(inspect one exact schema), and `everything_call_tool` (validate and call by
+name). The LLM searches, describes, then calls—no need to list every tool.
 
 ### Create Domain-Specific Interfaces
 
@@ -178,6 +180,7 @@ See the **[Use Cases Guide](docs/use-cases.md)** for detailed examples of each c
 - **[Tutorial](docs/tutorial.md)** — Step-by-step getting started guide
 - **[Use Cases](docs/use-cases.md)** — Problem-driven feature exploration
 - **[Reference](docs/reference.md)** — Complete feature and CLI documentation
+- **[Tool discovery](docs/tool-discovery.md)** — Schemas, safe calls, CLI, web registry, and rollout
 
 ## Development
 

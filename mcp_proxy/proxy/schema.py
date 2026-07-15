@@ -148,43 +148,54 @@ def transform_schema(
     # Deep copy to avoid mutating the original
     new_schema = copy.deepcopy(schema)
 
-    properties = new_schema.get("properties", {})
-    required = new_schema.get("required", [])
+    def transform_node(node: Any) -> None:
+        if isinstance(node, list):
+            for item in node:
+                transform_node(item)
+            return
+        if not isinstance(node, dict):
+            return
 
-    for param_name, param_config in tool_config.parameters.items():
-        if param_name not in properties:
-            continue
+        properties = node.get("properties")
+        required = node.get("required")
+        for param_name, param_config in tool_config.parameters.items():
+            if isinstance(properties, dict) and param_name in properties:
+                prop_value = properties[param_name]
+                if param_config.hidden:
+                    del properties[param_name]
+                elif param_config.rename:
+                    prop_value = properties.pop(param_name)
+                    if param_config.description:
+                        prop_value["description"] = param_config.description
+                    if param_config.default is not None:
+                        prop_value["default"] = param_config.default
+                    properties[param_config.rename] = prop_value
+                else:
+                    if param_config.description:
+                        prop_value["description"] = param_config.description
+                    if param_config.default is not None:
+                        prop_value["default"] = param_config.default
 
-        if param_config.hidden:
-            # Remove hidden parameter from schema
-            del properties[param_name]
-            if param_name in required:
-                required.remove(param_name)
-        elif param_config.rename:
-            # Rename the parameter
-            prop_value = properties.pop(param_name)
-            if param_config.description:
-                prop_value["description"] = param_config.description
-            if param_config.default is not None:
-                prop_value["default"] = param_config.default
-            properties[param_config.rename] = prop_value
-            if param_name in required:
-                required.remove(param_name)
-                # If there's a default, don't add to required
-                if param_config.default is None:
+            if isinstance(required, list) and param_name in required:
+                required[:] = [name for name in required if name != param_name]
+                if (
+                    not param_config.hidden
+                    and param_config.rename
+                    and param_config.default is None
+                    and param_config.rename not in required
+                ):
                     required.append(param_config.rename)
-        else:
-            # Update description and/or default without renaming
-            if param_config.description:
-                properties[param_name]["description"] = param_config.description
-            if param_config.default is not None:
-                properties[param_name]["default"] = param_config.default
-                # Remove from required if we have a default
-                if param_name in required:
-                    required.remove(param_name)
 
-    new_schema["properties"] = properties
-    new_schema["required"] = required
+        # Composition branches can constrain the root argument object, so apply
+        # top-level parameter transforms there as well. Do not recurse through
+        # arbitrary property schemas: a nested object may legitimately reuse a
+        # top-level parameter name without being part of the tool call surface.
+        for keyword in ("allOf", "anyOf", "oneOf"):
+            branches = node.get(keyword)
+            if isinstance(branches, list):
+                transform_node(branches)
+
+    transform_node(new_schema)
 
     return new_schema
 

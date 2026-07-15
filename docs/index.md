@@ -43,7 +43,7 @@ Named configurations that define which tools to expose and how. Each view can:
 
 How tools are presented to the client:
 - **direct**: Each tool exposed individually (default)
-- **search**: Two meta-tools (`search_tools` + `call_tool`) for the entire view
+- **search**: Three meta-tools (`search_tools` + `describe_tool` + `call_tool`) for the entire view
 - **search_per_server**: Meta-tools per upstream server
 
 ### Parameter Binding
@@ -121,4 +121,3 @@ This exposes `read_file` and `list_directory` from the filesystem server. Other 
 1. **[Follow the Tutorial](tutorial.md)** — Complete walkthrough from basics to advanced features
 2. **[Explore Use Cases](use-cases.md)** — Find solutions to specific problems
 3. **[Check the Reference](reference.md)** — Deep dive into any feature
-

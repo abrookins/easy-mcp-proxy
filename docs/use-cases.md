@@ -23,7 +23,7 @@ You've connected 5 MCP servers with 50+ tools total. The LLM struggles to pick t
 
 ### The Solution: Search Mode
 
-Instead of exposing all tools directly, use search mode to expose just two meta-tools:
+Instead of exposing all tools directly, use search mode to expose three meta-tools:
 
 ```yaml
 tool_views:
@@ -35,6 +35,8 @@ tool_views:
 
 **Result**: The LLM gets:
 - `everything_search_tools(query)` — Describe what you need, get matching tools
+- `everything_describe_tool(tool_name)` — Inspect the exact exposed schema
+- `everything_call_tool(tool_name, arguments)` — Validate and call the tool
 - `everything_call_tool(tool_name, arguments)` — Call the tool you found
 
 The LLM searches first ("I need to read a file"), finds `filesystem.read_file`, then calls it. Much cleaner than scanning 50 tool descriptions.
@@ -51,8 +53,8 @@ tool_views:
 ```
 
 **Result**: Each server gets its own search/call pair:
-- `filesystem_search_tools`, `filesystem_call_tool`
-- `github_search_tools`, `github_call_tool`
+- `filesystem_search_tools`, `filesystem_describe_tool`, `filesystem_call_tool`
+- `github_search_tools`, `github_describe_tool`, `github_call_tool`
 - etc.
 
 ---

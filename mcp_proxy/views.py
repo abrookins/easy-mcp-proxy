@@ -12,6 +12,7 @@ from mcp_proxy.hooks import (
 )
 from mcp_proxy.models import OutputCacheConfig, ToolConfig, ToolViewConfig
 from mcp_proxy.parallel import ParallelTool
+from mcp_proxy.proxy.tool_info import ToolInfo, ToolRegistry
 from mcp_proxy.upstream_errors import is_retriable_upstream_error
 
 
@@ -42,6 +43,7 @@ class ToolView:
         self._tool_to_original_name: dict[str, str] = {}  # renamed -> original
         self._tool_parameter_config: dict[str, dict[str, Any]] = {}
         self._tool_input_schemas: dict[str, dict[str, Any]] = {}
+        self._tool_registries: dict[str, ToolRegistry] = {}
         self._upstream_clients: dict[str, Any] = {}
         self._get_client: Callable[[str], Any | None] | None = None  # Get active client
         self._reconnect_client: Callable[[str], Any] | None = None  # Reconnect callback
@@ -163,6 +165,22 @@ class ToolView:
             if getattr(tool, "input_schema", None):
                 self._tool_input_schemas[tool_name] = tool.input_schema
 
+    def replace_tool_registry(
+        self, entity_name: str, tools: list[ToolInfo]
+    ) -> ToolRegistry:
+        """Atomically replace canonical metadata for a view or server entity."""
+        registry = self._tool_registries.get(entity_name)
+        if registry is None:
+            registry = ToolRegistry(tools)
+            self._tool_registries[entity_name] = registry
+        else:
+            registry.replace(tools)
+        return registry
+
+    def get_tool_registry(self, entity_name: str) -> ToolRegistry | None:
+        """Return the live canonical registry for an exposed entity."""
+        return self._tool_registries.get(entity_name)
+
     def _transform_tool(self, tool: Any, config: ToolConfig) -> Any:
         """Transform a tool with name/description overrides."""
 
@@ -202,8 +220,8 @@ class ToolView:
         if input_schema is None:
             input_schema = self._tool_input_schemas.get(tool_name)
 
-        transformed_args = transform_args(args, parameter_config)
-        return normalize_args_for_schema(transformed_args, input_schema)
+        normalized_args = normalize_args_for_schema(args, input_schema)
+        return transform_args(normalized_args, parameter_config)
 
     def _extract_content_for_cache(self, result: Any) -> str:
         """Extract cacheable content from a tool result.

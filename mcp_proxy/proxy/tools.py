@@ -11,6 +11,21 @@ from mcp_proxy.proxy.schema import resolve_schema_refs, transform_schema
 from mcp_proxy.proxy.tool_info import ToolInfo
 
 
+def _resolve_description(override: str | None, original: str) -> str:
+    """Apply an exposed description override to the upstream description."""
+    if override is None:
+        return original
+    return override.replace("{original}", original)
+
+
+def _get_input_schema(upstream_tool: Any | None) -> dict[str, Any] | None:
+    """Read an upstream schema, treating missing/non-object values as absent."""
+    if upstream_tool is None:
+        return None
+    schema = getattr(upstream_tool, "inputSchema", None)
+    return schema if isinstance(schema, dict) else None
+
+
 def _get_param_config(tool_config: ToolConfig | None) -> dict[str, Any] | None:
     """Extract parameter config dict from ToolConfig."""
     if tool_config is None or not tool_config.parameters:
@@ -26,13 +41,15 @@ def _create_tool_info_from_upstream(
     """Create a ToolInfo from an upstream tool, optionally with config overrides."""
     tool_name = upstream_tool.name
     tool_description = getattr(upstream_tool, "description", "") or ""
-    tool_schema = getattr(upstream_tool, "inputSchema", None)
+    tool_schema = _get_input_schema(upstream_tool)
+    if tool_schema:
+        tool_schema = resolve_schema_refs(tool_schema)
 
     if tool_config:
         transformed_schema = transform_schema(tool_schema, tool_config)
         param_config = _get_param_config(tool_config)
         exposed_name = tool_config.name if tool_config.name else tool_name
-        description = tool_config.description or tool_description
+        description = _resolve_description(tool_config.description, tool_description)
         return ToolInfo(
             name=exposed_name,
             description=description,
@@ -65,7 +82,7 @@ def _create_tools_from_aliases(
         tools.append(
             ToolInfo(
                 name=alias.name,
-                description=alias.description or upstream_desc,
+                description=_resolve_description(alias.description, upstream_desc),
                 server=server_name,
                 input_schema=transformed_schema,
                 original_name=tool_name,
@@ -87,9 +104,7 @@ def _process_server_with_tools_config(
     for tool_name, tool_config in server_config.tools.items():
         # Get schema from upstream if available
         upstream_tool = upstream_by_name.get(tool_name)
-        tool_schema = (
-            getattr(upstream_tool, "inputSchema", None) if upstream_tool else None
-        )
+        tool_schema = _get_input_schema(upstream_tool)
         upstream_desc = (
             getattr(upstream_tool, "description", "") if upstream_tool else ""
         )
@@ -117,7 +132,7 @@ def _process_server_with_tools_config(
         else:
             # Single tool (possibly renamed)
             exposed_name = tool_config.name if tool_config.name else tool_name
-            description = tool_config.description or upstream_desc
+            description = _resolve_description(tool_config.description, upstream_desc)
             tools.append(
                 ToolInfo(
                     name=exposed_name,
@@ -141,7 +156,7 @@ def _process_server_all_tools(
     for upstream_tool in upstream_tools:
         tool_name = upstream_tool.name
         tool_description = getattr(upstream_tool, "description", "") or ""
-        tool_schema = getattr(upstream_tool, "inputSchema", None)
+        tool_schema = _get_input_schema(upstream_tool)
         # Resolve $ref references to make schema self-contained for LLMs
         if tool_schema:  # pragma: no branch
             tool_schema = resolve_schema_refs(tool_schema)
@@ -167,7 +182,7 @@ def _process_upstream_tool_with_override(
     tools: list[ToolInfo] = []
     tool_name = upstream_tool.name
     tool_description = getattr(upstream_tool, "description", "") or ""
-    tool_schema = getattr(upstream_tool, "inputSchema", None)
+    tool_schema = _get_input_schema(upstream_tool)
 
     # Resolve $ref references to make schema self-contained for LLMs
     if tool_schema:  # pragma: no branch
@@ -192,7 +207,7 @@ def _process_upstream_tool_with_override(
         )
     elif view_override:
         exposed_name = view_override.name or tool_name
-        description = view_override.description or tool_description
+        description = _resolve_description(view_override.description, tool_description)
         tools.append(
             ToolInfo(
                 name=exposed_name,
@@ -287,7 +302,7 @@ def _process_view_include_all_fallback(
             )
         else:
             exposed_name = effective_config.name or tool_name
-            description = effective_config.description or ""
+            description = _resolve_description(effective_config.description, "")
             tools.append(
                 ToolInfo(
                     name=exposed_name,
@@ -325,11 +340,14 @@ def _process_view_explicit_tools(
             # Get schema and description from upstream if available
             upstream_tool = upstream_by_name.get(tool_name)
             if upstream_tool:
-                tool_schema = getattr(upstream_tool, "inputSchema", None)
+                tool_schema = _get_input_schema(upstream_tool)
                 upstream_desc = getattr(upstream_tool, "description", "") or ""
             else:
                 tool_schema = None
                 upstream_desc = ""
+
+            if tool_schema:
+                tool_schema = resolve_schema_refs(tool_schema)
 
             # Merge server tool config with view tool config
             # Server config provides defaults, view config can override
@@ -354,7 +372,9 @@ def _process_view_explicit_tools(
                 )
             else:
                 exposed_name = merged_config.name if merged_config.name else tool_name
-                description = merged_config.description or upstream_desc
+                description = _resolve_description(
+                    merged_config.description, upstream_desc
+                )
                 tools.append(
                     ToolInfo(
                         name=exposed_name,

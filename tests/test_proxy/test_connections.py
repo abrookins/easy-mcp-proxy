@@ -352,6 +352,37 @@ class TestProxyConnectionManagement:
         # Check that tools were fetched
         assert "server" in proxy._upstream_tools
 
+    async def test_fetch_tools_records_unavailable_and_metadata_failure_states(self):
+        """Registry status should distinguish disconnected and stale active servers."""
+        config = ProxyConfig(
+            mcp_servers={
+                "ready": UpstreamServerConfig(command="echo"),
+                "stale": UpstreamServerConfig(command="echo"),
+                "offline": UpstreamServerConfig(command="echo"),
+            },
+            tool_views={},
+        )
+        proxy = MCPProxy(config)
+        proxy._upstream_tools["ready"] = []
+        proxy._active_clients["stale"] = AsyncMock()
+
+        with patch.object(
+            proxy._client_manager,
+            "refresh_tools_from_active_clients",
+            new_callable=AsyncMock,
+        ):
+            await proxy.fetch_tools_from_active_clients()
+
+        assert "ready" not in proxy._registry_upstream_errors
+        assert (
+            proxy._registry_upstream_errors["stale"]
+            == "upstream metadata refresh failed"
+        )
+        assert (
+            proxy._registry_upstream_errors["offline"]
+            == "upstream connection unavailable"
+        )
+
 
 class TestProxyClientFetchUpstreamTools:
     """Tests for fetch_upstream_tools in client.py."""
@@ -615,7 +646,8 @@ class TestProxyGetToolInstructions:
         async with Client(view_mcp) as client:
             result = await client.call_tool("get_tool_instructions", {})
             text_content = result.content[0].text
-            assert "No tool instructions available" in text_content
+            assert "No tools are currently exposed" in text_content
+            assert "No upstream workflow guidance" in text_content
 
 
 class TestReconnectionLogic:

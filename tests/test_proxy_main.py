@@ -269,7 +269,12 @@ class TestMCPProxyInstructions:
         """View MCP should have aggregated instructions set."""
         config = ProxyConfig(
             mcp_servers={"server": {"command": "echo"}},
-            tool_views={"myview": {"description": "Test view"}},
+            tool_views={
+                "myview": {
+                    "description": "Test view",
+                    "tools": {"server": {"memory_call_tool": {}}},
+                }
+            },
         )
         proxy = MCPProxy(config)
         proxy.upstream_instructions["server"] = "Server instructions here"
@@ -389,12 +394,17 @@ class TestMCPProxyInstructions:
 
     @pytest.mark.asyncio
     async def test_get_tool_instructions_tool_accepts_tool_name_argument(self):
-        """get_tool_instructions should tolerate clients passing tool_name."""
+        """get_tool_instructions should return exact canonical tool metadata."""
         from fastmcp import Client
 
         config = ProxyConfig(
             mcp_servers={"server": {"command": "echo"}},
-            tool_views={"myview": {"description": "Test view"}},
+            tool_views={
+                "myview": {
+                    "description": "Test view",
+                    "tools": {"server": {"memory_call_tool": {}}},
+                }
+            },
         )
         proxy = MCPProxy(config)
         proxy.upstream_instructions["server"] = "Server instructions here"
@@ -406,7 +416,8 @@ class TestMCPProxyInstructions:
                 "get_tool_instructions", {"tool_name": "memory_call_tool"}
             )
             text_content = result.content[0].text
-            assert "Server instructions here" in text_content
+            assert '"name":"memory_call_tool"' in text_content.replace(" ", "")
+            assert '"inputSchema":{}' in text_content.replace(" ", "")
 
 
 class TestMCPProxyToolRegistration:

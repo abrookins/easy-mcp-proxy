@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html as html_module
 import json
 import os
 import secrets
@@ -23,6 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
 import yaml
+from rapidfuzz import fuzz, process
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
@@ -32,11 +34,14 @@ from mcp_proxy.web_ui_templates import (
     build_html_template,
     build_restart_html,
     render_servers_html,
+    render_tools_html,
     render_views_html,
 )
 
 if TYPE_CHECKING:
     from fastmcp.server.auth.auth import AuthProvider
+
+    from mcp_proxy.proxy import MCPProxy
 
 # Type alias for auth check function
 AuthChecker = Callable[[Request], Coroutine[Any, Any, Response | None]]
@@ -281,6 +286,7 @@ def create_web_ui_routes(
     path_prefix: str = "/config",
     check_auth: AuthChecker | None = None,
     auth_provider: "AuthProvider | None" = None,
+    proxy: "MCPProxy | None" = None,
 ) -> list[Route]:
     """Create web UI routes for config editing.
 
@@ -345,7 +351,21 @@ def create_web_ui_routes(
             )
         elif "error" in request.query_params:
             err_msg = request.query_params.get("error", "Unknown error")
-            alert = f'<div class="alert alert-error">Error: {err_msg}</div>'
+            alert = (
+                '<div class="alert alert-error">Error: '
+                f"{html_module.escape(err_msg)}</div>"
+            )
+
+        snapshot = (
+            proxy.get_registry_snapshot()
+            if proxy is not None
+            else {
+                "tools": [],
+                "available_views": ["default"],
+                "snapshot_at": "",
+                "status": "empty",
+            }
+        )
 
         html = build_html_template(
             alert=alert,
@@ -354,8 +374,42 @@ def create_web_ui_routes(
             config_yaml=yaml.dump(merged, default_flow_style=False, sort_keys=False),
             save_url=f"{path_prefix}/save",
             restart_url=f"{path_prefix}/restart",
+            tools_html=render_tools_html(snapshot),
+            tool_views=snapshot["available_views"],
+            tools_api_url=f"{path_prefix}/api/tools",
+            snapshot_at=snapshot["snapshot_at"],
+            registry_status=snapshot["status"],
         )
         return HTMLResponse(html)
+
+    async def get_tool_registry(request: Request) -> Response:
+        """Return canonical exposed metadata for one view without executing tools."""
+        auth_result = await check_browser_auth(request)
+        if auth_result:
+            return auth_result
+        if proxy is None:
+            return JSONResponse(
+                {
+                    "error": "registry_unavailable",
+                    "message": "The live tool registry is unavailable.",
+                },
+                status_code=503,
+            )
+        view_name = request.query_params.get("view") or "default"
+        try:
+            return JSONResponse(proxy.get_registry_snapshot(view_name))
+        except ValueError:
+            choices = proxy.registry_view_names()
+            payload: dict[str, Any] = {
+                "error": "unknown_view",
+                "message": f"View '{view_name}' not found.",
+                "view": view_name,
+                "available_view_names": choices,
+            }
+            match = process.extractOne(view_name, choices, scorer=fuzz.ratio)
+            if match is not None and match[1] >= 70:
+                payload["did_you_mean"] = match[0]
+            return JSONResponse(payload, status_code=404)
 
     async def save_config(request: Request) -> Response:
         """Save the configuration."""
@@ -513,6 +567,8 @@ def create_web_ui_routes(
         Route(f"{path_prefix}/restart", restart_server, methods=["GET", "POST"]),
         Route(f"{path_prefix}/api", get_config_json, methods=["GET"]),
         Route(f"{path_prefix}/api", update_config_json, methods=["PUT"]),
+        Route(f"{path_prefix}/api/tools", get_tool_registry, methods=["GET"]),
+        Route(f"{path_prefix}/tools", get_tool_registry, methods=["GET"]),
         Route(f"{path_prefix}/login", login_page, methods=["GET"]),
         Route(
             f"{path_prefix}/login/callback",

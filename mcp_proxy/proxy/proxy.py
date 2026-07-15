@@ -1,6 +1,9 @@
 """Main MCP Proxy class."""
 
+import hashlib
+import json
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from fastmcp import Client, FastMCP
@@ -31,8 +34,8 @@ from .http_routes import (
 )
 from .registration import register_direct_tool, register_view_tool
 from .schema import create_tool_with_schema
-from .search_tools import register_tool_pair
-from .tool_info import ToolInfo
+from .search_tools import lookup_tool_metadata, register_tool_pair
+from .tool_info import ToolInfo, ToolRegistry
 from .tools import (
     _process_server_all_tools,
     _process_server_with_tools_config,
@@ -71,6 +74,10 @@ class MCPProxy:
         self._client_manager = ClientManager(config)
         self._initialized = False
         self.upstream_instructions: dict[str, str] = {}
+        self._instruction_surfaces: list[tuple[FastMCP, ToolRegistry, str, str]] = []
+        self._registry_snapshot_at = self._snapshot_timestamp()
+        self._registry_upstream_errors: dict[str, str] = {}
+        self._registry_warnings: list[str] = []
 
         self.server = FastMCP("MCP Tool View Proxy")
 
@@ -80,6 +87,7 @@ class MCPProxy:
 
         # Register stub tools on the default server (for stdio transport)
         default_tools = self.get_view_tools(None)
+        self._default_tool_registry = ToolRegistry(default_tools)
         self._register_tools_on_mcp(self.server, default_tools)
 
     # Delegate client management to ClientManager
@@ -133,6 +141,8 @@ class MCPProxy:
             # Fetch tools
             tools = await client.list_tools()
             self._upstream_tools[server_name] = tools
+            self._registry_upstream_errors.pop(server_name, None)
+            self._refresh_tool_registries()
             return tools
 
     async def refresh_upstream_tools(self) -> None:
@@ -142,7 +152,9 @@ class MCPProxy:
                 await self.fetch_upstream_tools(server_name)
             except Exception:
                 # Log error but continue - tool will work without schema
-                pass
+                self._registry_upstream_errors[server_name] = (
+                    "upstream metadata refresh failed"
+                )
 
     async def connect_clients(self, fetch_tools: bool = False) -> None:
         """Establish persistent connections to all upstream servers.
@@ -161,6 +173,102 @@ class MCPProxy:
         await self._client_manager.refresh_tools_from_active_clients(
             instruction_callback=self.fetch_upstream_instructions
         )
+        for server_name in self.config.mcp_servers:
+            if server_name in self._upstream_tools:
+                self._registry_upstream_errors.pop(server_name, None)
+            elif server_name not in self._active_clients:
+                self._registry_upstream_errors[server_name] = (
+                    "upstream connection unavailable"
+                )
+            else:
+                self._registry_upstream_errors[server_name] = (
+                    "upstream metadata refresh failed"
+                )
+        self._refresh_tool_registries()
+
+    def _refresh_tool_registries(self) -> None:
+        """Replace live exposed metadata snapshots after upstream discovery."""
+        self._default_tool_registry.replace(self.get_view_tools(None))
+        for view_name, view in self.views.items():
+            if not view._tool_registries:
+                continue
+
+            tools = self.get_view_tools(view_name)
+            view.update_tool_mapping(tools)
+            for entity_name in tuple(view._tool_registries):
+                if entity_name == view_name:
+                    entity_tools = tools
+                else:
+                    entity_tools = [
+                        tool
+                        for tool in tools
+                        if (tool.server or "custom") == entity_name
+                    ]
+                view.replace_tool_registry(entity_name, entity_tools)
+        for mcp, registry, entity_name, exposure_mode in self._instruction_surfaces:
+            mcp.instructions = self._combined_registry_instructions(
+                registry, entity_name, exposure_mode
+            )
+        self._registry_snapshot_at = self._snapshot_timestamp()
+
+    @staticmethod
+    def _snapshot_timestamp() -> str:
+        """Return a stable UTC timestamp for one registry snapshot."""
+        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    def registry_view_names(self) -> list[str]:
+        """Return deterministic operator-facing registry view choices."""
+        return [
+            "default",
+            *sorted(
+                name
+                for name in self.views
+                if name != "default" and not name.startswith("_")
+            ),
+        ]
+
+    def get_registry_snapshot(self, view_name: str | None = None) -> dict[str, Any]:
+        """Return read-only canonical exposed metadata without reconnecting."""
+        selected = view_name or "default"
+        if selected not in self.registry_view_names():
+            raise ValueError(f"View '{selected}' not found")
+        tools = self.get_view_tools(None if selected == "default" else selected)
+        metadata = [
+            tool.to_metadata(include_schema=True)
+            for tool in sorted(tools, key=lambda item: (item.name, item.server))
+        ]
+        digest_input = json.dumps(
+            [
+                {"name": item["name"], "inputSchema": item["inputSchema"]}
+                for item in metadata
+            ],
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        warnings = list(self._registry_warnings)
+        if self._registry_upstream_errors:
+            warnings.append("One or more upstream metadata refreshes failed.")
+        if self._registry_upstream_errors and not metadata:
+            status = "error"
+        elif warnings:
+            status = "warning"
+        elif not metadata:
+            status = "empty"
+        else:
+            status = "ready"
+        return {
+            "schema_version": 1,
+            "view": selected,
+            "available_views": self.registry_view_names(),
+            "status": status,
+            "snapshot_at": self._registry_snapshot_at,
+            "generated_at": self._registry_snapshot_at,
+            "tool_count": len(metadata),
+            "schema_hash": hashlib.sha256(digest_input).hexdigest(),
+            "warnings": warnings,
+            "upstream_errors": dict(sorted(self._registry_upstream_errors.items())),
+            "tools": metadata,
+        }
 
     def get_active_client(self, server_name: str) -> Client | None:
         """Get the active client for a server, or None if not connected."""
@@ -344,7 +452,9 @@ class MCPProxy:
                         self.upstream_clients[server_name] = client
                     await self.fetch_upstream_tools(server_name)
                 except Exception:
-                    pass
+                    self._registry_upstream_errors[server_name] = (
+                        "upstream metadata refresh failed"
+                    )
 
         try:
             loop = asyncio.get_running_loop()
@@ -426,6 +536,14 @@ class MCPProxy:
             default_tools = self.get_view_tools(None)
             # Use "default" view if it exists (for custom tools, hooks, etc.)
             default_view = self.views.get("default")
+            if default_view:
+                default_view.replace_tool_registry("default", default_tools)
+                instruction_registry = default_view.get_tool_registry("default")
+                exposure_mode = default_view.config.exposure_mode
+            else:
+                self._default_tool_registry.replace(default_tools)
+                instruction_registry = self._default_tool_registry
+                exposure_mode = "direct"
 
             # Respect exposure_mode for stdio transport
             if default_view and default_view.config.exposure_mode == "search":
@@ -442,7 +560,12 @@ class MCPProxy:
                     stdio_server, default_tools, view=default_view
                 )
 
-            self._register_instructions_tool(stdio_server)
+            self._register_instructions_tool(
+                stdio_server,
+                instruction_registry,
+                "default",
+                exposure_mode,
+            )
             if self._is_cache_enabled():
                 self._register_cache_retrieval_tool(stdio_server)
             stdio_server.run(transport="stdio")
@@ -568,6 +691,7 @@ class MCPProxy:
                     name=custom_name,
                     description=description,
                     server="",
+                    input_schema=getattr(custom_fn, "_input_schema", None),
                 )
             )
 
@@ -586,6 +710,7 @@ class MCPProxy:
         # Always update tool mapping (needed for view.call_tool to work)
         view_tools = self.get_view_tools(view_name)
         view.update_tool_mapping(view_tools)
+        view.replace_tool_registry(view_name, view_tools)
 
         if view_config.exposure_mode == "search":
             self._register_search_tool(mcp, view_name)
@@ -595,31 +720,65 @@ class MCPProxy:
             self._register_tools_on_mcp(mcp, view_tools, view=view)
 
         # Register the get_tool_instructions tool
-        self._register_instructions_tool(mcp)
+        registry = view.get_tool_registry(view_name)
+        assert registry is not None
+        self._register_instructions_tool(
+            mcp, registry, view_name, view_config.exposure_mode
+        )
         if self._is_cache_enabled():
             self._register_cache_retrieval_tool(mcp)
 
         return mcp
 
-    def _register_instructions_tool(self, mcp: FastMCP) -> None:
+    def _combined_registry_instructions(
+        self,
+        registry: ToolRegistry,
+        entity_name: str,
+        exposure_mode: str,
+    ) -> str:
+        """Combine authoritative registry help with labeled upstream guidance."""
+        authoritative = registry.instructions(entity_name, exposure_mode)
+        upstream = self.get_aggregated_instructions()
+        if not upstream:
+            upstream = "No upstream workflow guidance is currently available."
+        return (
+            authoritative
+            + "\n## Upstream workflow guidance (non-authoritative)\n\n"
+            + upstream.strip()
+            + "\n"
+        )
+
+    def _register_instructions_tool(
+        self,
+        mcp: FastMCP,
+        registry: ToolRegistry,
+        entity_name: str,
+        exposure_mode: str,
+    ) -> None:
         """Register the get_tool_instructions tool on an MCP instance."""
         proxy = self  # Capture reference for closure
+        mcp.instructions = self._combined_registry_instructions(
+            registry, entity_name, exposure_mode
+        )
+        self._instruction_surfaces.append((mcp, registry, entity_name, exposure_mode))
 
-        def get_tool_instructions(tool_name: str | None = None) -> str:
-            """Get aggregated instructions from all upstream MCP servers.
+        def get_tool_instructions(tool_name: str | None = None) -> Any:
+            """Get authoritative exposed metadata and workflow guidance.
 
-            Call this at the start of every session to understand how to use
-            the memory tools and other available capabilities effectively.
-
-            The optional ``tool_name`` parameter is accepted for compatibility
-            with clients that expect per-tool help. It is currently ignored and
-            the tool always returns aggregated instructions.
+            With a tool name, return that exact tool's canonical metadata.
+            Without one, return the generated registry reference followed by
+            separately labeled upstream workflow guidance.
             """
-            del tool_name
-            instructions = proxy.get_aggregated_instructions()
-            if instructions:
-                return instructions
-            return "No tool instructions available."
+            if tool_name:
+                metadata = lookup_tool_metadata(registry, tool_name, entity_name)
+                metadata["usage_guidance"] = (
+                    "Use the exposed parameter names in inputSchema. "
+                    "For mutations that support dry_run, preview before applying."
+                )
+                return metadata
+            return proxy._combined_registry_instructions(
+                registry, entity_name, exposure_mode
+            )
 
         mcp.tool(
             name="get_tool_instructions",
@@ -649,6 +808,7 @@ class MCPProxy:
         """
         view_tools = self.get_view_tools(view_name)
         view.update_tool_mapping(view_tools)
+        view.replace_tool_registry(view_name, view_tools)
 
         if view.config.exposure_mode == "search":
             self._register_search_tool(mcp, view_name)
@@ -657,7 +817,11 @@ class MCPProxy:
         else:
             self._register_tools_on_mcp(mcp, view_tools, view=view)
 
-        self._register_instructions_tool(mcp)
+        registry = view.get_tool_registry(view_name)
+        assert registry is not None
+        self._register_instructions_tool(
+            mcp, registry, view_name, view.config.exposure_mode
+        )
         if cache_context:
             self._register_cache_retrieval_tool(mcp)
 
@@ -763,6 +927,7 @@ class MCPProxy:
         # Get all tools (using include_all behavior)
         all_tools = self.get_view_tools("_search")
         search_view.update_tool_mapping(all_tools)
+        search_view.replace_tool_registry("_search", all_tools)
 
         # Register per-server search tools
         self._register_per_server_search_tools(mcp, "_search")
@@ -840,8 +1005,14 @@ class MCPProxy:
                 )
             else:
                 default_tools = self.get_view_tools(None)
+                self._default_tool_registry.replace(default_tools)
                 self._register_tools_on_mcp(default_mcp, default_tools)
-                self._register_instructions_tool(default_mcp)
+                self._register_instructions_tool(
+                    default_mcp,
+                    self._default_tool_registry,
+                    "default",
+                    "direct",
+                )
                 if cache_context:
                     self._register_cache_retrieval_tool(default_mcp)
 
@@ -865,7 +1036,14 @@ class MCPProxy:
             # Initialize the virtual "search" MCP with all tools
             search_mcp.instructions = aggregated_instructions
             self._initialize_search_view(search_mcp)
-            self._register_instructions_tool(search_mcp)
+            search_registry = self.views["_search"].get_tool_registry("_search")
+            assert search_registry is not None
+            self._register_instructions_tool(
+                search_mcp,
+                search_registry,
+                "_search",
+                "search_per_server",
+            )
             if cache_context:
                 self._register_cache_retrieval_tool(search_mcp)
 
@@ -916,6 +1094,7 @@ class MCPProxy:
             path_prefix=f"{path}/config",
             check_auth=web_ui_auth_check,
             auth_provider=auth_provider,
+            proxy=self,
         )
         routes.extend(web_ui_routes)
 
