@@ -617,9 +617,14 @@ export FASTMCP_SERVER_AUTH_AUTH0_BASE_URL="https://your-proxy-url.com"
 
 # Optional: required scopes (comma-separated)
 export FASTMCP_SERVER_AUTH_AUTH0_REQUIRED_SCOPES="read,write"
+
+# Optional: disable Client ID Metadata Documents and require Dynamic Client Registration
+export MCP_PROXY_AUTH_ENABLE_CIMD="false"
 ```
 
 When these variables are set, the proxy automatically enables OAuth 2.1 with PKCE support.
+Client ID Metadata Document support is enabled by default. Set
+`MCP_PROXY_AUTH_ENABLE_CIMD=false` when clients must register dynamically instead.
 
 ---
 

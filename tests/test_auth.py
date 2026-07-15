@@ -547,6 +547,26 @@ class TestRestrictedAuthProvider:
         ):
             assert require_verified_email() is False
 
+    @pytest.mark.parametrize(
+        ("env_value", "expected"),
+        [
+            (None, True),
+            ("true", True),
+            ("1", True),
+            ("0", False),
+            ("false", False),
+            ("NO", False),
+            (" off ", False),
+        ],
+    )
+    def test_enable_cimd_from_environment(self, env_value, expected):
+        """CIMD defaults on and accepts the standard false spellings."""
+        from mcp_proxy.auth import enable_cimd
+
+        env = {} if env_value is None else {"MCP_PROXY_AUTH_ENABLE_CIMD": env_value}
+        with patch.dict(os.environ, env, clear=True):
+            assert enable_cimd() is expected
+
     def test_restricted_provider_delegates_auth_metadata(self):
         """RestrictedAuthProvider should delegate metadata methods when present."""
         from starlette.middleware import Middleware
@@ -891,6 +911,28 @@ class TestCreateAuthProvider:
                 assert result is not None
                 # Verify required_scopes was parsed correctly
                 assert result.required_scopes == ["read:tools", "write:tools"]
+
+    def test_passes_cimd_setting_to_oidc_proxy(self):
+        """OIDC provider construction should honor CIMD disablement."""
+        from mcp_proxy.auth import _create_oidc_provider
+
+        with patch.dict(
+            os.environ,
+            {
+                "FASTMCP_SERVER_AUTH_AUTH0_CONFIG_URL": "https://idp.example.com/.well-known/openid-configuration",
+                "FASTMCP_SERVER_AUTH_AUTH0_CLIENT_ID": "test-client-id",
+                "FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET": "test-client-secret",
+                "FASTMCP_SERVER_AUTH_AUTH0_AUDIENCE": "https://api.example.com",
+                "FASTMCP_SERVER_AUTH_AUTH0_BASE_URL": "https://mcp.example.com",
+                "MCP_PROXY_AUTH_ENABLE_CIMD": "false",
+            },
+            clear=True,
+        ):
+            with patch("fastmcp.server.auth.oidc_proxy.OIDCProxy") as oidc_proxy:
+                result = _create_oidc_provider()
+
+        assert result is oidc_proxy.return_value
+        assert oidc_proxy.call_args.kwargs["enable_cimd"] is False
 
     def test_wraps_oidc_provider_when_allowed_emails_set(self):
         """OIDC auth should be wrapped when email restrictions are configured."""
