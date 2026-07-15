@@ -37,6 +37,8 @@ Set these environment variables to enable Auth0/OIDC authentication:
 - FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET: Auth0 application client secret
 - FASTMCP_SERVER_AUTH_AUTH0_AUDIENCE: Auth0 API audience
 - FASTMCP_SERVER_AUTH_AUTH0_BASE_URL: Public URL where your proxy is accessible
+- MCP_PROXY_AUTH_ENABLE_CIMD: Set to false to require Dynamic Client
+  Registration instead of accepting Client ID Metadata Document URLs
 
 ### Combined Authentication
 
@@ -74,6 +76,7 @@ AUTH0_AUDIENCE_VAR = "FASTMCP_SERVER_AUTH_AUTH0_AUDIENCE"
 AUTH0_BASE_URL_VAR = "FASTMCP_SERVER_AUTH_AUTH0_BASE_URL"
 AUTH_ALLOWED_EMAILS_VAR = "MCP_PROXY_AUTH_ALLOWED_EMAILS"
 AUTH_REQUIRE_VERIFIED_EMAIL_VAR = "MCP_PROXY_AUTH_REQUIRE_EMAIL_VERIFIED"
+AUTH_ENABLE_CIMD_VAR = "MCP_PROXY_AUTH_ENABLE_CIMD"
 
 
 def parse_token_config(token_str: str) -> tuple[str, dict]:
@@ -169,6 +172,14 @@ def require_verified_email() -> bool:
     return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
+def enable_cimd() -> bool:
+    """Return whether OIDC Client ID Metadata Document support is enabled."""
+    value = os.environ.get(AUTH_ENABLE_CIMD_VAR, "")
+    if not value:
+        return True
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
 def is_static_auth_configured() -> bool:
     """Check if static token authentication is configured."""
     return len(get_static_tokens()) > 0
@@ -224,6 +235,7 @@ def _create_oidc_provider() -> "AuthProvider":
         audience=os.environ.get(AUTH0_AUDIENCE_VAR),
         base_url=os.environ.get(AUTH0_BASE_URL_VAR),
         required_scopes=required_scopes,
+        enable_cimd=enable_cimd(),
     )
 
 
