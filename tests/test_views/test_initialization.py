@@ -42,6 +42,28 @@ class TestToolViewInitialization:
         with pytest.raises(ValueError, match="Missing client for server"):
             await view.initialize(upstream_clients={})
 
+    async def test_include_all_allows_missing_override_clients(self):
+        """include_all tool entries may override optional upstreams."""
+        config = ToolViewConfig(
+            include_all=True,
+            tools={"upstream-server": {"tool_a": ToolConfig()}},
+        )
+        view = ToolView(name="test", config=config)
+
+        await view.initialize(upstream_clients={})
+        assert view._upstream_clients == {}
+
+    async def test_excluded_explicit_servers_do_not_require_clients(self):
+        """Excluded explicit servers should not block view initialization."""
+        config = ToolViewConfig(
+            exclude_servers=["upstream-server"],
+            tools={"upstream-server": {"tool_a": ToolConfig()}},
+        )
+        view = ToolView(name="test", config=config)
+
+        await view.initialize(upstream_clients={})
+        assert view._upstream_clients == {}
+
     async def test_tool_view_initialize_with_valid_clients(self):
         """ToolView.initialize() should work with matching clients."""
         config = ToolViewConfig(

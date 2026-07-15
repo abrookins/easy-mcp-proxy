@@ -111,8 +111,15 @@ class ToolView:
         self._cache_context = cache_context
         self._load_hooks()
 
-        # Verify we have clients for all referenced servers
+        # Explicit views need all referenced clients. include_all views can use
+        # tool entries as overrides for optional upstreams, so missing clients
+        # should not prevent the whole proxy from starting.
+        if self.config.include_all:
+            return
+
         for server_name in self.config.tools.keys():
+            if server_name in self.config.exclude_servers:
+                continue
             if server_name not in upstream_clients:
                 raise ValueError(f"Missing client for server: {server_name}")
 
