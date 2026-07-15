@@ -1,6 +1,10 @@
 """Main CLI commands for mcp-proxy."""
 
+import json
+from typing import Any
+
 import click
+from rapidfuzz import fuzz, process
 
 from mcp_proxy.cli.utils import (
     config_option,
@@ -22,26 +26,155 @@ def servers(config: str | None):
 @click.command()
 @config_option()
 @click.option("--server", "-s", default=None, help="Filter by server name")
-def tools(config: str | None, server: str | None):
+@click.option("--view", "-v", default=None, help="Inspect one exposed tool view")
+@click.option("--verbose", is_flag=True, help="Show canonical tool metadata")
+@click.option("--json", "as_json", is_flag=True, help="Output stable JSON")
+def tools(
+    config: str | None,
+    server: str | None,
+    view: str | None,
+    verbose: bool,
+    as_json: bool,
+):
     """List all tools from configured servers."""
     cfg = load_config(str(get_config_path(config)))
 
-    # List tools configured directly on mcp_servers
-    for server_name, server_config in cfg.mcp_servers.items():
-        if server and server_name != server:
-            continue
-        if server_config.tools:
-            for tool_name in server_config.tools:
-                click.echo(f"{server_name}.{tool_name}")
+    if view is None and not verbose and not as_json:
+        configured_names: set[str] = set()
 
-    # List tools from tool_views
-    for view_name, view_config in cfg.tool_views.items():
-        if view_config.tools:
+        # Keep the original, configuration-only output as the fast default.
+        for server_name, server_config in cfg.mcp_servers.items():
+            if server and server_name != server:
+                continue
+            if server_config.tools:
+                configured_names.update(
+                    f"{server_name}.{tool_name}" for tool_name in server_config.tools
+                )
+
+        for view_config in cfg.tool_views.values():
             for server_name, tools_dict in view_config.tools.items():
                 if server and server_name != server:
                     continue
-                for tool_name in tools_dict:
-                    click.echo(f"{server_name}.{tool_name}")
+                configured_names.update(
+                    f"{server_name}.{tool_name}" for tool_name in tools_dict
+                )
+
+        for name in sorted(configured_names):
+            click.echo(name)
+        return
+
+    from mcp_proxy.proxy import MCPProxy
+
+    if view is not None:
+        _require_name("view", view, sorted(cfg.tool_views), as_json)
+    if server is not None:
+        _require_name("server", server, sorted(cfg.mcp_servers), as_json)
+
+    proxy = MCPProxy(cfg)
+    raw_tools, errors = run_async(_fetch_cli_tools(proxy, cfg))
+    if errors:
+        _fail_connection(errors, as_json)
+
+    canonical_tools = proxy.get_view_tools(view)
+    if server is not None:
+        canonical_tools = [tool for tool in canonical_tools if tool.server == server]
+    metadata = [
+        tool.to_metadata(include_schema=verbose)
+        for tool in sorted(canonical_tools, key=lambda item: (item.name, item.server))
+    ]
+
+    if as_json:
+        payload: dict[str, Any] = {"tools": metadata}
+        payload["view"] = view or "default"
+        click.echo(json.dumps(payload, sort_keys=True))
+        return
+
+    for item in metadata:
+        if not verbose:
+            prefix = f"{item['server']}." if item["server"] else ""
+            click.echo(f"{prefix}{item['name']}")
+            continue
+        _output_exposed_tool(item, include_schema=True)
+
+
+def _suggest(name: str, choices: list[str]) -> str | None:
+    """Return a conservative fuzzy suggestion from deterministic choices."""
+    match = process.extractOne(name, choices, scorer=fuzz.ratio)
+    if match is None or match[1] < 70:
+        return None
+    return str(match[0])
+
+
+def _fail(payload: dict[str, Any], as_json: bool) -> None:
+    """Emit a stable CLI error and exit with status one."""
+    if as_json:
+        click.echo(json.dumps(payload, sort_keys=True))
+    else:
+        message = str(payload["message"])
+        if suggestion := payload.get("did_you_mean"):
+            message += f" Did you mean '{suggestion}'?"
+        click.echo(f"Error: {message}", err=True)
+    raise click.exceptions.Exit(1)
+
+
+def _require_name(kind: str, name: str, choices: list[str], as_json: bool) -> None:
+    """Validate a configured view or server name with an optional hint."""
+    if name in choices:
+        return
+    payload: dict[str, Any] = {
+        "error": f"unknown_{kind}",
+        "message": f"{kind.title()} '{name}' not found.",
+        f"available_{kind}_names": choices,
+    }
+    if suggestion := _suggest(name, choices):
+        payload["did_you_mean"] = suggestion
+    _fail(payload, as_json)
+
+
+async def _fetch_cli_tools(
+    proxy: Any, cfg: Any
+) -> tuple[dict[str, list], dict[str, str]]:
+    """Fetch raw upstream metadata once and refresh the canonical registry."""
+    raw_tools: dict[str, list] = {}
+    errors: dict[str, str] = {}
+    for server_name in sorted(cfg.mcp_servers):
+        try:
+            client = await proxy._create_client(server_name)
+            async with client:
+                discovered = list(await client.list_tools())
+            proxy._upstream_tools[server_name] = discovered
+            raw_tools[server_name] = discovered
+        except Exception as exc:
+            errors[server_name] = str(exc)
+    proxy._refresh_tool_registries()
+    return raw_tools, errors
+
+
+def _fail_connection(errors: dict[str, str], as_json: bool) -> None:
+    """Report upstream failures separately from lookup failures."""
+    servers = sorted(errors)
+    _fail(
+        {
+            "error": "connection_error",
+            "message": "Could not inspect upstream tool metadata.",
+            "servers": {name: errors[name] for name in servers},
+        },
+        as_json,
+    )
+
+
+def _output_exposed_tool(metadata: dict[str, Any], include_schema: bool) -> None:
+    """Render one canonical exposed metadata record for a human."""
+    accepted = metadata["accepted_parameter_names"]
+    click.echo(f"Tool: {metadata['name']}")
+    click.echo(f"Description: {metadata['description'] or 'N/A'}")
+    click.echo(f"Server: {metadata['server'] or 'custom'}")
+    click.echo(f"Original name: {metadata['original_name']}")
+    click.echo(f"Accepted parameters: {', '.join(accepted) if accepted else 'none'}")
+    dry_run = "yes" if metadata["supports_dry_run"] else "no"
+    click.echo(f"Dry-run supported: {dry_run}")
+    if include_schema:
+        click.echo(f"Input schema: {json.dumps(metadata['inputSchema'], indent=2)}")
 
 
 def _output_tool_schema(tool_name: str, tool_schema: dict | None, as_json: bool):
@@ -57,7 +190,20 @@ def _output_tool_schema(tool_name: str, tool_schema: dict | None, as_json: bool)
         if tool_schema:
             click.echo(f"Tool: {tool_name}")
             click.echo(f"Description: {tool_schema.get('description', 'N/A')}")
-            params = json_module.dumps(tool_schema.get("inputSchema", {}), indent=2)
+            schema = tool_schema.get("inputSchema", {})
+            properties = schema.get("properties", {})
+            accepted = sorted(properties) if isinstance(properties, dict) else []
+            dry_run = (
+                properties.get("dry_run") if isinstance(properties, dict) else None
+            )
+            supports_dry_run = (
+                isinstance(dry_run, dict) and dry_run.get("type") == "boolean"
+            )
+            click.echo(
+                f"Accepted parameters: {', '.join(accepted) if accepted else 'none'}"
+            )
+            click.echo(f"Dry-run supported: {'yes' if supports_dry_run else 'no'}")
+            params = json_module.dumps(schema, indent=2)
             click.echo(f"Parameters: {params}")
         else:
             parts = tool_name.split(".", 1)
@@ -95,8 +241,13 @@ def _output_connection_error(
 @config_option()
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.option("--server", "-s", default=None, help="Filter by server name")
+@click.option("--view", "-v", default=None, help="Inspect an exposed tool view")
 def schema(
-    tool_name: str | None, config: str | None, as_json: bool, server: str | None
+    tool_name: str | None,
+    config: str | None,
+    as_json: bool,
+    server: str | None,
+    view: str | None,
 ):
     """Show schema for a specific tool or all tools."""
     import json as json_module
@@ -105,6 +256,52 @@ def schema(
 
     cfg = load_config(str(get_config_path(config)))
     proxy = MCPProxy(cfg)
+
+    if view is not None and server is not None:
+        _fail(
+            {
+                "error": "invalid_options",
+                "message": "--view and --server cannot be used together.",
+            },
+            as_json,
+        )
+
+    if view is not None:
+        _require_name("view", view, sorted(cfg.tool_views), as_json)
+        _, errors = run_async(_fetch_cli_tools(proxy, cfg))
+        if errors:
+            _fail_connection(errors, as_json)
+        exposed = sorted(proxy.get_view_tools(view), key=lambda item: item.name)
+        if tool_name is None:
+            metadata = [tool.to_metadata(include_schema=True) for tool in exposed]
+            if as_json:
+                click.echo(
+                    json_module.dumps({"view": view, "tools": metadata}, sort_keys=True)
+                )
+            else:
+                for item in metadata:
+                    _output_exposed_tool(item, include_schema=False)
+            return
+
+        tool = next((item for item in exposed if item.name == tool_name), None)
+        if tool is None:
+            choices = [item.name for item in exposed]
+            payload: dict[str, Any] = {
+                "error": "unknown_tool",
+                "message": f"Tool '{tool_name}' not found in view '{view}'.",
+                "tool": tool_name,
+                "view": view,
+                "available_tool_names": choices,
+            }
+            if suggestion := _suggest(tool_name, choices):
+                payload["did_you_mean"] = suggestion
+            _fail(payload, as_json)
+        metadata = tool.to_metadata(include_schema=True)
+        if as_json:
+            click.echo(json_module.dumps(metadata, sort_keys=True))
+        else:
+            _output_exposed_tool(metadata, include_schema=True)
+        return
 
     async def fetch_schemas():
         """Fetch schemas from upstream servers and custom tools."""
@@ -159,9 +356,7 @@ def schema(
 
         server_name, tool = tool_name.split(".", 1)
 
-        if server_name not in cfg.mcp_servers:
-            click.echo(f"Error: server '{server_name}' not found", err=True)
-            raise SystemExit(1)
+        _require_name("server", server_name, sorted(cfg.mcp_servers), as_json)
 
         all_tools = run_async(fetch_schemas())
         server_tools = all_tools.get(server_name, [])
@@ -173,12 +368,23 @@ def schema(
             raise SystemExit(1)
 
         tool_schema = next((t for t in server_tools if t["name"] == tool), None)
+        if tool_schema is None:
+            choices = sorted(item["name"] for item in server_tools)
+            payload: dict[str, Any] = {
+                "error": "not found",
+                "error_code": "unknown_tool",
+                "message": f"Tool '{tool}' not found on server '{server_name}'.",
+                "tool": tool,
+                "server": server_name,
+                "available_tool_names": choices,
+            }
+            if suggestion := _suggest(tool, choices):
+                payload["did_you_mean"] = suggestion
+            _fail(payload, as_json)
         _output_tool_schema(tool_name, tool_schema, as_json)
 
     elif server:
-        if server not in cfg.mcp_servers:
-            click.echo(f"Error: server '{server}' not found", err=True)
-            raise SystemExit(1)
+        _require_name("server", server, sorted(cfg.mcp_servers), as_json)
 
         all_tools = run_async(fetch_schemas())
         server_tools = all_tools.get(server, [])

@@ -4,9 +4,18 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from mcp_proxy.models import ProxyConfig, ToolConfig, UpstreamServerConfig
+from mcp_proxy.models import (
+    ParameterConfig,
+    ProxyConfig,
+    ToolConfig,
+    UpstreamServerConfig,
+)
 from mcp_proxy.proxy import MCPProxy
-from mcp_proxy.proxy.schema import normalize_dict_arguments, resolve_schema_refs
+from mcp_proxy.proxy.schema import (
+    normalize_dict_arguments,
+    resolve_schema_refs,
+    transform_schema,
+)
 from tests.helpers import get_required_tool
 
 
@@ -118,6 +127,92 @@ class TestInputSchemaPreservation:
         assert tools[0].name == "aliased_name"
         assert tools[0].input_schema is not None
         assert tools[0].input_schema["properties"]["param"]["type"] == "string"
+
+
+def test_transform_schema_updates_combinator_required_names():
+    """Renames and hides must apply inside oneOf/anyOf validation branches."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "draft_id": {"type": "string"},
+            "skill_name": {"type": "string"},
+            "to_source": {"type": "string"},
+        },
+        "allOf": [
+            {
+                "anyOf": [
+                    {"required": ["draft_id"]},
+                    {"required": ["skill_name"]},
+                ]
+            },
+            {"oneOf": [{"required": ["to_source"]}]},
+        ],
+    }
+    config = ToolConfig(
+        parameters={
+            "to_source": ParameterConfig(rename="destination"),
+            "skill_name": ParameterConfig(hidden=True),
+        }
+    )
+
+    transformed = transform_schema(schema, config)
+
+    assert set(transformed["properties"]) == {"draft_id", "destination"}
+    assert transformed["allOf"][0]["anyOf"][1]["required"] == []
+    assert transformed["allOf"][1]["oneOf"][0]["required"] == ["destination"]
+
+
+def test_transform_schema_does_not_rename_nested_object_fields():
+    """Top-level parameter transforms must not rewrite nested object fields."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "destination": {"type": "string"},
+            "options": {
+                "type": "object",
+                "properties": {"destination": {"type": "string"}},
+                "required": ["destination"],
+            },
+        },
+        "required": ["destination"],
+    }
+    config = ToolConfig(parameters={"destination": ParameterConfig(rename="to_source")})
+
+    transformed = transform_schema(schema, config)
+
+    assert set(transformed["properties"]) == {"options", "to_source"}
+    assert transformed["required"] == ["to_source"]
+    nested = transformed["properties"]["options"]
+    assert set(nested["properties"]) == {"destination"}
+    assert nested["required"] == ["destination"]
+
+
+def test_transform_schema_preserves_boolean_composition_branches():
+    """Boolean JSON Schema branches remain valid while object branches transform."""
+    schema = {
+        "anyOf": [
+            True,
+            {
+                "type": "object",
+                "properties": {"destination": {"type": "string"}},
+                "required": ["destination"],
+            },
+        ]
+    }
+    config = ToolConfig(parameters={"destination": ParameterConfig(rename="to_source")})
+
+    transformed = transform_schema(schema, config)
+
+    assert transformed["anyOf"][0] is True
+    assert set(transformed["anyOf"][1]["properties"]) == {"to_source"}
+    assert transformed["anyOf"][1]["required"] == ["to_source"]
+
+
+def test_normalize_args_returns_unchanged_for_non_object_properties():
+    from mcp_proxy.proxy.schema import normalize_args_for_schema
+
+    arguments = {"camelCase": "value"}
+    assert normalize_args_for_schema(arguments, {"properties": []}) is arguments
 
 
 class TestToolExecutionWithInputSchema:

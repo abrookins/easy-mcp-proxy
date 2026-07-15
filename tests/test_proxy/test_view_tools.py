@@ -6,6 +6,7 @@ import yaml
 
 from mcp_proxy.models import ProxyConfig
 from mcp_proxy.proxy import MCPProxy
+from mcp_proxy.proxy.tools import _create_tool_info_from_upstream
 
 
 class TestMCPProxyGetViewTools:
@@ -46,6 +47,31 @@ tool_views:
         # Check descriptions came through
         search_tool = next(t for t in tools if t.name == "search_code")
         assert search_tool.description == "Search code in repos"
+
+    def test_configured_upstream_tool_accepts_empty_schema(self):
+        """An empty upstream schema remains valid with configuration overrides."""
+        upstream = MagicMock()
+        upstream.name = "empty"
+        upstream.description = "Empty"
+        upstream.inputSchema = {}
+
+        tool = _create_tool_info_from_upstream(
+            upstream,
+            "server",
+            ProxyConfig(
+                mcp_servers={
+                    "server": {
+                        "command": "echo",
+                        "tools": {"empty": {"description": "Configured"}},
+                    }
+                }
+            )
+            .mcp_servers["server"]
+            .tools["empty"],
+        )
+
+        assert tool.input_schema == {}
+        assert tool.description == "Configured"
 
 
 class TestDefaultViewIncludesAllUpstreamTools:

@@ -22,6 +22,7 @@ dependencies = [
     "httpx>=0.28.1",
     "rapidfuzz>=3.14.3",
     "jmespath>=1.0.1",
+    "jsonschema>=4.25",
 ]
 
 [dependency-groups]

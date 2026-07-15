@@ -1,8 +1,13 @@
 """Tool search functionality for MCP Proxy."""
 
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from rapidfuzz import fuzz
+
+if TYPE_CHECKING:
+    from mcp_proxy.proxy.tool_info import ToolRegistry
 
 # Default threshold for fuzzy matching (0-100 scale)
 DEFAULT_THRESHOLD = 60.0
@@ -15,7 +20,7 @@ class SearchTool:
         self,
         name: str,
         view_name: str,
-        tools: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | "ToolRegistry",
         threshold: float = DEFAULT_THRESHOLD,
     ):
         self.name = name
@@ -43,19 +48,35 @@ class SearchTool:
             "required": [],
         }
 
+    def _current_tools(self, include_schema: bool) -> list[dict[str, Any]]:
+        """Read one complete metadata snapshot for this search."""
+        if not isinstance(self._tools, list):
+            return self._tools.metadata(include_schema=include_schema)
+        if include_schema:
+            return self._tools
+        return [
+            {key: value for key, value in tool.items() if key != "inputSchema"}
+            for tool in self._tools
+        ]
+
     async def __call__(
-        self, query: str = "", limit: int = 25, offset: int = 0
+        self,
+        query: str = "",
+        limit: int = 25,
+        offset: int = 0,
+        include_schema: bool = False,
     ) -> dict[str, Any]:
         """Search for tools matching the query using fuzzy matching."""
+        tools = self._current_tools(include_schema)
         if not query:
             # Empty query returns all tools (paginated)
-            total = len(self._tools)
-            matches = self._tools[offset : offset + limit]
+            total = len(tools)
+            matches = tools[offset : offset + limit]
             return {"tools": matches, "total": total, "offset": offset, "limit": limit}
 
         # Score each tool using fuzzy matching
         scored: list[tuple[float, dict[str, Any]]] = []
-        for tool in self._tools:
+        for tool in tools:
             name = tool.get("name", "")
             desc = tool.get("description", "")
 
@@ -81,7 +102,7 @@ class SearchTool:
 class ToolSearcher:
     """Creates search tools for a view's tools."""
 
-    def __init__(self, view_name: str, tools: list[dict[str, Any]]):
+    def __init__(self, view_name: str, tools: list[dict[str, Any]] | "ToolRegistry"):
         self.view_name = view_name
         self.tools = tools
 

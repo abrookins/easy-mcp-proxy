@@ -23,6 +23,21 @@ class TestToolSearcher:
         assert search_tool.name == "redis-expert_search_tools"
         assert callable(search_tool)
 
+    async def test_plain_metadata_list_can_include_schema_unchanged(self):
+        """Legacy list-backed searchers should retain schemas only on opt-in."""
+        tools = [
+            {
+                "name": "promote",
+                "description": "Promote",
+                "inputSchema": {"type": "object"},
+            }
+        ]
+        search = SearchTool("search", "legacy", tools)
+
+        result = await search(include_schema=True)
+
+        assert result["tools"] == tools
+
 
 class TestFuzzySearch:
     """Tests for fuzzy matching in tool search."""

@@ -243,8 +243,10 @@ tool_views:
     include_all: true
 ```
 
-This exposes just two tools:
+This exposes three tools:
 - `everything_search_tools(query)` — Find tools by description
+- `everything_describe_tool(tool_name)` — Inspect one exact exposed schema
+- `everything_call_tool(tool_name, arguments)` — Validate and call a tool
 - `everything_call_tool(tool_name, arguments)` — Call a tool by name
 
 The LLM searches first, then calls. Much cleaner than 50 individual tools.
@@ -260,7 +262,8 @@ tool_views:
     include_all: true
 ```
 
-This creates `{server}_search_tools` and `{server}_call_tool` for each upstream server.
+This creates `{server}_search_tools`, `{server}_describe_tool`, and
+`{server}_call_tool` for each upstream server.
 
 ## Step 10: Composite Tools (Concurrent Execution)
 
