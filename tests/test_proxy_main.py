@@ -1498,8 +1498,15 @@ class TestInputSchemaPreservation:
         async with Client(view_mcp) as client:
             tools = await client.list_tools()
 
-        # Should have 2 tools: search_tool + get_tool_instructions
-        assert len(tools) == 2
+        tool_names = {t.name for t in tools}
+        assert {
+            "search_tool",
+            "get_tool_instructions",
+            "retrieve_cached_output",
+            "preview_cached_output",
+            "range_cached_output",
+            "query_cached_output",
+        } <= tool_names
         tool = next(t for t in tools if t.name == "search_tool")
         assert tool.name == "search_tool"
         # The inputSchema should match what we provided
@@ -2911,8 +2918,8 @@ class TestCacheConfiguration:
         assert result is not None
         assert result.ttl_seconds == 3600
 
-    def test_get_cache_config_none_when_disabled(self):
-        """Test _get_cache_config returns None when no caching configured."""
+    def test_get_cache_config_defaults_to_enabled(self):
+        """Test _get_cache_config returns safe defaults when not configured."""
         config = ProxyConfig(
             mcp_servers={"server": UpstreamServerConfig(command="echo")}
         )
@@ -2920,7 +2927,9 @@ class TestCacheConfiguration:
 
         result = proxy._get_cache_config("tool1", "server")
 
-        assert result is None
+        assert result is not None
+        assert result.enabled is True
+        assert result.max_inline_tokens == 3000
 
     def test_is_cache_enabled_global(self):
         """Test _is_cache_enabled returns True for global config."""
@@ -2970,14 +2979,179 @@ class TestCacheConfiguration:
 
         assert proxy._is_cache_enabled() is True
 
-    def test_is_cache_enabled_false(self):
-        """Test _is_cache_enabled returns False when no caching."""
+    def test_is_cache_enabled_defaults_true(self):
+        """Test _is_cache_enabled returns True for safe defaults."""
         config = ProxyConfig(
             mcp_servers={"server": UpstreamServerConfig(command="echo")}
         )
         proxy = MCPProxy(config)
 
+        assert proxy._is_cache_enabled() is True
+
+    def test_is_cache_enabled_global_disabled_server_override(self):
+        """Server-level enabled config should override disabled global config."""
+        from mcp_proxy.models import OutputCacheConfig
+
+        config = ProxyConfig(
+            output_cache=OutputCacheConfig(enabled=False),
+            mcp_servers={
+                "server": UpstreamServerConfig(
+                    command="echo",
+                    cache_outputs=OutputCacheConfig(enabled=True),
+                )
+            },
+        )
+        proxy = MCPProxy(config)
+
+        assert proxy._is_cache_enabled() is True
+
+    def test_is_cache_enabled_global_disabled_tool_override(self):
+        """Tool-level enabled config should override disabled global config."""
+        from mcp_proxy.models import OutputCacheConfig, ToolConfig
+
+        config = ProxyConfig(
+            output_cache=OutputCacheConfig(enabled=False),
+            mcp_servers={
+                "server": UpstreamServerConfig(
+                    command="echo",
+                    tools={
+                        "uncached": ToolConfig(description="No cache config"),
+                        "cached": ToolConfig(
+                            cache_output=OutputCacheConfig(enabled=True)
+                        ),
+                    },
+                )
+            },
+        )
+        proxy = MCPProxy(config)
+
+        assert proxy._is_cache_enabled() is True
+
+    def test_is_cache_enabled_global_disabled_ignores_uncached_tools(self):
+        """Disabled global config should skip tools without enabled cache config."""
+        from mcp_proxy.models import OutputCacheConfig, ToolConfig
+
+        config = ProxyConfig(
+            output_cache=OutputCacheConfig(enabled=False),
+            mcp_servers={
+                "uncached": UpstreamServerConfig(
+                    command="echo",
+                    tools={"tool": ToolConfig(description="No cache config")},
+                ),
+                "cached": UpstreamServerConfig(
+                    command="echo",
+                    cache_outputs=OutputCacheConfig(enabled=True),
+                ),
+            },
+        )
+        proxy = MCPProxy(config)
+
+        assert proxy._is_cache_enabled() is True
+
+    def test_is_cache_enabled_tool_override_after_server_disabled(self):
+        """Enabled tool config should be noticed when no global config exists."""
+        from mcp_proxy.models import OutputCacheConfig, ToolConfig
+
+        config = ProxyConfig(
+            mcp_servers={
+                "server": UpstreamServerConfig(
+                    command="echo",
+                    cache_outputs=OutputCacheConfig(enabled=False),
+                    tools={
+                        "uncached": ToolConfig(description="No cache config"),
+                        "cached": ToolConfig(
+                            cache_output=OutputCacheConfig(enabled=True)
+                        ),
+                    },
+                )
+            },
+        )
+        proxy = MCPProxy(config)
+
+        assert proxy._is_cache_enabled() is True
+
+    def test_is_cache_enabled_no_global_skips_servers_without_tools(self):
+        """No-global config should keep checking disabled servers without tools."""
+        from mcp_proxy.models import OutputCacheConfig
+
+        config = ProxyConfig(
+            mcp_servers={
+                "first": UpstreamServerConfig(
+                    command="echo",
+                    cache_outputs=OutputCacheConfig(enabled=False),
+                ),
+                "second": UpstreamServerConfig(
+                    command="echo",
+                    cache_outputs=OutputCacheConfig(enabled=False),
+                ),
+            },
+        )
+        proxy = MCPProxy(config)
+
         assert proxy._is_cache_enabled() is False
+
+    def test_is_cache_enabled_no_global_ignores_uncached_tools(self):
+        """No-global config should skip tools without enabled cache config."""
+        from mcp_proxy.models import OutputCacheConfig, ToolConfig
+
+        config = ProxyConfig(
+            mcp_servers={
+                "uncached": UpstreamServerConfig(
+                    command="echo",
+                    cache_outputs=OutputCacheConfig(enabled=False),
+                    tools={"tool": ToolConfig(description="No cache config")},
+                ),
+                "also_uncached": UpstreamServerConfig(
+                    command="echo",
+                    cache_outputs=OutputCacheConfig(enabled=False),
+                ),
+            },
+        )
+        proxy = MCPProxy(config)
+
+        assert proxy._is_cache_enabled() is False
+
+    def test_protect_tool_output_uses_default_config_without_server(self):
+        """Root wrappers without server context should use safe default config."""
+        config = ProxyConfig(cache_secret="secret", mcp_servers={})
+        proxy = MCPProxy(config)
+
+        result = proxy._protect_tool_output(
+            "small",
+            view_name=None,
+            server_name=None,
+            tool_name="custom",
+        )
+
+        assert result == "small"
+
+    def test_protect_tool_output_returns_original_when_tool_cache_disabled(self):
+        """Explicitly disabled tool cache config should bypass protection."""
+        from mcp_proxy.models import OutputCacheConfig, ToolConfig
+
+        config = ProxyConfig(
+            output_cache=OutputCacheConfig(enabled=True),
+            mcp_servers={
+                "server": UpstreamServerConfig(
+                    command="echo",
+                    tools={
+                        "tool": ToolConfig(
+                            cache_output=OutputCacheConfig(enabled=False)
+                        )
+                    },
+                )
+            },
+        )
+        proxy = MCPProxy(config)
+
+        result = proxy._protect_tool_output(
+            "x" * 100,
+            view_name=None,
+            server_name="server",
+            tool_name="tool",
+        )
+
+        assert result == "x" * 100
 
     def test_get_cache_base_url_configured(self):
         """Test _get_cache_base_url returns configured URL."""
@@ -3038,8 +3212,8 @@ class TestCacheConfiguration:
         assert context.cache_secret == "secret"
         assert context.cache_base_url == "http://localhost:8000"
 
-    def test_create_cache_context_when_disabled(self):
-        """Test _create_cache_context returns None when caching disabled."""
+    def test_create_cache_context_when_default_enabled(self):
+        """Test _create_cache_context returns context for safe defaults."""
         config = ProxyConfig(
             mcp_servers={"server": UpstreamServerConfig(command="echo")}
         )
@@ -3047,7 +3221,7 @@ class TestCacheConfiguration:
 
         context = proxy._create_cache_context()
 
-        assert context is None
+        assert context is not None
 
     async def test_register_cache_retrieval_tool(self, tmp_path):
         """Test _register_cache_retrieval_tool registers the tool."""
@@ -3069,6 +3243,7 @@ class TestCacheConfiguration:
         tool_names = await get_tool_names(mcp)
         assert "retrieve_cached_output" in tool_names
         assert "preview_cached_output" in tool_names
+        assert "range_cached_output" in tool_names
         assert "query_cached_output" in tool_names
 
     async def test_register_cache_retrieval_tool_returns_content(self, tmp_path):
@@ -3108,7 +3283,9 @@ class TestCacheConfiguration:
             tool = await get_required_tool(mcp, "retrieve_cached_output")
             result = tool.fn(token=response.token)
 
-            assert result == {"content": "test content"}
+            assert result["content"] == "test content"
+            assert result["truncated"] is False
+            assert result["original"]["chars"] == len("test content")
 
     async def test_register_cache_retrieval_tool_filters_content(self, tmp_path):
         """Test retrieve_cached_output supports line windows and JMESPath."""
@@ -3231,6 +3408,45 @@ class TestCacheConfiguration:
             template = next(iter(await mcp.list_resource_templates()))
             with pytest.raises(ValueError, match="Token not found"):
                 template.fn(token="nonexistent")
+
+    async def test_register_cache_resource_returns_bounded_payload(self, tmp_path):
+        """Test cached-output resource returns bounded metadata by default."""
+        import json
+        from unittest.mock import patch
+
+        from fastmcp import FastMCP
+
+        from mcp_proxy.cache import create_cached_output_with_meta
+        from mcp_proxy.models import OutputCacheConfig
+
+        config = ProxyConfig(
+            output_cache=OutputCacheConfig(enabled=True),
+            cache_secret="test-secret",
+            mcp_servers={"server": UpstreamServerConfig(command="echo")},
+        )
+        proxy = MCPProxy(config)
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            response = create_cached_output_with_meta(
+                content="first\nsecond",
+                secret="test-secret",
+                base_url="http://localhost:8000",
+                ttl_seconds=3600,
+                preview_chars=100,
+            )
+
+            mcp = FastMCP("test")
+            proxy._register_cache_retrieval_tool(mcp)
+
+            template = next(iter(await mcp.list_resource_templates()))
+            payload = json.loads(template.fn(token=response.token))
+
+            assert payload["content"] == "first\nsecond"
+            assert payload["truncated"] is False
+            assert payload["original"]["lines"] == 2
 
     async def test_get_view_mcp_registers_cache_tool_when_enabled(self, tmp_path):
         """Test get_view_mcp registers cache retrieval tool when enabled."""

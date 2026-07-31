@@ -20,6 +20,7 @@ import pytest
 
 from mcp_proxy.models import ProxyConfig, ToolViewConfig, UpstreamServerConfig
 from mcp_proxy.proxy import MCPProxy
+from tests.helpers import get_required_tool
 
 
 def _assert_cached_tool_result(result):
@@ -1021,15 +1022,15 @@ class TestOutputCachingEndToEnd:
 
             full_content = retrieve_by_token(token, "test-secret")
 
-            # Full content should match original (pretty-printed)
+            # Full content should match the compact serialized original
             import json
 
-            expected = json.dumps({"content": large_output}, indent=2)
+            expected = json.dumps({"content": large_output})
             assert full_content == expected
 
     @pytest.mark.asyncio
-    async def test_cache_retrieval_tool_returns_full_content(self, tmp_path):
-        """retrieve_cached_output tool should return full cached content."""
+    async def test_cache_retrieval_tool_returns_bounded_content(self, tmp_path):
+        """retrieve_cached_output should return bounded cached content."""
         from fastmcp import Client
 
         from mcp_proxy.models import OutputCacheConfig
@@ -1041,6 +1042,8 @@ class TestOutputCachingEndToEnd:
                 ttl_seconds=3600,
                 preview_chars=50,
                 min_size=10,  # Very low for testing
+                max_line_chars=80,
+                retrieval_default_line_count=2,
             ),
             cache_secret="test-secret",
             cache_base_url="http://localhost:8000",
@@ -1098,22 +1101,27 @@ class TestOutputCachingEndToEnd:
                 content_text = result.content[0].text
                 content_data = json.loads(content_text)
 
-                # Should have the full content
+                # Should have bounded content plus navigation metadata
                 assert "content" in content_data
-                full_content = json.loads(content_data["content"])
-
-                # Verify it matches the original data
-                assert full_content == large_data
+                assert content_data["truncated"] is True
+                assert content_data["returned_lines"] == 1
+                assert content_data["truncated_lines"]
+                assert (
+                    content_data["original"]["chars"]
+                    > content_data["returned"]["chars"]
+                )
 
                 resource_result = await client.read_resource(
                     f"mcp://easy-mcp-proxy/cache/{token}"
                 )
                 assert len(resource_result) == 1
-                assert json.loads(resource_result[0].text) == large_data
+                resource_data = json.loads(resource_result[0].text)
+                assert resource_data["truncated"] is True
+                assert resource_data["content"] == content_data["content"]
 
     @pytest.mark.asyncio
-    async def test_http_cache_endpoint_returns_content(self, tmp_path):
-        """HTTP /cache/{token} endpoint should return full cached content."""
+    async def test_http_cache_endpoint_returns_bounded_content(self, tmp_path):
+        """HTTP /cache/{token} should return bounded content by default."""
         from starlette.testclient import TestClient
 
         from mcp_proxy.models import OutputCacheConfig
@@ -1125,6 +1133,7 @@ class TestOutputCachingEndToEnd:
                 ttl_seconds=3600,
                 preview_chars=50,
                 min_size=10,
+                retrieval_default_line_count=1,
             ),
             cache_secret="test-secret",
             cache_base_url="http://localhost:8000",
@@ -1137,8 +1146,10 @@ class TestOutputCachingEndToEnd:
         )
         proxy = MCPProxy(config)
 
-        # Large content
-        file_content = "Line " + "content " * 100
+        # Multi-line content so the default one-line HTTP payload is bounded.
+        file_content = "\n".join(
+            f"Line {line}: " + "content " * 20 for line in range(5)
+        )
 
         mock_client = AsyncMock()
         mock_client.call_tool.return_value = file_content
@@ -1173,9 +1184,13 @@ class TestOutputCachingEndToEnd:
             http_response = client.get(f"/cache/{token}?{query}")
 
             assert http_response.status_code == 200
-            # Content is plain text containing the cached content
-            # The cached content is already the original (string in this case)
-            assert http_response.text == file_content
+            payload = http_response.json()
+            assert payload["content"] == file_content.splitlines()[0]
+            assert payload["truncated"] is True
+
+            download_response = client.get(f"/cache/{token}?{query}&download=1")
+            assert download_response.status_code == 200
+            assert download_response.text == file_content
 
     @pytest.mark.asyncio
     async def test_small_output_not_cached(self, tmp_path):
@@ -1287,6 +1302,79 @@ class TestOutputCachingEndToEnd:
             assert result2 == large_output
 
     @pytest.mark.asyncio
+    async def test_search_per_server_filesystem_call_tool_uses_safe_defaults(
+        self, tmp_path
+    ):
+        """Default config should protect large filesystem_call_tool output."""
+        import json
+
+        config = ProxyConfig(
+            cache_secret="test-secret",
+            cache_base_url="http://localhost:8000",
+            mcp_servers={
+                "filesystem": UpstreamServerConfig(
+                    command="echo",
+                    tools={
+                        "filesystem_call_tool": {
+                            "description": "Call a filesystem tool"
+                        }
+                    },
+                )
+            },
+            tool_views={
+                "all": ToolViewConfig(
+                    exposure_mode="search_per_server",
+                    tools={"filesystem": {"filesystem_call_tool": {}}},
+                )
+            },
+        )
+        proxy = MCPProxy(config)
+
+        single_line_json = (
+            '{"records":['
+            + ",".join(
+                json.dumps({"index": index, "payload": "x" * 100})
+                for index in range(200)
+            )
+            + "]}"
+        )
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = single_line_json
+        proxy.upstream_clients = {"filesystem": mock_client}
+        view = proxy.views["all"]
+        view._upstream_clients = {"filesystem": mock_client}
+        view._cache_context = proxy._create_cache_context()
+
+        view_mcp = proxy.get_view_mcp("all")
+        call_tool = await get_required_tool(view_mcp, "filesystem_call_tool")
+        range_tool = await get_required_tool(view_mcp, "range_cached_output")
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            result = await call_tool.fn(
+                tool_name="filesystem_call_tool",
+                arguments={"tool_name": "read_text_file", "path": "large.jsonl"},
+            )
+            structured = _assert_cached_tool_result(result)
+            range_payload = range_tool.fn(
+                token=structured["token"],
+                char_offset=0,
+                char_count=80,
+            )
+
+        mock_client.call_tool.assert_called_once_with(
+            "filesystem_call_tool",
+            {"tool_name": "read_text_file", "path": "large.jsonl"},
+        )
+        assert structured["limits"]["max_inline_tokens"] == 3000
+        assert "max_line_chars" in structured["truncation_reasons"]
+        assert range_payload["content"] == single_line_json[:80]
+        assert range_payload["next_char_offset"] == 80
+
+    @pytest.mark.asyncio
     async def test_full_flow_tool_to_http_retrieval(self, tmp_path):
         """Complete flow: call tool -> get token -> retrieve via HTTP."""
         from starlette.testclient import TestClient
@@ -1300,6 +1388,8 @@ class TestOutputCachingEndToEnd:
                 ttl_seconds=3600,
                 preview_chars=100,
                 min_size=50,
+                max_line_chars=80,
+                retrieval_default_line_count=2,
             ),
             cache_secret="integration-test-secret",
             cache_base_url="http://localhost:8000",
@@ -1359,19 +1449,28 @@ class TestOutputCachingEndToEnd:
             app = proxy.http_app()
             http_client = TestClient(app)
 
-            # STEP 3: Retrieve full content via HTTP endpoint
+            # STEP 3: Retrieve bounded content via HTTP endpoint
             url_parts = retrieve_url.split("?")
             query = url_parts[1]
             response = http_client.get(f"/cache/{token}?{query}")
 
             assert response.status_code == 200
 
-            # STEP 4: Verify the full content matches original
+            # STEP 4: Verify the default HTTP response is bounded metadata
             import json
 
-            retrieved_content = json.loads(response.text)
+            default_payload = response.json()
+            assert default_payload["truncated"] is True
+            assert (
+                default_payload["original"]["chars"]
+                > default_payload["returned"]["chars"]
+            )
+
+            # STEP 5: Explicit download returns the full original content
+            download_response = http_client.get(f"/cache/{token}?{query}&download=1")
+            assert download_response.status_code == 200
+            retrieved_content = json.loads(download_response.text)
             assert retrieved_content == file_content
-            assert retrieved_content["content"] == "=" * 1000
 
 
 # =============================================================================

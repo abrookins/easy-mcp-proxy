@@ -1,5 +1,6 @@
 """Tool views for MCP Proxy."""
 
+import inspect
 from typing import Any, Callable
 
 from mcp_proxy.custom_tools import ProxyContext, load_custom_tool
@@ -282,31 +283,47 @@ class ToolView:
         Returns:
             Either the original result or a CachedOutputResponse
         """
-        from mcp_proxy.cache import (
-            build_cached_output_tool_result,
-            create_cached_output_with_meta,
-            infer_cached_content_mime_type,
+        assert self._cache_context is not None
+        from mcp_proxy.output_handling import protect_tool_output
+
+        return protect_tool_output(
+            result,
+            view_name=self.name,
+            server_name=None,
+            tool_name="",
+            config=cache_config,
+            cache_secret=self._cache_context.cache_secret,
+            cache_base_url=self._cache_context.cache_base_url,
         )
 
-        # Extract content, handling CallToolResult objects properly
-        content = self._extract_content_for_cache(result)
-
-        # Check if content meets minimum size threshold
-        if cache_config.min_size and len(content) < cache_config.min_size:
+    def _protect_tool_result(
+        self,
+        result: Any,
+        *,
+        tool_name: str,
+        server_name: str,
+        cache_tool_name: str | None = None,
+    ) -> Any:
+        """Apply safe output handling to a visible tool result."""
+        if not self._cache_context:
             return result
 
-        # Cache the content and return metadata
-        assert self._cache_context is not None
-        cached_response = create_cached_output_with_meta(
-            content=content,
-            secret=self._cache_context.cache_secret,
-            base_url=self._cache_context.cache_base_url,
-            ttl_seconds=cache_config.ttl_seconds,
-            preview_chars=cache_config.preview_chars,
-        )
+        lookup_name = cache_tool_name or tool_name
+        cache_config = self._cache_context.get_cache_config(lookup_name, server_name)
+        if cache_config is None:
+            return result
 
-        mime_type = infer_cached_content_mime_type(content)
-        return build_cached_output_tool_result(cached_response, mime_type)
+        from mcp_proxy.output_handling import protect_tool_output
+
+        return protect_tool_output(
+            result,
+            view_name=self.name,
+            server_name=server_name,
+            tool_name=tool_name,
+            config=cache_config,
+            cache_secret=self._cache_context.cache_secret,
+            cache_base_url=self._cache_context.cache_base_url,
+        )
 
     async def call_tool(
         self,
@@ -317,11 +334,17 @@ class ToolView:
         """Call a tool, applying hooks if configured."""
         # Check if it's a custom tool
         if tool_name in self.custom_tools:
-            return await self._call_custom_tool(tool_name, args)
+            result = await self._call_custom_tool(tool_name, args)
+            return self._protect_tool_result(
+                result, tool_name=tool_name, server_name=""
+            )
 
         # Check if it's a composite tool
         if tool_name in self.composite_tools:
-            return await self._call_composite_tool(tool_name, args)
+            result = await self._call_composite_tool(tool_name, args)
+            return self._protect_tool_result(
+                result, tool_name=tool_name, server_name=""
+            )
 
         server_name = getattr(tool_info, "server", None) or self._get_server_for_tool(
             tool_name
@@ -399,13 +422,12 @@ class ToolView:
             if hook_result.result is not None:
                 result = hook_result.result
 
-        # Apply output caching if configured
-        if self._cache_context:
-            cache_config = self._cache_context.get_cache_config(tool_name, server_name)
-            if cache_config:
-                result = self._apply_caching(result, cache_config)
-
-        return result
+        return self._protect_tool_result(
+            result,
+            tool_name=tool_name,
+            server_name=server_name,
+            cache_tool_name=original_name,
+        )
 
     async def _call_upstream_tool(self, upstream_tool: str, **kwargs: Any) -> Any:
         """Call an upstream tool by server.tool_name format.
@@ -447,8 +469,18 @@ class ToolView:
             available_tools=list(self._tool_to_server.keys()),
         )
 
-        # Call the custom tool with context
-        return await tool_fn(ctx=ctx, **args)
+        signature = inspect.signature(tool_fn)
+        parameters = signature.parameters
+        if "ctx" in parameters:
+            return await tool_fn(ctx=ctx, **args)
+        if "context" in parameters:
+            return await tool_fn(context=ctx, **args)
+        if any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters.values()
+        ):
+            return await tool_fn(ctx=ctx, **args)
+        return await tool_fn(**args)
 
     async def _call_composite_tool(self, tool_name: str, args: dict[str, Any]) -> Any:
         """Call a composite (parallel) tool."""

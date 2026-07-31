@@ -1,0 +1,18 @@
+---
+id: 009-protect-search-and-virtual-search-call-paths
+sequence: 9
+slug: protect-search-and-virtual-search-call-paths
+name: Protect search and virtual search call paths
+status: complete
+order: 8
+depends_on:
+    - 003-create-central-output-protection-helper
+    - 007-protect-toolview-call-results
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:34:20.711758Z
+updated_at: 2026-07-31T20:44:21.244853Z
+completed_at: 2026-07-31T20:44:21.244853Z
+archived_at: 2026-07-31T20:44:21.244853Z
+---
+
+Ensure search-mode and search_per_server *_call_tool wrappers route through protected ToolView calls, and initialize the virtual /search/mcp view with the same cache context as real views.

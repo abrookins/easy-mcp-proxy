@@ -1,0 +1,17 @@
+---
+id: 022-qa-review-docs-and-config-surface
+sequence: 22
+slug: qa-review-docs-and-config-surface
+name: QA review docs and config surface
+status: complete
+order: 21
+depends_on:
+    - 021-qa-exercise-safe-output-behavior-manually
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T21:07:29.103687Z
+updated_at: 2026-07-31T21:11:44.60771Z
+completed_at: 2026-07-31T21:11:44.60771Z
+archived_at: 2026-07-31T21:11:44.60771Z
+---
+
+Check documentation, defaults, compatibility aliases, and user-facing cache navigation descriptions for consistency with the safe default output spec.

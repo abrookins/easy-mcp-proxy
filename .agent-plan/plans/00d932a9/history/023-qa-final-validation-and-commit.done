@@ -1,0 +1,17 @@
+---
+id: 023-qa-final-validation-and-commit
+sequence: 23
+slug: qa-final-validation-and-commit
+name: QA final validation and commit
+status: complete
+order: 22
+depends_on:
+    - 022-qa-review-docs-and-config-surface
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T21:07:36.151287Z
+updated_at: 2026-07-31T21:14:06.200303Z
+completed_at: 2026-07-31T21:14:06.200302Z
+archived_at: 2026-07-31T21:14:06.200302Z
+---
+
+Run final lint/tests after any QA fixes, inspect the staged diff to avoid unrelated changes, and commit the completed safe output handling work.

@@ -1,0 +1,15 @@
+---
+id: 020-qa-audit-implementation-against-spec
+sequence: 20
+slug: qa-audit-implementation-against-spec
+name: QA audit implementation against spec
+status: complete
+order: 19
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T21:07:20.690307Z
+updated_at: 2026-07-31T21:08:38.427553Z
+completed_at: 2026-07-31T21:08:38.427552Z
+archived_at: 2026-07-31T21:08:38.427552Z
+---
+
+Manually compare the implementation to docs/specs/output-handling-safe-defaults.md and inspect the changed call paths for omissions or unsafe bypasses.

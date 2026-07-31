@@ -1,0 +1,17 @@
+---
+id: 011-add-range-cached-output-for-character-windows
+sequence: 11
+slug: add-range-cached-output-for-character-windows
+name: Add range_cached_output for character windows
+status: complete
+order: 10
+depends_on:
+    - 010-make-cache-retrieval-tools-bounded-by-default
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:34:33.261476Z
+updated_at: 2026-07-31T20:44:48.249756Z
+completed_at: 2026-07-31T20:44:48.249756Z
+archived_at: 2026-07-31T20:44:48.249756Z
+---
+
+Add a bounded character-range cache retrieval tool for minified, JSONL, AOF, and other single-line outputs, including offset/count validation and retrieval_max_chars enforcement.

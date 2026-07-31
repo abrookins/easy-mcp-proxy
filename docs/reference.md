@@ -44,14 +44,19 @@ tool_views:
   view_name:
     # View configuration...
 
-# Output caching (optional)
+# Safe output handling and caching (enabled by default)
 output_cache:
-  enabled: false
+  enabled: true
   ttl_seconds: 3600
-  preview_chars: 500
-  min_size: 10000
+  max_inline_tokens: 3000
+  token_chars_ratio: 4
+  max_inline_chars: 12000
+  max_line_chars: 1200
+  retrieval_default_line_count: 100
+  retrieval_max_line_count: 500
+  retrieval_max_chars: 12000
 
-# Cache settings (required if output_cache enabled)
+# Cache settings (recommended for stable signed URLs)
 cache_secret: "${CACHE_SECRET}"
 cache_base_url: "https://your-domain.com"
 ```
@@ -534,20 +539,37 @@ async def after_call(result, args: dict, context: ToolCallContext) -> HookResult
 
 ## Output Caching
 
-Cache large tool outputs to reduce context usage.
+Safe output handling is enabled by default. After an upstream MCP server
+responds, the proxy measures the visible result. Results that exceed the inline
+token/character budget or contain overlong lines are cached and replaced with a
+bounded preview plus navigation metadata. This protects every proxied call path,
+including direct tools, view calls, search-mode `*_call_tool` wrappers, custom
+tools, composite tools, and the virtual `/search/mcp` view.
 
 ### Global Configuration
 
 ```yaml
 output_cache:
   enabled: true
-  ttl_seconds: 3600      # URL expiration (1 hour)
-  preview_chars: 500     # Characters shown inline
-  min_size: 10000        # Only cache outputs > 10KB
+  ttl_seconds: 3600
+  max_inline_tokens: 3000
+  token_chars_ratio: 4
+  max_inline_chars: 12000
+  max_line_chars: 1200
+  retrieval_default_line_count: 100
+  retrieval_max_line_count: 500
+  retrieval_max_chars: 12000
+  preview_chars: 500     # Compatibility cap for older configs
+  min_size: 10000        # Optional extra cache threshold
 
-cache_secret: "${CACHE_SECRET}"           # HMAC signing key
+cache_secret: "${CACHE_SECRET}"              # HMAC signing key
 cache_base_url: "https://proxy.example.com"  # Base URL for retrieval
 ```
+
+If `output_cache` is omitted, the proxy uses the safe defaults above. Set
+`enabled: false` only to opt out explicitly. If `cache_secret` is omitted, the
+proxy generates one stable secret per process; configure it when signed URLs
+must remain valid across restarts or instances.
 
 ### Per-Server Override
 
@@ -572,35 +594,69 @@ mcp_servers:
       read_file:
         cache_output:
           enabled: true
-          preview_chars: 1000  # More preview for this tool
+          max_inline_tokens: 4000
+          preview_chars: 1000  # Compatibility cap for this tool
 ```
 
 ### Cached Response Format
 
-When output exceeds `min_size`:
+When output exceeds any active limit:
 
 ```json
 {
   "cached": true,
+  "cache_id": "abc123def456",
   "token": "abc123def456",
+  "truncated": true,
+  "truncation_reasons": ["estimated_tokens", "max_line_chars"],
   "retrieve_url": "https://proxy.example.com/cache/abc123def456?expires=1736797800&sig=...",
-  "expires_at": "2025-01-13T19:30:00Z",
-  "preview": "First 500 characters...",
-  "size_bytes": 248000
+  "expires_at": "2026-07-31T19:30:00Z",
+  "preview": "Bounded preview...",
+  "size_bytes": 248000,
+  "original": {
+    "bytes": 248000,
+    "chars": 248000,
+    "estimated_tokens": 62000,
+    "lines": 1,
+    "longest_line_chars": 248000
+  },
+  "returned": {
+    "bytes": 1200,
+    "chars": 1200,
+    "estimated_tokens": 300,
+    "lines": 1,
+    "longest_line_chars": 1200
+  },
+  "limits": {
+    "max_inline_tokens": 3000,
+    "max_inline_chars": 12000,
+    "max_line_chars": 1200
+  },
+  "navigation": {
+    "preview_tool": "preview_cached_output",
+    "range_tool": "range_cached_output",
+    "query_tool": "query_cached_output",
+    "next_line_offset": null,
+    "next_char_offset": 1200
+  }
 }
 ```
 
 ### Retrieval Methods
 
-1. **Tool**: Call `retrieve_cached_output(token="abc123def456")`
-2. **Tool window**: Call `preview_cached_output(token="abc123def456",
+1. **Default tool retrieval**: Call `retrieve_cached_output(token="abc123def456")`
+   for a bounded payload.
+2. **Line window**: Call `preview_cached_output(token="abc123def456",
    line_offset=200, line_count=100)`
-3. **Tool JSON query**: Call `query_cached_output(token="abc123def456",
+3. **Character window**: Call `range_cached_output(token="abc123def456",
+   char_offset=1200, char_count=12000)` for minified or single-line content.
+4. **JSON query**: Call `query_cached_output(token="abc123def456",
    jmespath_expression="items[].title")`
-4. **HTTP**: GET the `retrieve_url` directly
-5. **HTTP filters**: Append `line_offset`, `line_count`, and `jmespath`
-   query parameters
-6. **Code**: `requests.get(retrieve_url).text`
+5. **HTTP bounded retrieval**: GET the signed `retrieve_url` directly.
+6. **HTTP filters**: Append `line_offset`, `line_count`, `char_offset`,
+   `char_count`, or `jmespath` query parameters.
+7. **Explicit full download**: Append `download=1` or `full=1` to the signed
+   HTTP URL for code or out-of-context processing.
 
 ---
 
@@ -642,7 +698,7 @@ When running with `--transport http`:
 | `/views` | List all available views |
 | `/views/{name}` | Get view details |
 | `/health` | Health check |
-| `/cache/{token}` | Retrieve cached output (if caching enabled) |
+| `/cache/{token}` | Retrieve bounded cached-output metadata; add `download=1` or `full=1` for explicit full content |
 
 ### Built-in Search Endpoint
 

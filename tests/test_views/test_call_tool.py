@@ -425,6 +425,158 @@ class TestToolViewCaching:
         # Result should NOT be cached
         assert result == {"result": "data"}
 
+    async def test_call_tool_protects_post_hook_output(self, tmp_path):
+        """Post-hook output should be measured and cached before return."""
+        from unittest.mock import AsyncMock, patch
+
+        from mcp_proxy.models import OutputCacheConfig
+        from mcp_proxy.views import CacheContext
+
+        async def expand_result(result, args, context):
+            return HookResult(result={"expanded": "x" * 100})
+
+        config = ToolViewConfig(tools={"server-a": {"my_tool": ToolConfig()}})
+        view = ToolView("test", config)
+        view._post_call_hook = expand_result
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"result": "small"}
+        view._upstream_clients = {"server-a": mock_client}
+
+        def get_cache_config(tool_name, server_name):
+            return OutputCacheConfig(max_inline_chars=20, max_inline_tokens=100)
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            view._cache_context = CacheContext(
+                get_cache_config=get_cache_config,
+                cache_secret="secret",
+                cache_base_url="http://localhost:8000",
+            )
+
+            result = await view.call_tool("my_tool", {})
+
+        structured = _assert_cached_tool_result(result)
+        cached_text = (tmp_path / f"{structured['token']}.txt").read_text()
+        assert '"expanded"' in cached_text
+        assert '"result"' not in cached_text
+
+    async def test_call_tool_protects_custom_tool_output(self, tmp_path):
+        """Custom tool final output should be measured and cached."""
+        from unittest.mock import patch
+
+        from mcp_proxy.custom_tools import custom_tool
+        from mcp_proxy.models import OutputCacheConfig
+        from mcp_proxy.views import CacheContext
+
+        @custom_tool(name="custom_large", description="Large custom output")
+        async def custom_large(size: int) -> dict:
+            return {"payload": "x" * size}
+
+        view = ToolView("test", ToolViewConfig())
+        view.custom_tools["custom_large"] = custom_large
+
+        def get_cache_config(tool_name, server_name):
+            assert tool_name == "custom_large"
+            return OutputCacheConfig(max_inline_chars=20, max_inline_tokens=100)
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            view._cache_context = CacheContext(
+                get_cache_config=get_cache_config,
+                cache_secret="secret",
+                cache_base_url="http://localhost:8000",
+            )
+
+            result = await view.call_tool("custom_large", {"size": 100})
+
+        structured = _assert_cached_tool_result(result)
+        assert structured["original"]["chars"] > structured["returned"]["chars"]
+
+    async def test_call_tool_protects_composite_tool_output(self, tmp_path):
+        """Composite tool final output should be measured and cached."""
+        from unittest.mock import AsyncMock, patch
+
+        from mcp_proxy.models import CompositeToolConfig, OutputCacheConfig
+        from mcp_proxy.views import CacheContext
+
+        config = ToolViewConfig(
+            composite_tools={
+                "multi": CompositeToolConfig(
+                    description="Large composite output",
+                    parallel={
+                        "one": {
+                            "tool": "server.tool",
+                            "args": {},
+                        }
+                    },
+                )
+            }
+        )
+        view = ToolView("test", config)
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"payload": "x" * 100}
+        view._upstream_clients = {"server": mock_client}
+
+        def get_cache_config(tool_name, server_name):
+            assert tool_name == "multi"
+            return OutputCacheConfig(max_inline_chars=20, max_inline_tokens=100)
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            view._cache_context = CacheContext(
+                get_cache_config=get_cache_config,
+                cache_secret="secret",
+                cache_base_url="http://localhost:8000",
+            )
+
+            result = await view.call_tool("multi", {})
+
+        structured = _assert_cached_tool_result(result)
+        assert structured["cached"] is True
+
+    async def test_call_custom_tool_passes_context_parameter(self):
+        """Custom tools that request context should receive ProxyContext."""
+        from mcp_proxy.custom_tools import ProxyContext, custom_tool
+
+        seen_context = None
+
+        @custom_tool(name="custom_context", description="Context custom output")
+        async def custom_context(context: ProxyContext = None) -> dict:
+            nonlocal seen_context
+            seen_context = context
+            return {"ok": True}
+
+        view = ToolView("test", ToolViewConfig())
+        view.custom_tools["custom_context"] = custom_context
+
+        result = await view.call_tool("custom_context", {})
+
+        assert result == {"ok": True}
+        assert isinstance(seen_context, ProxyContext)
+
+    async def test_call_custom_tool_passes_ctx_to_kwargs(self):
+        """Custom tools with **kwargs should receive ctx."""
+        from mcp_proxy.custom_tools import custom_tool
+
+        @custom_tool(name="custom_kwargs", description="Kwargs custom output")
+        async def custom_kwargs(**kwargs) -> dict:
+            return {"has_ctx": "ctx" in kwargs}
+
+        view = ToolView("test", ToolViewConfig())
+        view.custom_tools["custom_kwargs"] = custom_kwargs
+
+        result = await view.call_tool("custom_kwargs", {})
+
+        assert result == {"has_ctx": True}
+
     async def test_apply_caching_with_string_result(self, tmp_path):
         """_apply_caching should handle string results."""
         from unittest.mock import patch
@@ -452,7 +604,7 @@ class TestToolViewCaching:
             result = view._apply_caching("hello world", cache_config)
 
         structured = _assert_cached_tool_result(result)
-        assert structured["preview"] == "hello worl..."
+        assert structured["preview"] == "hello worl"
 
     async def test_apply_caching_with_dict_result(self, tmp_path):
         """_apply_caching should handle dict results by JSON serializing them."""
@@ -477,7 +629,7 @@ class TestToolViewCaching:
                 cache_base_url="http://localhost:8000",
             )
 
-            cache_config = OutputCacheConfig(enabled=True, preview_chars=100)
+            cache_config = OutputCacheConfig(enabled=True, preview_chars=5)
             result = view._apply_caching({"key": "value"}, cache_config)
 
         structured = _assert_cached_tool_result(result)
@@ -519,7 +671,7 @@ class TestToolViewCaching:
                 cache_base_url="http://localhost:8000",
             )
 
-            cache_config = OutputCacheConfig(enabled=True, preview_chars=100)
+            cache_config = OutputCacheConfig(enabled=True, preview_chars=5)
 
             # Patch json.dumps globally (it's imported inside the function)
             with patch("json.dumps", mock_dumps):

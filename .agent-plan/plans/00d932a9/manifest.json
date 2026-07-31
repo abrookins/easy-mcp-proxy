@@ -1,0 +1,415 @@
+{
+  "version": 1,
+  "plan_id": "00d932a9",
+  "created_at": "2026-07-31T20:33:27.622427Z",
+  "updated_at": "2026-07-31T21:14:06.200303Z",
+  "next_sequence": 24,
+  "tasks": [
+    {
+      "id": "001-update-output-handling-configuration-defaults",
+      "sequence": 1,
+      "name": "Update output handling configuration defaults",
+      "status": "complete",
+      "order": 0,
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:33:47.748398Z",
+      "updated_at": "2026-07-31T20:42:55.348947Z",
+      "completed_at": "2026-07-31T20:42:55.348947Z",
+      "archived_at": "2026-07-31T20:42:55.348947Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/001-update-output-handling-configuration-defaults.done",
+      "description_preview": "Add safe default output handling settings under the existing output_cache configuration, keep legacy fields parsing, ..."
+    },
+    {
+      "id": "002-stabilize-generated-cache-secrets-per-proxy-instance",
+      "sequence": 2,
+      "name": "Stabilize generated cache secrets per proxy instance",
+      "status": "complete",
+      "order": 1,
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:33:52.760335Z",
+      "updated_at": "2026-07-31T20:43:09.361476Z",
+      "completed_at": "2026-07-31T20:43:09.361476Z",
+      "archived_at": "2026-07-31T20:43:09.361476Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/002-stabilize-generated-cache-secrets-per-proxy-instance.done",
+      "description_preview": "Generate one fallback cache_secret per MCPProxy instance and reuse it for cache writers, retrieval tools, resources, ..."
+    },
+    {
+      "id": "003-create-central-output-protection-helper",
+      "sequence": 3,
+      "name": "Create central output protection helper",
+      "status": "complete",
+      "order": 2,
+      "depends_on": [
+        "001-update-output-handling-configuration-defaults",
+        "002-stabilize-generated-cache-secrets-per-proxy-instance"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:33:57.077077Z",
+      "updated_at": "2026-07-31T20:43:22.76428Z",
+      "completed_at": "2026-07-31T20:43:22.764279Z",
+      "archived_at": "2026-07-31T20:43:22.764279Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/003-create-central-output-protection-helper.done",
+      "description_preview": "Add a centralized protect_tool_output entry point that runs after downstream execution, accepts view/server/tool cont..."
+    },
+    {
+      "id": "004-implement-serialization-and-measurement",
+      "sequence": 4,
+      "name": "Implement serialization and measurement",
+      "status": "complete",
+      "order": 3,
+      "depends_on": [
+        "003-create-central-output-protection-helper"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:34:00.618794Z",
+      "updated_at": "2026-07-31T20:43:32.463879Z",
+      "completed_at": "2026-07-31T20:43:32.463879Z",
+      "archived_at": "2026-07-31T20:43:32.463879Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/004-implement-serialization-and-measurement.done",
+      "description_preview": "Centralize result serialization for strings, dicts/lists, ToolResult/CallToolResult text content, and non-serializabl..."
+    },
+    {
+      "id": "005-implement-bounded-preview-generation",
+      "sequence": 5,
+      "name": "Implement bounded preview generation",
+      "status": "complete",
+      "order": 4,
+      "depends_on": [
+        "004-implement-serialization-and-measurement"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:34:04.214295Z",
+      "updated_at": "2026-07-31T20:43:40.42117Z",
+      "completed_at": "2026-07-31T20:43:40.42117Z",
+      "archived_at": "2026-07-31T20:43:40.42117Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/005-implement-bounded-preview-generation.done",
+      "description_preview": "Generate previews from cached original content that obey max_inline_tokens, max_inline_chars, and max_line_chars; inc..."
+    },
+    {
+      "id": "006-extend-cached-response-metadata",
+      "sequence": 6,
+      "name": "Extend cached response metadata",
+      "status": "complete",
+      "order": 5,
+      "depends_on": [
+        "004-implement-serialization-and-measurement",
+        "005-implement-bounded-preview-generation"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:34:08.290835Z",
+      "updated_at": "2026-07-31T20:43:51.666855Z",
+      "completed_at": "2026-07-31T20:43:51.666854Z",
+      "archived_at": "2026-07-31T20:43:51.666854Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/006-extend-cached-response-metadata.done",
+      "description_preview": "Extend CachedOutputResponse and ToolResult structured_content with cache_id/token, original and returned sizes, estim..."
+    },
+    {
+      "id": "007-protect-toolview-call-results",
+      "sequence": 7,
+      "name": "Protect ToolView call results",
+      "status": "complete",
+      "order": 6,
+      "depends_on": [
+        "003-create-central-output-protection-helper",
+        "006-extend-cached-response-metadata"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:34:12.865735Z",
+      "updated_at": "2026-07-31T20:44:03.015675Z",
+      "completed_at": "2026-07-31T20:44:03.015674Z",
+      "archived_at": "2026-07-31T20:44:03.015674Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/007-protect-toolview-call-results.done",
+      "description_preview": "Wire protect_tool_output into ToolView.call_tool after post-call hooks and before return, and remove early returns th..."
+    },
+    {
+      "id": "008-protect-direct-root-tool-wrappers",
+      "sequence": 8,
+      "name": "Protect direct root tool wrappers",
+      "status": "complete",
+      "order": 7,
+      "depends_on": [
+        "003-create-central-output-protection-helper",
+        "006-extend-cached-response-metadata"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:34:17.085645Z",
+      "updated_at": "2026-07-31T20:44:13.488713Z",
+      "completed_at": "2026-07-31T20:44:13.488713Z",
+      "archived_at": "2026-07-31T20:44:13.488713Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/008-protect-direct-root-tool-wrappers.done",
+      "description_preview": "Apply the same output protection to direct root tools registered without a default view by wiring _execute_direct_cal..."
+    },
+    {
+      "id": "009-protect-search-and-virtual-search-call-paths",
+      "sequence": 9,
+      "name": "Protect search and virtual search call paths",
+      "status": "complete",
+      "order": 8,
+      "depends_on": [
+        "003-create-central-output-protection-helper",
+        "007-protect-toolview-call-results"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:34:20.711758Z",
+      "updated_at": "2026-07-31T20:44:21.244853Z",
+      "completed_at": "2026-07-31T20:44:21.244853Z",
+      "archived_at": "2026-07-31T20:44:21.244853Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/009-protect-search-and-virtual-search-call-paths.done",
+      "description_preview": "Ensure search-mode and search_per_server *_call_tool wrappers route through protected ToolView calls, and initialize ..."
+    },
+    {
+      "id": "010-make-cache-retrieval-tools-bounded-by-default",
+      "sequence": 10,
+      "name": "Make cache retrieval tools bounded by default",
+      "status": "complete",
+      "order": 9,
+      "depends_on": [
+        "003-create-central-output-protection-helper",
+        "005-implement-bounded-preview-generation",
+        "006-extend-cached-response-metadata"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:34:28.407217Z",
+      "updated_at": "2026-07-31T20:44:36.446069Z",
+      "completed_at": "2026-07-31T20:44:36.446069Z",
+      "archived_at": "2026-07-31T20:44:36.446069Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/010-make-cache-retrieval-tools-bounded-by-default.done",
+      "description_preview": "Update preview_cached_output, query_cached_output, and retrieve_cached_output so model-visible retrieval enforces def..."
+    },
+    {
+      "id": "011-add-range-cached-output-for-character-windows",
+      "sequence": 11,
+      "name": "Add range_cached_output for character windows",
+      "status": "complete",
+      "order": 10,
+      "depends_on": [
+        "010-make-cache-retrieval-tools-bounded-by-default"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:34:33.261476Z",
+      "updated_at": "2026-07-31T20:44:48.249756Z",
+      "completed_at": "2026-07-31T20:44:48.249756Z",
+      "archived_at": "2026-07-31T20:44:48.249756Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/011-add-range-cached-output-for-character-windows.done",
+      "description_preview": "Add a bounded character-range cache retrieval tool for minified, JSONL, AOF, and other single-line outputs, including..."
+    },
+    {
+      "id": "012-update-http-and-mcp-resource-cache-retrieval",
+      "sequence": 12,
+      "name": "Update HTTP and MCP resource cache retrieval",
+      "status": "complete",
+      "order": 11,
+      "depends_on": [
+        "010-make-cache-retrieval-tools-bounded-by-default",
+        "011-add-range-cached-output-for-character-windows"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:34:37.645616Z",
+      "updated_at": "2026-07-31T20:44:59.787429Z",
+      "completed_at": "2026-07-31T20:44:59.787429Z",
+      "archived_at": "2026-07-31T20:44:59.787429Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/012-update-http-and-mcp-resource-cache-retrieval.done",
+      "description_preview": "Change /cache/{token} and MCP resource retrieval defaults to bounded output or explicit full-download behavior, add l..."
+    },
+    {
+      "id": "013-record-output-handling-observability-events",
+      "sequence": 13,
+      "name": "Record output handling observability events",
+      "status": "complete",
+      "order": 12,
+      "depends_on": [
+        "003-create-central-output-protection-helper",
+        "006-extend-cached-response-metadata"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:34:41.994528Z",
+      "updated_at": "2026-07-31T20:45:08.18083Z",
+      "completed_at": "2026-07-31T20:45:08.18083Z",
+      "archived_at": "2026-07-31T20:45:08.18083Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/013-record-output-handling-observability-events.done",
+      "description_preview": "Emit structured measurement events for protected and pass-through outputs with view_name, server_name, tool_name, cac..."
+    },
+    {
+      "id": "014-add-unit-tests-for-output-handling-core-behavior",
+      "sequence": 14,
+      "name": "Add unit tests for output handling core behavior",
+      "status": "complete",
+      "order": 13,
+      "depends_on": [
+        "001-update-output-handling-configuration-defaults",
+        "002-stabilize-generated-cache-secrets-per-proxy-instance",
+        "003-create-central-output-protection-helper",
+        "004-implement-serialization-and-measurement",
+        "005-implement-bounded-preview-generation",
+        "006-extend-cached-response-metadata"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:34:48.198899Z",
+      "updated_at": "2026-07-31T20:47:07.763129Z",
+      "completed_at": "2026-07-31T20:47:07.763129Z",
+      "archived_at": "2026-07-31T20:47:07.763129Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/014-add-unit-tests-for-output-handling-core-behavior.done",
+      "description_preview": "Cover default protection without output_cache config, small-result pass-through, over-budget ToolResult envelopes, me..."
+    },
+    {
+      "id": "015-add-unit-tests-for-retrieval-semantics",
+      "sequence": 15,
+      "name": "Add unit tests for retrieval semantics",
+      "status": "complete",
+      "order": 14,
+      "depends_on": [
+        "010-make-cache-retrieval-tools-bounded-by-default",
+        "011-add-range-cached-output-for-character-windows",
+        "012-update-http-and-mcp-resource-cache-retrieval"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:34:53.627072Z",
+      "updated_at": "2026-07-31T20:48:07.196604Z",
+      "completed_at": "2026-07-31T20:48:07.196604Z",
+      "archived_at": "2026-07-31T20:48:07.196604Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/015-add-unit-tests-for-retrieval-semantics.done",
+      "description_preview": "Cover bounded preview_cached_output, range_cached_output validation and windows, query_cached_output protection for l..."
+    },
+    {
+      "id": "016-add-unit-tests-for-protected-call-path-coverage",
+      "sequence": 16,
+      "name": "Add unit tests for protected call path coverage",
+      "status": "complete",
+      "order": 15,
+      "depends_on": [
+        "007-protect-toolview-call-results",
+        "008-protect-direct-root-tool-wrappers",
+        "009-protect-search-and-virtual-search-call-paths"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:34:59.703234Z",
+      "updated_at": "2026-07-31T20:53:45.498785Z",
+      "completed_at": "2026-07-31T20:53:45.498785Z",
+      "archived_at": "2026-07-31T20:53:45.498785Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/016-add-unit-tests-for-protected-call-path-coverage.done",
+      "description_preview": "Cover ToolView upstream calls after post hooks, custom and composite final outputs, direct root wrappers, search-mode..."
+    },
+    {
+      "id": "017-add-integration-tests-for-large-proxied-outputs",
+      "sequence": 17,
+      "name": "Add integration tests for large proxied outputs",
+      "status": "complete",
+      "order": 16,
+      "depends_on": [
+        "014-add-unit-tests-for-output-handling-core-behavior",
+        "015-add-unit-tests-for-retrieval-semantics",
+        "016-add-unit-tests-for-protected-call-path-coverage"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:35:07.874253Z",
+      "updated_at": "2026-07-31T20:57:41.080139Z",
+      "completed_at": "2026-07-31T20:57:41.080139Z",
+      "archived_at": "2026-07-31T20:57:41.080139Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/017-add-integration-tests-for-large-proxied-outputs.done",
+      "description_preview": "Add end-to-end tests where search-per-server filesystem_call_tool reads a large file under default config, a JSONL or..."
+    },
+    {
+      "id": "018-update-user-documentation-for-safe-output-defaults",
+      "sequence": 18,
+      "name": "Update user documentation for safe output defaults",
+      "status": "complete",
+      "order": 17,
+      "depends_on": [
+        "010-make-cache-retrieval-tools-bounded-by-default",
+        "011-add-range-cached-output-for-character-windows",
+        "012-update-http-and-mcp-resource-cache-retrieval"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:35:13.4747Z",
+      "updated_at": "2026-07-31T21:00:17.289456Z",
+      "completed_at": "2026-07-31T21:00:17.289455Z",
+      "archived_at": "2026-07-31T21:00:17.289455Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/018-update-user-documentation-for-safe-output-defaults.done",
+      "description_preview": "Update README and docs/reference/tutorial/use-cases to describe safe default output handling, new config fields, boun..."
+    },
+    {
+      "id": "019-run-final-check-and-test-suite",
+      "sequence": 19,
+      "name": "Run final check and test suite",
+      "status": "complete",
+      "order": 18,
+      "depends_on": [
+        "013-record-output-handling-observability-events",
+        "017-add-integration-tests-for-large-proxied-outputs",
+        "018-update-user-documentation-for-safe-output-defaults"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T20:35:19.8217Z",
+      "updated_at": "2026-07-31T21:06:05.57957Z",
+      "completed_at": "2026-07-31T21:06:05.57957Z",
+      "archived_at": "2026-07-31T21:06:05.57957Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/019-run-final-check-and-test-suite.done",
+      "description_preview": "Run make check and make test after implementation, fix any lint, formatting, or coverage failures, and confirm the sa..."
+    },
+    {
+      "id": "020-qa-audit-implementation-against-spec",
+      "sequence": 20,
+      "name": "QA audit implementation against spec",
+      "status": "complete",
+      "order": 19,
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T21:07:20.690307Z",
+      "updated_at": "2026-07-31T21:08:38.427553Z",
+      "completed_at": "2026-07-31T21:08:38.427552Z",
+      "archived_at": "2026-07-31T21:08:38.427552Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/020-qa-audit-implementation-against-spec.done",
+      "description_preview": "Manually compare the implementation to docs/specs/output-handling-safe-defaults.md and inspect the changed call paths..."
+    },
+    {
+      "id": "021-qa-exercise-safe-output-behavior-manually",
+      "sequence": 21,
+      "name": "QA exercise safe output behavior manually",
+      "status": "complete",
+      "order": 20,
+      "depends_on": [
+        "020-qa-audit-implementation-against-spec"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T21:07:24.846966Z",
+      "updated_at": "2026-07-31T21:10:35.380033Z",
+      "completed_at": "2026-07-31T21:10:35.380032Z",
+      "archived_at": "2026-07-31T21:10:35.380032Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/021-qa-exercise-safe-output-behavior-manually.done",
+      "description_preview": "Run focused manual or scripted checks for large multiline, giant single-line, query, range, HTTP/resource, and protec..."
+    },
+    {
+      "id": "022-qa-review-docs-and-config-surface",
+      "sequence": 22,
+      "name": "QA review docs and config surface",
+      "status": "complete",
+      "order": 21,
+      "depends_on": [
+        "021-qa-exercise-safe-output-behavior-manually"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T21:07:29.103687Z",
+      "updated_at": "2026-07-31T21:11:44.60771Z",
+      "completed_at": "2026-07-31T21:11:44.60771Z",
+      "archived_at": "2026-07-31T21:11:44.60771Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/022-qa-review-docs-and-config-surface.done",
+      "description_preview": "Check documentation, defaults, compatibility aliases, and user-facing cache navigation descriptions for consistency w..."
+    },
+    {
+      "id": "023-qa-final-validation-and-commit",
+      "sequence": 23,
+      "name": "QA final validation and commit",
+      "status": "complete",
+      "order": 22,
+      "depends_on": [
+        "022-qa-review-docs-and-config-surface"
+      ],
+      "assignee": "sess-cca12501edc4",
+      "created_at": "2026-07-31T21:07:36.151287Z",
+      "updated_at": "2026-07-31T21:14:06.200303Z",
+      "completed_at": "2026-07-31T21:14:06.200302Z",
+      "archived_at": "2026-07-31T21:14:06.200302Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/00d932a9/history/023-qa-final-validation-and-commit.done",
+      "description_preview": "Run final lint/tests after any QA fixes, inspect the staged diff to avoid unrelated changes, and commit the completed..."
+    }
+  ]
+}

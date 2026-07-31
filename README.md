@@ -139,24 +139,31 @@ tool_views:
             args: { text: "{inputs.query}" }
 ```
 
-### Reduce Context Usage with Output Caching
+### Keep Large Outputs Bounded by Default
 
-Large tool outputs (file contents, search results) consume valuable LLM context. Cache them and return a preview with a signed retrieval URL:
+Large tool outputs (file contents, search results, minified JSON, JSONL, logs) can overwhelm LLM context. Easy MCP Proxy measures every proxied tool result after the upstream server responds. Oversized results are cached and the model receives a bounded preview with navigation metadata.
+
+Safe output handling is enabled by default. Use `output_cache` to tune limits or explicitly disable it for trusted local debugging:
 
 ```yaml
 output_cache:
   enabled: true
-  ttl_seconds: 3600        # URLs valid for 1 hour
-  preview_chars: 500       # Show first 500 chars inline
-  min_size: 10000          # Only cache outputs > 10KB
+  ttl_seconds: 3600
+  max_inline_tokens: 3000
+  max_line_chars: 1200
+  retrieval_default_line_count: 100
+  retrieval_max_line_count: 500
+  retrieval_max_chars: 12000
 
 cache_secret: "${CACHE_SECRET}"
 cache_base_url: "https://your-proxy.example.com"
 ```
 
-The LLM gets a preview plus a retrieval token. It can load the full content,
-request a line window with `preview_cached_output`, or apply a
-`jmespath_expression` with `query_cached_output` when the cached output is JSON.
+The LLM gets a preview plus a retrieval token. It can request line windows with
+`preview_cached_output`, character windows with `range_cached_output`, or JSON
+slices with `query_cached_output`. `retrieve_cached_output` and `/cache/{token}`
+return bounded content by default; append `download=1` or `full=1` to the signed
+HTTP URL for explicit full-content processing outside the model context.
 This enables **Recursive Language Model (RLM)** patterns where agents pass file
 references instead of file contents, dramatically reducing context usage while
 maintaining full access to the data.

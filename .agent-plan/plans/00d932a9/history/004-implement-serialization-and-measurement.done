@@ -1,0 +1,17 @@
+---
+id: 004-implement-serialization-and-measurement
+sequence: 4
+slug: implement-serialization-and-measurement
+name: Implement serialization and measurement
+status: complete
+order: 3
+depends_on:
+    - 003-create-central-output-protection-helper
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:34:00.618794Z
+updated_at: 2026-07-31T20:43:32.463879Z
+completed_at: 2026-07-31T20:43:32.463879Z
+archived_at: 2026-07-31T20:43:32.463879Z
+---
+
+Centralize result serialization for strings, dicts/lists, ToolResult/CallToolResult text content, and non-serializable fallbacks; measure bytes, chars, estimated tokens, line count, and longest line without pretty-printing large JSON by default.

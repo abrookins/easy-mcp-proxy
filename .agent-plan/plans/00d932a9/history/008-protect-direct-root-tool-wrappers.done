@@ -1,0 +1,18 @@
+---
+id: 008-protect-direct-root-tool-wrappers
+sequence: 8
+slug: protect-direct-root-tool-wrappers
+name: Protect direct root tool wrappers
+status: complete
+order: 7
+depends_on:
+    - 003-create-central-output-protection-helper
+    - 006-extend-cached-response-metadata
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:34:17.085645Z
+updated_at: 2026-07-31T20:44:13.488713Z
+completed_at: 2026-07-31T20:44:13.488713Z
+archived_at: 2026-07-31T20:44:13.488713Z
+---
+
+Apply the same output protection to direct root tools registered without a default view by wiring _execute_direct_call or the direct wrapper path through the central helper.

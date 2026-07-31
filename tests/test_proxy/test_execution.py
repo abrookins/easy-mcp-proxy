@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastmcp import Client
 
-from mcp_proxy.models import ProxyConfig, UpstreamServerConfig
+from mcp_proxy.models import OutputCacheConfig, ProxyConfig, UpstreamServerConfig
 from mcp_proxy.proxy import MCPProxy
 from tests.helpers import get_required_tool
 
@@ -113,6 +113,40 @@ class TestMCPProxyToolExecution:
         # Should have called upstream
         mock_client.call_tool.assert_called()
 
+    async def test_registered_custom_tool_applies_output_protection(self, tmp_path):
+        """Direct-mode custom tool registration should route through ToolView."""
+        from mcp_proxy.custom_tools import custom_tool
+
+        @custom_tool(name="custom_large", description="Large custom output")
+        async def custom_large(size: int) -> dict:
+            return {"payload": "x" * size}
+
+        config = ProxyConfig(
+            mcp_servers={},
+            tool_views={
+                "view": {
+                    "exposure_mode": "direct",
+                    "tools": {},
+                }
+            },
+            output_cache=OutputCacheConfig(max_inline_chars=20, max_inline_tokens=100),
+        )
+        proxy = MCPProxy(config)
+        proxy.views["view"].custom_tools["custom_large"] = custom_large
+        proxy.views["view"]._cache_context = proxy._create_cache_context()
+
+        view_mcp = proxy.get_view_mcp("view")
+        registered_tool = await get_required_tool(view_mcp, "custom_large")
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            result = await registered_tool.fn(size=100)
+
+        assert result.structured_content["cached"] is True
+        assert result.structured_content["original"]["chars"] > 20
+
 
 class TestDefaultMCPUpstreamCalls:
     """Tests for default MCP (no view) upstream tool calls."""
@@ -148,3 +182,52 @@ class TestDefaultMCPUpstreamCalls:
 
             # Verify upstream was called with the arguments dict
             mock_upstream.call_tool.assert_called_once_with("my_tool", {"arg": "value"})
+
+    @pytest.mark.asyncio
+    async def test_default_mcp_large_output_is_protected(self, tmp_path):
+        """Default root wrappers should protect large upstream outputs."""
+        from fastmcp import FastMCP
+
+        from mcp_proxy.proxy.tool_info import ToolInfo
+
+        config = ProxyConfig(
+            mcp_servers={
+                "server": UpstreamServerConfig(
+                    url="http://example.com",
+                    tools={"my_tool": {"description": "A tool"}},
+                )
+            },
+            tool_views={},
+            output_cache=OutputCacheConfig(max_inline_chars=20, max_inline_tokens=100),
+        )
+        proxy = MCPProxy(config)
+
+        mock_upstream = MagicMock()
+        mock_upstream.call_tool = AsyncMock(return_value={"payload": "x" * 100})
+        proxy._active_clients["server"] = mock_upstream
+
+        test_mcp = FastMCP(name="test")
+        proxy._register_tools_on_mcp(
+            test_mcp,
+            [
+                ToolInfo(
+                    name="my_tool",
+                    server="server",
+                    original_name="my_tool",
+                    input_schema={
+                        "type": "object",
+                        "properties": {"arg": {"type": "string"}},
+                    },
+                )
+            ],
+        )
+        registered_tool = await get_required_tool(test_mcp, "my_tool")
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            result = await registered_tool.fn(arg="value")
+
+        mock_upstream.call_tool.assert_called_once_with("my_tool", {"arg": "value"})
+        assert result.structured_content["cached"] is True

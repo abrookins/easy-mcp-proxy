@@ -1,0 +1,19 @@
+---
+id: 015-add-unit-tests-for-retrieval-semantics
+sequence: 15
+slug: add-unit-tests-for-retrieval-semantics
+name: Add unit tests for retrieval semantics
+status: complete
+order: 14
+depends_on:
+    - 010-make-cache-retrieval-tools-bounded-by-default
+    - 011-add-range-cached-output-for-character-windows
+    - 012-update-http-and-mcp-resource-cache-retrieval
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:34:53.627072Z
+updated_at: 2026-07-31T20:48:07.196604Z
+completed_at: 2026-07-31T20:48:07.196604Z
+archived_at: 2026-07-31T20:48:07.196604Z
+---
+
+Cover bounded preview_cached_output, range_cached_output validation and windows, query_cached_output protection for large query results, retrieve_cached_output no-full-default behavior, and HTTP/resource bounded defaults.

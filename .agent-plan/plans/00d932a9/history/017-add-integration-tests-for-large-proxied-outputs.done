@@ -1,0 +1,19 @@
+---
+id: 017-add-integration-tests-for-large-proxied-outputs
+sequence: 17
+slug: add-integration-tests-for-large-proxied-outputs
+name: Add integration tests for large proxied outputs
+status: complete
+order: 16
+depends_on:
+    - 014-add-unit-tests-for-output-handling-core-behavior
+    - 015-add-unit-tests-for-retrieval-semantics
+    - 016-add-unit-tests-for-protected-call-path-coverage
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:35:07.874253Z
+updated_at: 2026-07-31T20:57:41.080139Z
+completed_at: 2026-07-31T20:57:41.080139Z
+archived_at: 2026-07-31T20:57:41.080139Z
+---
+
+Add end-to-end tests where search-per-server filesystem_call_tool reads a large file under default config, a JSONL or minified single-line fixture is navigated with range_cached_output, and HTTP cache retrieval defaults to bounded preview while explicit download returns full content.

@@ -10,6 +10,7 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from mcp_proxy.models import (
+    OutputCacheConfig,
     ProxyConfig,
     ToolViewConfig,
     UpstreamServerConfig,
@@ -787,11 +788,18 @@ class TestHTTPCacheRoutes:
             http_response = client.get(f"/cache/{response.token}?{query}")
 
             assert http_response.status_code == 200
-            assert http_response.text == "http cached content"
+            assert http_response.json()["content"] == "http cached content"
+
+            download_response = client.get(
+                f"/cache/{response.token}?{query}&download=1"
+            )
+            assert download_response.status_code == 200
+            assert download_response.text == "http cached content"
 
     def test_http_app_no_cache_routes_when_disabled(self):
         """http_app should not include cache routes when caching is disabled."""
         config = ProxyConfig(
+            output_cache=OutputCacheConfig(enabled=False),
             mcp_servers={
                 "server-a": UpstreamServerConfig(command="echo", args=["test"])
             },

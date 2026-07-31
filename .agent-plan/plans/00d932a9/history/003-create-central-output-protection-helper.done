@@ -1,0 +1,18 @@
+---
+id: 003-create-central-output-protection-helper
+sequence: 3
+slug: create-central-output-protection-helper
+name: Create central output protection helper
+status: complete
+order: 2
+depends_on:
+    - 001-update-output-handling-configuration-defaults
+    - 002-stabilize-generated-cache-secrets-per-proxy-instance
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:33:57.077077Z
+updated_at: 2026-07-31T20:43:22.76428Z
+completed_at: 2026-07-31T20:43:22.764279Z
+archived_at: 2026-07-31T20:43:22.764279Z
+---
+
+Add a centralized protect_tool_output entry point that runs after downstream execution, accepts view/server/tool context, and returns the original result only when it is within configured output budgets.

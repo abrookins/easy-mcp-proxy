@@ -1,0 +1,18 @@
+---
+id: 006-extend-cached-response-metadata
+sequence: 6
+slug: extend-cached-response-metadata
+name: Extend cached response metadata
+status: complete
+order: 5
+depends_on:
+    - 004-implement-serialization-and-measurement
+    - 005-implement-bounded-preview-generation
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:34:08.290835Z
+updated_at: 2026-07-31T20:43:51.666855Z
+completed_at: 2026-07-31T20:43:51.666854Z
+archived_at: 2026-07-31T20:43:51.666854Z
+---
+
+Extend CachedOutputResponse and ToolResult structured_content with cache_id/token, original and returned sizes, estimated tokens, line counts, truncation status, truncation reasons, limits, and navigation metadata while preserving existing compatibility fields.

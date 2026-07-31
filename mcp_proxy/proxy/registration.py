@@ -48,10 +48,18 @@ async def _execute_direct_call(
         raise ValueError(f"Server '{srv}' not configured")
     active_client = proxy._active_clients.get(srv)
     if active_client:
-        return await active_client.call_tool(orig_name, transformed)
-    client = proxy._create_client_from_config(proxy.config.mcp_servers[srv])
-    async with client:
-        return await client.call_tool(orig_name, transformed)
+        result = await active_client.call_tool(orig_name, transformed)
+    else:
+        client = proxy._create_client_from_config(proxy.config.mcp_servers[srv])
+        async with client:
+            result = await client.call_tool(orig_name, transformed)
+
+    return proxy._protect_tool_output(
+        result,
+        view_name=None,
+        server_name=srv,
+        tool_name=orig_name,
+    )
 
 
 def make_direct_wrapper_kwargs(

@@ -28,15 +28,24 @@ class ParameterConfig(BaseModel):
 class OutputCacheConfig(BaseModel):
     """Configuration for caching tool outputs.
 
-    When enabled, large tool outputs are written to disk and a retrieval URL
-    is returned instead of the full content. This reduces context size while
-    allowing LLM-generated code to fetch the full output via HTTP.
+    Output caching also enforces safe default output handling. When enabled,
+    large or long-line tool outputs are written to disk and a bounded preview is
+    returned instead of the full content. This reduces context size while
+    allowing explicit ranged, queried, or download retrieval.
     """
 
-    enabled: bool = False
+    enabled: bool = True
     ttl_seconds: int = 3600  # URL expiration time (1 hour default)
-    preview_chars: int = 500  # Characters to include in preview
+    preview_chars: int | None = None  # Backwards-compatible preview cap
     min_size: int | None = None  # Only cache outputs larger than this (bytes)
+    max_inline_tokens: int = 3000
+    token_chars_ratio: int = 4
+    max_inline_chars: int | None = None
+    max_line_chars: int = 1200
+    retrieval_default_line_count: int = 100
+    retrieval_max_line_count: int = 500
+    retrieval_max_chars: int = 12000
+    strict: bool = True
 
 
 class ToolConfig(BaseModel):

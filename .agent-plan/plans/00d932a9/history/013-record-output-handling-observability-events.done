@@ -1,0 +1,18 @@
+---
+id: 013-record-output-handling-observability-events
+sequence: 13
+slug: record-output-handling-observability-events
+name: Record output handling observability events
+status: complete
+order: 12
+depends_on:
+    - 003-create-central-output-protection-helper
+    - 006-extend-cached-response-metadata
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:34:41.994528Z
+updated_at: 2026-07-31T20:45:08.18083Z
+completed_at: 2026-07-31T20:45:08.18083Z
+archived_at: 2026-07-31T20:45:08.18083Z
+---
+
+Emit structured measurement events for protected and pass-through outputs with view_name, server_name, tool_name, cache_id, original/returned sizes, estimated tokens, truncation status, and truncation reasons without logging full content.

@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted
+Accepted; retrieval semantics superseded by
+[`output-handling-safe-defaults.md`](../specs/output-handling-safe-defaults.md).
 
 ## Context
 
@@ -17,6 +18,11 @@ Additionally, the memory system was moved to a separate repository for better mo
 ## Key Decisions
 
 ### 1. Output Caching System
+
+Note: this section describes the original opt-in output caching design. Safe
+output handling is now enabled by default, also protects overlong single lines,
+and makes tool-plane retrieval bounded unless callers request an explicit HTTP
+download.
 
 **Problem**: Large tool outputs waste context window space. An LLM reading a 100KB file loses room for reasoning.
 
@@ -53,12 +59,14 @@ Tool Output → Check Size → If large → Write to /tmp/mcp-proxy-cache/{token
 - Simple and reliable
 
 **Retrieval methods**:
-1. `retrieve_cached_output(token)` tool - LLM can pull into context
-2. `preview_cached_output(token, line_offset, line_count)` - text windows
-3. `query_cached_output(token, jmespath_expression)` - JSON subsets
-4. HTTP GET to `retrieve_url` - Generated code can fetch directly
-5. HTTP `line_offset`, `line_count`, and `jmespath` query parameters
-6. Full retrieval paths use the same `verify_and_retrieve()` function
+1. `retrieve_cached_output(token)` tool - bounded default payload
+2. `preview_cached_output(token, line_offset, line_count)` - bounded text windows
+3. `range_cached_output(token, char_offset, char_count)` - bounded character windows
+4. `query_cached_output(token, jmespath_expression)` - bounded JSON subsets
+5. HTTP GET to `retrieve_url` - bounded metadata by default
+6. HTTP `line_offset`, `line_count`, `char_offset`, `char_count`, and `jmespath`
+   query parameters
+7. Explicit full downloads require `download=1` or `full=1`
 
 ### 2. Configuration Hierarchy
 

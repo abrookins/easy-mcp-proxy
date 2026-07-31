@@ -1,0 +1,17 @@
+---
+id: 005-implement-bounded-preview-generation
+sequence: 5
+slug: implement-bounded-preview-generation
+name: Implement bounded preview generation
+status: complete
+order: 4
+depends_on:
+    - 004-implement-serialization-and-measurement
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:34:04.214295Z
+updated_at: 2026-07-31T20:43:40.42117Z
+completed_at: 2026-07-31T20:43:40.42117Z
+archived_at: 2026-07-31T20:43:40.42117Z
+---
+
+Generate previews from cached original content that obey max_inline_tokens, max_inline_chars, and max_line_chars; include next line and character offsets for truncated content, including single-line giant payloads.

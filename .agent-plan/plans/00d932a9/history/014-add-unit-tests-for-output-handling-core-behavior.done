@@ -1,0 +1,22 @@
+---
+id: 014-add-unit-tests-for-output-handling-core-behavior
+sequence: 14
+slug: add-unit-tests-for-output-handling-core-behavior
+name: Add unit tests for output handling core behavior
+status: complete
+order: 13
+depends_on:
+    - 001-update-output-handling-configuration-defaults
+    - 002-stabilize-generated-cache-secrets-per-proxy-instance
+    - 003-create-central-output-protection-helper
+    - 004-implement-serialization-and-measurement
+    - 005-implement-bounded-preview-generation
+    - 006-extend-cached-response-metadata
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:34:48.198899Z
+updated_at: 2026-07-31T20:47:07.763129Z
+completed_at: 2026-07-31T20:47:07.763129Z
+archived_at: 2026-07-31T20:47:07.763129Z
+---
+
+Cover default protection without output_cache config, small-result pass-through, over-budget ToolResult envelopes, metadata fields, giant single-line clipping, bounded preview windows, and stable generated cache secrets.

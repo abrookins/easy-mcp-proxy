@@ -209,4 +209,8 @@ class TestMCPClientIntegration:
             http_response = http_client.get(cached.retrieve_url)
 
             assert http_response.status_code == 200
-            assert http_response.text == '{"large":"payload"}'
+            assert http_response.json()["content"] == '{"large":"payload"}'
+
+            download_response = http_client.get(f"{cached.retrieve_url}&download=1")
+            assert download_response.status_code == 200
+            assert download_response.text == '{"large":"payload"}'

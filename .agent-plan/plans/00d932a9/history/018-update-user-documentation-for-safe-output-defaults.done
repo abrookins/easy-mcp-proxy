@@ -1,0 +1,19 @@
+---
+id: 018-update-user-documentation-for-safe-output-defaults
+sequence: 18
+slug: update-user-documentation-for-safe-output-defaults
+name: Update user documentation for safe output defaults
+status: complete
+order: 17
+depends_on:
+    - 010-make-cache-retrieval-tools-bounded-by-default
+    - 011-add-range-cached-output-for-character-windows
+    - 012-update-http-and-mcp-resource-cache-retrieval
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:35:13.4747Z
+updated_at: 2026-07-31T21:00:17.289456Z
+completed_at: 2026-07-31T21:00:17.289455Z
+archived_at: 2026-07-31T21:00:17.289455Z
+---
+
+Update README and docs/reference/tutorial/use-cases to describe safe default output handling, new config fields, bounded retrieval behavior, range_cached_output, and explicit full-download semantics instead of opt-in-only caching.

@@ -1,0 +1,19 @@
+---
+id: 016-add-unit-tests-for-protected-call-path-coverage
+sequence: 16
+slug: add-unit-tests-for-protected-call-path-coverage
+name: Add unit tests for protected call path coverage
+status: complete
+order: 15
+depends_on:
+    - 007-protect-toolview-call-results
+    - 008-protect-direct-root-tool-wrappers
+    - 009-protect-search-and-virtual-search-call-paths
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:34:59.703234Z
+updated_at: 2026-07-31T20:53:45.498785Z
+completed_at: 2026-07-31T20:53:45.498785Z
+archived_at: 2026-07-31T20:53:45.498785Z
+---
+
+Cover ToolView upstream calls after post hooks, custom and composite final outputs, direct root wrappers, search-mode *_call_tool, search_per_server *_call_tool, and virtual /search/mcp cache-context wiring.

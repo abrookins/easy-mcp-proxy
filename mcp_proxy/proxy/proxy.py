@@ -73,6 +73,7 @@ class MCPProxy:
         self.views: dict[str, ToolView] = {}
         self._client_manager = ClientManager(config)
         self._initialized = False
+        self._cache_secret = get_cache_secret(config)
         self.upstream_instructions: dict[str, str] = {}
         self._instruction_surfaces: list[tuple[FastMCP, ToolRegistry, str, str]] = []
         self._registry_snapshot_at = self._snapshot_timestamp()
@@ -383,7 +384,13 @@ class MCPProxy:
 
     def _get_cache_secret(self) -> str:
         """Get the cache signing secret, generating one if not configured."""
-        return get_cache_secret(self.config)
+        return self._cache_secret
+
+    def _get_default_cache_config(self) -> OutputCacheConfig:
+        """Get the default output handling configuration for retrieval helpers."""
+        if self.config.output_cache and self.config.output_cache.enabled:
+            return self.config.output_cache
+        return OutputCacheConfig(enabled=True)
 
     def _create_cache_context(self):
         """Create a cache context if caching is enabled."""
@@ -393,8 +400,36 @@ class MCPProxy:
             return None
         return CacheContext(
             get_cache_config=self._get_cache_config,
-            cache_secret=get_cache_secret(self.config),
+            cache_secret=self._get_cache_secret(),
             cache_base_url=get_cache_base_url(self.config),
+        )
+
+    def _protect_tool_output(
+        self,
+        result: Any,
+        *,
+        view_name: str | None,
+        server_name: str | None,
+        tool_name: str,
+    ) -> Any:
+        """Apply output protection to a proxied tool result."""
+        if not server_name:
+            cache_config = self._get_default_cache_config()
+        else:
+            cache_config = self._get_cache_config(tool_name, server_name)
+        if cache_config is None:
+            return result
+
+        from mcp_proxy.output_handling import protect_tool_output
+
+        return protect_tool_output(
+            result,
+            view_name=view_name,
+            server_name=server_name,
+            tool_name=tool_name,
+            config=cache_config,
+            cache_secret=self._get_cache_secret(),
+            cache_base_url=self._get_cache_base_url(),
         )
 
     async def _initialize_views(self, cache_context: Any) -> None:
@@ -689,12 +724,13 @@ class MCPProxy:
         # Add custom tools
         for custom_name, custom_fn in view.custom_tools.items():
             description = getattr(custom_fn, "_tool_description", "")
+            input_schema = getattr(custom_fn, "_input_schema", None)
             tools.append(
                 ToolInfo(
                     name=custom_name,
                     description=description,
                     server="",
-                    input_schema=getattr(custom_fn, "_input_schema", None),
+                    input_schema=input_schema,
                 )
             )
 
@@ -794,8 +830,9 @@ class MCPProxy:
 
     def _register_cache_retrieval_tool(self, mcp: FastMCP) -> None:
         """Register cache retrieval helpers on an MCP instance."""
-        register_cache_retrieval_tool(mcp, get_cache_secret(self.config))
-        register_cache_resource(mcp, get_cache_secret(self.config))
+        cache_config = self._get_default_cache_config()
+        register_cache_retrieval_tool(mcp, self._get_cache_secret(), cache_config)
+        register_cache_resource(mcp, self._get_cache_secret(), cache_config)
 
     def _register_view_on_mcp(
         self,
@@ -864,8 +901,25 @@ class MCPProxy:
             _param_config = tool_info.parameter_config
 
             if view and _tool_name in view.custom_tools:
-                custom_fn = view.custom_tools[_tool_name]
-                mcp.tool(name=_tool_name, description=_tool_desc)(custom_fn)
+                input_schema = _input_schema or {
+                    "type": "object",
+                    "properties": {},
+                }
+
+                def make_custom_wrapper(v: ToolView, name: str) -> Callable[..., Any]:
+                    async def custom_wrapper(**kwargs: Any) -> Any:
+                        return await v.call_tool(name, kwargs)
+
+                    return custom_wrapper
+
+                wrapper = make_custom_wrapper(view, _tool_name)
+                tool = create_tool_with_schema(
+                    name=_tool_name,
+                    description=_tool_desc,
+                    input_schema=input_schema,
+                    fn=wrapper,
+                )
+                mcp.add_tool(tool)
             elif view and _tool_name in view.composite_tools:
                 parallel_tool = view.composite_tools[_tool_name]
                 input_schema = parallel_tool.input_schema
@@ -902,7 +956,7 @@ class MCPProxy:
                     _param_config,
                 )
 
-    def _initialize_search_view(self, mcp: FastMCP) -> None:
+    def _initialize_search_view(self, mcp: FastMCP, cache_context: Any = None) -> None:
         """Initialize the virtual search view with all tools using search_per_server.
 
         This creates a virtual view named "_search" that includes all tools from
@@ -923,6 +977,7 @@ class MCPProxy:
         search_view._upstream_clients = self.upstream_clients
         search_view._get_client = self.get_active_client
         search_view._reconnect_client = self.reconnect_client
+        search_view._cache_context = cache_context
 
         # Store it so we can access it for call_tool
         self.views["_search"] = search_view
@@ -1038,7 +1093,7 @@ class MCPProxy:
 
             # Initialize the virtual "search" MCP with all tools
             search_mcp.instructions = aggregated_instructions
-            self._initialize_search_view(search_mcp)
+            self._initialize_search_view(search_mcp, cache_context)
             search_registry = self.views["_search"].get_tool_registry("_search")
             assert search_registry is not None
             self._register_instructions_tool(
@@ -1094,7 +1149,11 @@ class MCPProxy:
         if self._is_cache_enabled():
             from mcp_proxy.cache import create_cache_routes
 
-            cache_routes = create_cache_routes(self._get_cache_secret(), path)
+            cache_routes = create_cache_routes(
+                self._get_cache_secret(),
+                path,
+                self._get_default_cache_config(),
+            )
             routes.extend(cache_routes)
 
         # Add web UI routes for config editing (with same auth as other endpoints)

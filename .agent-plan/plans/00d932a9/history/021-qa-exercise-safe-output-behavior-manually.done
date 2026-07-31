@@ -1,0 +1,17 @@
+---
+id: 021-qa-exercise-safe-output-behavior-manually
+sequence: 21
+slug: qa-exercise-safe-output-behavior-manually
+name: QA exercise safe output behavior manually
+status: complete
+order: 20
+depends_on:
+    - 020-qa-audit-implementation-against-spec
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T21:07:24.846966Z
+updated_at: 2026-07-31T21:10:35.380033Z
+completed_at: 2026-07-31T21:10:35.380032Z
+archived_at: 2026-07-31T21:10:35.380032Z
+---
+
+Run focused manual or scripted checks for large multiline, giant single-line, query, range, HTTP/resource, and protected wrapper behavior beyond the normal test suite.

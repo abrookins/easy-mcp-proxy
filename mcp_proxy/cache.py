@@ -6,8 +6,9 @@ serve them via HTTP with expiring, signed URLs.
 The caching flow:
 1. Tool output is written to /tmp/mcp-proxy-cache/{token}.txt
 2. An HMAC-signed URL is generated with expiration timestamp
-3. LLM receives preview + URL instead of full output
-4. LLM-written code fetches full output via HTTP or retrieve_cached_output tool
+3. LLM receives bounded preview + navigation metadata instead of full output
+4. Tool-plane retrieval returns bounded windows; external code can fetch full
+   output with an explicit signed HTTP download
 """
 
 import hashlib
@@ -20,10 +21,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import jmespath
 from fastmcp.tools.tool import ToolResult
 from mcp import types
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Cache directory in system temp
 CACHE_DIR = Path(tempfile.gettempdir()) / "mcp-proxy-cache"
@@ -35,10 +35,17 @@ class CachedOutputResponse(BaseModel):
 
     cached: bool = True
     token: str
+    cache_id: str | None = None
     retrieve_url: str
     expires_at: str  # ISO 8601 timestamp
     preview: str
     size_bytes: int
+    truncated: bool = False
+    truncation_reasons: list[str] = Field(default_factory=list)
+    original: dict[str, Any] | None = None
+    returned: dict[str, Any] | None = None
+    limits: dict[str, Any] | None = None
+    navigation: dict[str, Any] | None = None
 
 
 def build_cache_resource_uri(token: str) -> str:
@@ -63,11 +70,12 @@ def build_cached_output_tool_result(
     preview_text = (
         f"{cached_response.preview}\n\n"
         "Output is cached. Use preview_cached_output for line windows, "
-        "query_cached_output for JSON/JMESPath slices, or the cached resource "
-        "links for full output."
+        "range_cached_output for character windows, query_cached_output for "
+        "JSON/JMESPath slices, or explicit cache download links for "
+        "out-of-context processing."
     )
     resource_uri = build_cache_resource_uri(cached_response.token)
-    structured_content = cached_response.model_dump()
+    structured_content = cached_response.model_dump(exclude_none=True)
 
     return ToolResult(
         content=[
@@ -77,7 +85,7 @@ def build_cached_output_tool_result(
                 name="cached-output-mcp",
                 title="Cached output via MCP",
                 uri=resource_uri,
-                description="Read the full cached output via resources/read.",
+                description="Read bounded cached-output metadata via resources/read.",
                 mimeType=mime_type,
                 size=cached_response.size_bytes,
             ),
@@ -86,7 +94,10 @@ def build_cached_output_tool_result(
                 name="cached-output-http",
                 title="Cached output via HTTPS",
                 uri=cached_response.retrieve_url,
-                description="Retrieve the full cached output using this signed URL.",
+                description=(
+                    "Retrieve bounded cached-output metadata, or use explicit "
+                    "download parameters for full content."
+                ),
                 mimeType=mime_type,
                 size=cached_response.size_bytes,
                 _meta={
@@ -195,34 +206,24 @@ def build_cached_output_payload(
     line_offset: int = 0,
     line_count: int | None = None,
     jmespath_expression: str | None = None,
+    char_offset: int | None = None,
+    char_count: int | None = None,
+    allow_full: bool = False,
+    config: Any | None = None,
 ) -> dict[str, Any]:
     """Build a retrieval payload with optional JSON query and line window."""
-    payload: dict[str, Any] = {}
-    output = content
+    from mcp_proxy.output_handling import build_bounded_cached_output_payload
 
-    if jmespath_expression is not None:
-        try:
-            parsed = json.loads(content)
-        except json.JSONDecodeError:
-            return {"error": "Cached output is not valid JSON"}
-
-        try:
-            query_result = jmespath.search(jmespath_expression, parsed)
-        except jmespath.exceptions.JMESPathError as exc:
-            return {"error": f"Invalid JMESPath expression: {exc}"}
-
-        output = serialize_result(query_result)
-        payload["jmespath_expression"] = jmespath_expression
-
-    if line_offset != 0 or line_count is not None:
-        try:
-            window_payload = build_line_window_payload(output, line_offset, line_count)
-        except ValueError as exc:
-            return {"error": str(exc)}
-        return {**payload, **window_payload}
-
-    payload["content"] = output
-    return payload
+    return build_bounded_cached_output_payload(
+        content,
+        config,
+        line_offset=line_offset,
+        line_count=line_count,
+        jmespath_expression=jmespath_expression,
+        char_offset=char_offset,
+        char_count=char_count,
+        allow_full=allow_full,
+    )
 
 
 def create_cached_output(
@@ -231,6 +232,8 @@ def create_cached_output(
     base_url: str,
     ttl_seconds: int,
     preview_chars: int,
+    preview: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> CachedOutputResponse:
     """Cache tool output and return metadata with retrieval URL.
 
@@ -262,18 +265,23 @@ def create_cached_output(
     retrieve_url = f"{base}/cache/{token}?expires={expires_at}&sig={signature}"
 
     # Create preview
-    if len(content) > preview_chars:
-        preview = content[:preview_chars] + "..."
-    else:
-        preview = content
+    if preview is None:
+        if len(content) > preview_chars:
+            preview = content[:preview_chars] + "..."
+        else:
+            preview = content
+
+    metadata = metadata or {}
 
     return CachedOutputResponse(
         cached=True,
         token=token,
+        cache_id=token,
         retrieve_url=retrieve_url,
         expires_at=expires_at_iso,
         preview=preview,
         size_bytes=len(content.encode("utf-8")),
+        **metadata,
     )
 
 
@@ -346,6 +354,8 @@ def create_cached_output_with_meta(
     base_url: str,
     ttl_seconds: int,
     preview_chars: int,
+    preview: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> CachedOutputResponse:
     """Cache tool output with metadata file for token-only retrieval.
 
@@ -385,18 +395,23 @@ def create_cached_output_with_meta(
     retrieve_url = f"{base}/cache/{token}?expires={expires_at}&sig={signature}"
 
     # Create preview
-    if len(content) > preview_chars:
-        preview = content[:preview_chars] + "..."
-    else:
-        preview = content
+    if preview is None:
+        if len(content) > preview_chars:
+            preview = content[:preview_chars] + "..."
+        else:
+            preview = content
+
+    metadata = metadata or {}
 
     return CachedOutputResponse(
         cached=True,
         token=token,
+        cache_id=token,
         retrieve_url=retrieve_url,
         expires_at=expires_at_iso,
         preview=preview,
         size_bytes=len(content.encode("utf-8")),
+        **metadata,
     )
 
 
@@ -418,18 +433,21 @@ def clear_cache() -> int:
     return count
 
 
-def create_cache_routes(secret: str, path_prefix: str = "") -> list:
+def create_cache_routes(
+    secret: str, path_prefix: str = "", config: Any | None = None
+) -> list:
     """Create Starlette routes for cache retrieval.
 
     Args:
         secret: HMAC signing secret for URL verification
         path_prefix: Optional path prefix for the route (e.g., "/mcp")
+        config: Output handling config for bounded retrieval
 
     Returns:
         List of Starlette Route objects
     """
     from starlette.requests import Request
-    from starlette.responses import PlainTextResponse, Response
+    from starlette.responses import JSONResponse, PlainTextResponse, Response
     from starlette.routing import Route
 
     def parse_optional_int(value: str | None, name: str) -> int | None:
@@ -472,22 +490,37 @@ def create_cache_routes(secret: str, path_prefix: str = "") -> list:
             line_count = parse_optional_int(
                 request.query_params.get("line_count"), "line_count"
             )
+            char_offset = parse_optional_int(
+                request.query_params.get("char_offset"), "char_offset"
+            )
+            char_count = parse_optional_int(
+                request.query_params.get("char_count"), "char_count"
+            )
         except ValueError as exc:
             return PlainTextResponse(str(exc), status_code=400)
 
         jmespath_expression = request.query_params.get("jmespath_expression")
         if jmespath_expression is None:
             jmespath_expression = request.query_params.get("jmespath")
+        allow_full = request.query_params.get("download") == "1"
+        allow_full = allow_full or request.query_params.get("full") == "1"
 
         payload = build_cached_output_payload(
             content,
             line_offset=line_offset or 0,
             line_count=line_count,
             jmespath_expression=jmespath_expression,
+            char_offset=char_offset,
+            char_count=char_count,
+            allow_full=allow_full,
+            config=config,
         )
         if "error" in payload:
             return PlainTextResponse(payload["error"], status_code=400)
 
-        return PlainTextResponse(payload["content"])
+        if allow_full:
+            return PlainTextResponse(payload["content"])
+
+        return JSONResponse(payload)
 
     return [Route(f"{path_prefix}/cache/{{token}}", retrieve_cache, methods=["GET"])]

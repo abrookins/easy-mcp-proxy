@@ -523,18 +523,25 @@ Some tools return huge outputs (file contents, search results). These consume va
 
 Consider an agent reading a 150KB log file. That's ~40,000 tokens stuffed into context, leaving almost no room for the LLM to actually think about the data.
 
-### The Solution: Output Caching
+### The Solution: Safe Output Handling
 
-Enable output caching to store large results and return only a preview with a signed retrieval URL:
+Easy MCP Proxy protects tool responses by default. After an upstream MCP server
+returns, the proxy measures the visible output. Large results and giant single
+lines are cached, and the model receives a bounded preview with a cache token
+and navigation metadata.
+
+Use `output_cache` to tune limits:
 
 ```yaml
 output_cache:
-  enabled: true
-  ttl_seconds: 3600        # URLs valid for 1 hour
-  preview_chars: 500       # Show first 500 chars inline
-  min_size: 10000          # Only cache outputs > 10KB
+  enabled: true             # Set false only for explicit opt-out
+  ttl_seconds: 3600         # URLs valid for 1 hour
+  max_inline_tokens: 3000
+  max_line_chars: 1200
+  retrieval_default_line_count: 100
+  retrieval_max_chars: 12000
 
-cache_secret: "${CACHE_SECRET}"  # HMAC signing key
+cache_secret: "${CACHE_SECRET}"  # Recommended for stable signed URLs
 cache_base_url: "https://your-proxy.example.com"
 
 mcp_servers:
@@ -543,6 +550,7 @@ mcp_servers:
     args: [-y, "@modelcontextprotocol/server-filesystem", /data]
     cache_outputs:
       enabled: true
+      max_line_chars: 800
 ```
 
 **Result**: Large outputs return as:
@@ -550,21 +558,33 @@ mcp_servers:
 ```json
 {
   "cached": true,
-  "preview": "First 500 characters of the file...",
+  "cache_id": "abc123",
   "token": "abc123",
+  "truncated": true,
+  "truncation_reasons": ["estimated_tokens", "max_line_chars"],
+  "preview": "Bounded preview...",
   "retrieve_url": "https://your-proxy.example.com/cache/abc123?expires=...",
-  "expires_at": "2025-01-13T20:00:00Z",
-  "size_bytes": 248000
+  "expires_at": "2026-07-31T20:00:00Z",
+  "size_bytes": 248000,
+  "original": {"bytes": 248000, "estimated_tokens": 62000},
+  "returned": {"bytes": 1200, "estimated_tokens": 300},
+  "navigation": {
+    "preview_tool": "preview_cached_output",
+    "range_tool": "range_cached_output",
+    "query_tool": "query_cached_output"
+  }
 }
 ```
 
 The LLM can:
 1. Use the preview if sufficient
-2. Call `preview_cached_output(token="abc123", line_count=200)` for a window
-3. Call `query_cached_output(token="abc123", jmespath_expression="items[].title")`
+2. Call `preview_cached_output(token="abc123", line_count=200)` for a line window
+3. Call `range_cached_output(token="abc123", char_offset=1200, char_count=4000)`
+   for minified or single-line content
+4. Call `query_cached_output(token="abc123", jmespath_expression="items[].title")`
    for JSON slices
-4. Generate code that fetches the URL directly
-5. **Delegate to a sub-agent** that processes the data in its own context
+5. Generate code that fetches the signed HTTP URL with `download=1`
+6. **Delegate to a sub-agent** that processes the data in its own context
 
 ### Advanced: Recursive Language Model (RLM) Pattern
 
@@ -590,7 +610,7 @@ Agent calls read_file("application.log")
   → Agent spawns a sub-agent with instructions:
 
     "You have access to a cached file via this URL:
-     https://proxy.local:8000/cache/abc123?expires=...&sig=...
+     https://proxy.local:8000/cache/abc123?expires=...&sig=...&download=1
 
      Task: Extract all ERROR entries, group by message pattern,
      and return a summary with counts and timestamps.
@@ -620,7 +640,7 @@ This makes it safe to pass the URL to sub-agents or LLM-generated code. The sub-
 
 ```bash
 # Sub-agent executes this to process the cached file
-curl -s "https://proxy.local:8000/cache/abc123?expires=1706303600&sig=..." \
+curl -s "https://proxy.local:8000/cache/abc123?expires=1706303600&sig=...&download=1" \
   | jq '[.[] | select(.level == "ERROR" or .level == "FATAL")]' \
   | jq 'group_by(.message | split(":")[0]) | map({
       pattern: .[0].message | split(":")[0],
@@ -661,6 +681,6 @@ The parent agent receives ~200 tokens instead of ~40,000. It has plenty of conte
 | Access control | Multiple views | `tool_views` with different tools |
 | Audit/logging | Hooks | `hooks.pre_call`, `hooks.post_call` |
 | Custom logic | Python tools | `custom_tools` |
-| Large outputs | Output caching | `output_cache.enabled: true` |
+| Large outputs | Safe output handling | Enabled by default; tune with `output_cache` |
 
 For complete syntax and all options, see the **[Reference](reference.md)**.

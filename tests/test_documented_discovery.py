@@ -9,19 +9,27 @@ from tests.helpers import get_tool_names
 
 
 async def test_documented_meta_tools_exist_in_all_exposure_modes():
+    cache_tools = {
+        "preview_cached_output",
+        "range_cached_output",
+        "query_cached_output",
+        "retrieve_cached_output",
+    }
     expected = {
-        "direct": {"find_skills", "get_tool_instructions"},
+        "direct": {"find_skills", "get_tool_instructions", *cache_tools},
         "search": {
             "catalog_search_tools",
             "catalog_describe_tool",
             "catalog_call_tool",
             "get_tool_instructions",
+            *cache_tools,
         },
         "search_per_server": {
             "skills_search_tools",
             "skills_describe_tool",
             "skills_call_tool",
             "get_tool_instructions",
+            *cache_tools,
         },
     }
     for mode, names in expected.items():

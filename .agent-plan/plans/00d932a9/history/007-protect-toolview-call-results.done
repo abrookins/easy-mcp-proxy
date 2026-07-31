@@ -1,0 +1,18 @@
+---
+id: 007-protect-toolview-call-results
+sequence: 7
+slug: protect-toolview-call-results
+name: Protect ToolView call results
+status: complete
+order: 6
+depends_on:
+    - 003-create-central-output-protection-helper
+    - 006-extend-cached-response-metadata
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:34:12.865735Z
+updated_at: 2026-07-31T20:44:03.015675Z
+completed_at: 2026-07-31T20:44:03.015674Z
+archived_at: 2026-07-31T20:44:03.015674Z
+---
+
+Wire protect_tool_output into ToolView.call_tool after post-call hooks and before return, and remove early returns that bypass protection for custom and composite tool final outputs.

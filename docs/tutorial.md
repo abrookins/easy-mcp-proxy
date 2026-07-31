@@ -409,18 +409,25 @@ Access views via HTTP endpoints:
 - `/view/full/mcp`
 - `/view/deployment/mcp`
 
-## Step 15: Output Caching
+## Step 15: Safe Output Handling
 
-Large tool outputs (file contents, search results) consume valuable context window space. Enable output caching to store large results and return only a preview:
+Large tool outputs (file contents, search results, minified JSON, JSONL, logs)
+consume valuable context window space. Easy MCP Proxy protects proxied tool calls
+by default: after an upstream server responds, the proxy measures the result,
+caches oversized or overlong-line output, and returns only a bounded preview.
+
+Use `output_cache` when you want to tune those defaults:
 
 ```yaml
 output_cache:
-  enabled: true
-  ttl_seconds: 3600        # URLs valid for 1 hour
-  preview_chars: 500       # Show first 500 chars inline
-  min_size: 10000          # Only cache outputs > 10KB
+  enabled: true             # Set false only for explicit opt-out
+  ttl_seconds: 3600         # URLs valid for 1 hour
+  max_inline_tokens: 3000   # Default model-visible budget
+  max_line_chars: 1200      # Prevent giant single lines
+  retrieval_default_line_count: 100
+  retrieval_max_chars: 12000
 
-cache_secret: "${CACHE_SECRET}"  # HMAC signing key (set via environment variable)
+cache_secret: "${CACHE_SECRET}"  # Recommended for stable signed URLs
 cache_base_url: "https://your-proxy.example.com"  # Base URL for retrieval (HTTP mode)
 
 mcp_servers:
@@ -429,39 +436,52 @@ mcp_servers:
     args: [-y, "@modelcontextprotocol/server-filesystem", /data]
 ```
 
-When a tool returns output larger than `min_size`, the proxy returns:
+When a tool returns output larger than the inline limits, the proxy returns:
 
 ```json
 {
   "cached": true,
-  "preview": "First 500 characters of the file...",
+  "cache_id": "abc123",
   "token": "abc123",
+  "truncated": true,
+  "truncation_reasons": ["estimated_tokens", "max_line_chars"],
+  "preview": "Bounded preview...",
   "retrieve_url": "https://your-proxy.example.com/cache/abc123?expires=...",
-  "expires_at": "2025-01-13T20:00:00Z",
-  "size_bytes": 248000
+  "expires_at": "2026-07-31T20:00:00Z",
+  "size_bytes": 248000,
+  "original": {"bytes": 248000, "estimated_tokens": 62000},
+  "returned": {"bytes": 1200, "estimated_tokens": 300},
+  "navigation": {
+    "preview_tool": "preview_cached_output",
+    "range_tool": "range_cached_output",
+    "query_tool": "query_cached_output"
+  }
 }
 ```
 
 The LLM can:
 1. Use the preview if it contains enough information
-2. Call `preview_cached_output(token="abc123", line_count=200)` for a window
-3. Call `query_cached_output(token="abc123", jmespath_expression="items[].title")`
+2. Call `preview_cached_output(token="abc123", line_count=200)` for a line window
+3. Call `range_cached_output(token="abc123", char_offset=1200, char_count=4000)`
+   for minified or single-line content
+4. Call `query_cached_output(token="abc123", jmespath_expression="items[].title")`
    for JSON slices
-4. Generate code that fetches the URL directly
+5. Generate code that fetches the URL with `download=1` for full-content
+   processing outside the model context
 
-You can also configure caching per-server or per-tool:
+You can configure limits per-server or per-tool:
 
 ```yaml
 mcp_servers:
   filesystem:
     cache_outputs:
       enabled: true
-      min_size: 5000  # Lower threshold for this server
+      max_line_chars: 800
     tools:
       read_file:
         cache_output:
           enabled: true
-          preview_chars: 1000  # More preview for this tool
+          max_inline_tokens: 4000
 ```
 
 ## Next Steps

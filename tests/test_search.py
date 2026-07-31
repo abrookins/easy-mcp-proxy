@@ -6,6 +6,14 @@ from mcp_proxy.search import DEFAULT_THRESHOLD, SearchTool, ToolSearcher
 from tests.helpers import get_required_tool, get_tool_names
 
 
+def _assert_cached_tool_result(result):
+    """Assert a cached tool result and return its structured content."""
+    assert result.structured_content is not None
+    assert result.structured_content["cached"] is True
+    assert len(result.content) == 3
+    return result.structured_content
+
+
 class TestToolSearcher:
     """Tests for the ToolSearcher class."""
 
@@ -363,6 +371,49 @@ class TestSearchModeCallThrough:
         assert result == {"results": ["file1.py"]}
 
     @pytest.mark.asyncio
+    async def test_search_mode_call_tool_protects_large_output(self, tmp_path):
+        """Search-mode call_tool should protect oversized upstream output."""
+        from unittest.mock import AsyncMock, patch
+
+        from mcp_proxy.models import OutputCacheConfig, ProxyConfig
+        from mcp_proxy.proxy import MCPProxy
+
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={
+                "view": {
+                    "exposure_mode": "search",
+                    "tools": {
+                        "server": {"search_code": {"description": "Search code"}}
+                    },
+                }
+            },
+            output_cache=OutputCacheConfig(max_inline_chars=20, max_inline_tokens=100),
+        )
+        proxy = MCPProxy(config)
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"payload": "x" * 100}
+        proxy.upstream_clients = {"server": mock_client}
+        proxy.views["view"]._upstream_clients = {"server": mock_client}
+        proxy.views["view"]._cache_context = proxy._create_cache_context()
+
+        view_mcp = proxy.get_view_mcp("view")
+        call_tool = await get_required_tool(view_mcp, "view_call_tool")
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            result = await call_tool.fn(
+                tool_name="search_code",
+                arguments={"query": "test"},
+            )
+
+        structured = _assert_cached_tool_result(result)
+        assert structured["original"]["chars"] > structured["returned"]["chars"]
+
+    @pytest.mark.asyncio
     async def test_call_tool_raises_for_unknown_tool(self):
         """call_tool meta-tool should raise ValueError for unknown tools."""
         from mcp_proxy.models import ProxyConfig, ToolViewConfig, UpstreamServerConfig
@@ -569,6 +620,46 @@ class TestSearchPerServerMode:
         )
         assert result == {"reviews": []}
 
+    async def test_search_per_server_call_tool_protects_large_output(self, tmp_path):
+        """Per-server call_tool should protect oversized upstream output."""
+        from unittest.mock import AsyncMock, patch
+
+        from mcp_proxy.models import OutputCacheConfig, ProxyConfig, ToolViewConfig
+        from mcp_proxy.proxy import MCPProxy
+
+        config = ProxyConfig(
+            mcp_servers={"github": {"command": "echo"}},
+            tool_views={
+                "all": ToolViewConfig(
+                    exposure_mode="search_per_server",
+                    tools={"github": {"search_code": {}}},
+                )
+            },
+            output_cache=OutputCacheConfig(max_inline_chars=20, max_inline_tokens=100),
+        )
+        proxy = MCPProxy(config)
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"payload": "x" * 100}
+        proxy.upstream_clients = {"github": mock_client}
+        proxy.views["all"]._upstream_clients = {"github": mock_client}
+        proxy.views["all"]._cache_context = proxy._create_cache_context()
+
+        view_mcp = proxy.get_view_mcp("all")
+        github_call_tool = await get_required_tool(view_mcp, "github_call_tool")
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            result = await github_call_tool.fn(
+                tool_name="search_code",
+                arguments={"query": "test"},
+            )
+
+        structured = _assert_cached_tool_result(result)
+        assert structured["truncated"] is True
+
     async def test_search_per_server_call_tool_routes_include_all_duplicates_by_server(
         self,
     ):
@@ -671,3 +762,56 @@ class TestSearchPerServerMode:
         # Should have per-server search tools
         assert "github_search_tools" in tool_names
         assert "memory_search_tools" in tool_names
+
+    async def test_virtual_search_view_uses_cache_context(self, tmp_path):
+        """The virtual /search/mcp view should protect large output."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from fastmcp import FastMCP
+
+        from mcp_proxy.models import OutputCacheConfig, ProxyConfig
+        from mcp_proxy.proxy import MCPProxy
+
+        config = ProxyConfig(
+            mcp_servers={"server": {"command": "echo"}},
+            tool_views={},
+            output_cache=OutputCacheConfig(max_inline_chars=20, max_inline_tokens=100),
+        )
+        proxy = MCPProxy(config)
+
+        upstream_tool = MagicMock()
+        upstream_tool.name = "read_file"
+        upstream_tool.description = "Read a file"
+        upstream_tool.inputSchema = {
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+        }
+        proxy._upstream_tools = {"server": [upstream_tool]}
+
+        mock_client = AsyncMock()
+        mock_client.call_tool.return_value = {"payload": "x" * 100}
+        proxy.upstream_clients = {"server": mock_client}
+        proxy._active_clients["server"] = mock_client
+
+        search_mcp = FastMCP("search")
+        cache_context = proxy._create_cache_context()
+        proxy._initialize_search_view(search_mcp, cache_context)
+
+        assert proxy.views["_search"]._cache_context is cache_context
+
+        server_call_tool = await get_required_tool(search_mcp, "server_call_tool")
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            result = await server_call_tool.fn(
+                tool_name="read_file",
+                arguments={"path": "/tmp/large.txt"},
+            )
+
+        mock_client.call_tool.assert_called_once_with(
+            "read_file",
+            {"path": "/tmp/large.txt"},
+        )
+        _assert_cached_tool_result(result)

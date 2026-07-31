@@ -1,0 +1,19 @@
+---
+id: 019-run-final-check-and-test-suite
+sequence: 19
+slug: run-final-check-and-test-suite
+name: Run final check and test suite
+status: complete
+order: 18
+depends_on:
+    - 013-record-output-handling-observability-events
+    - 017-add-integration-tests-for-large-proxied-outputs
+    - 018-update-user-documentation-for-safe-output-defaults
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:35:19.8217Z
+updated_at: 2026-07-31T21:06:05.57957Z
+completed_at: 2026-07-31T21:06:05.57957Z
+archived_at: 2026-07-31T21:06:05.57957Z
+---
+
+Run make check and make test after implementation, fix any lint, formatting, or coverage failures, and confirm the safe output handling behavior is covered by passing tests.

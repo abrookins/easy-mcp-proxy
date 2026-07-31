@@ -1,0 +1,15 @@
+---
+id: 001-update-output-handling-configuration-defaults
+sequence: 1
+slug: update-output-handling-configuration-defaults
+name: Update output handling configuration defaults
+status: complete
+order: 0
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:33:47.748398Z
+updated_at: 2026-07-31T20:42:55.348947Z
+completed_at: 2026-07-31T20:42:55.348947Z
+archived_at: 2026-07-31T20:42:55.348947Z
+---
+
+Add safe default output handling settings under the existing output_cache configuration, keep legacy fields parsing, derive max_inline_chars from max_inline_tokens when omitted, and make the effective default enabled when no cache config is provided.

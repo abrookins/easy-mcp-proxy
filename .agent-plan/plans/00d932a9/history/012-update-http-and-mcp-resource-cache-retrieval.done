@@ -1,0 +1,18 @@
+---
+id: 012-update-http-and-mcp-resource-cache-retrieval
+sequence: 12
+slug: update-http-and-mcp-resource-cache-retrieval
+name: Update HTTP and MCP resource cache retrieval
+status: complete
+order: 11
+depends_on:
+    - 010-make-cache-retrieval-tools-bounded-by-default
+    - 011-add-range-cached-output-for-character-windows
+assignee: sess-cca12501edc4
+created_at: 2026-07-31T20:34:37.645616Z
+updated_at: 2026-07-31T20:44:59.787429Z
+completed_at: 2026-07-31T20:44:59.787429Z
+archived_at: 2026-07-31T20:44:59.787429Z
+---
+
+Change /cache/{token} and MCP resource retrieval defaults to bounded output or explicit full-download behavior, add line/character/query filters, and stop advertising full content as the default model-visible retrieval path.

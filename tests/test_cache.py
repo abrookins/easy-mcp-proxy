@@ -172,10 +172,42 @@ class TestBuildLineWindowPayload:
 class TestBuildCachedOutputPayload:
     """Tests for cached-output retrieval payloads."""
 
-    def test_returns_full_content_by_default(self):
-        """Test default payload returns full content for compatibility."""
-        assert build_cached_output_payload("full content") == {
-            "content": "full content"
+    def test_returns_bounded_content_by_default(self):
+        """Test default payload returns bounded content with metadata."""
+        result = build_cached_output_payload("full content")
+
+        assert result["content"] == "full content"
+        assert result["truncated"] is False
+        assert result["original"]["chars"] == len("full content")
+        assert result["returned"]["chars"] == len("full content")
+
+    def test_returns_full_content_when_explicitly_allowed(self):
+        """Test explicit full retrieval returns full content."""
+        assert build_cached_output_payload("full content", allow_full=True) == {
+            "content": "full content",
+            "limits": {
+                "max_inline_tokens": 3000,
+                "max_inline_chars": 12000,
+                "max_line_chars": 1200,
+                "retrieval_default_line_count": 100,
+                "retrieval_max_line_count": 500,
+                "retrieval_max_chars": 12000,
+            },
+            "original": {
+                "bytes": 12,
+                "chars": 12,
+                "estimated_tokens": 3,
+                "lines": 1,
+                "longest_line_chars": 12,
+            },
+            "returned": {
+                "bytes": 12,
+                "chars": 12,
+                "estimated_tokens": 3,
+                "lines": 1,
+                "longest_line_chars": 12,
+            },
+            "truncated": False,
         }
 
     def test_returns_line_window(self):
@@ -301,6 +333,23 @@ class TestCreateCachedOutput:
             )
             assert len(response.preview) == 103  # 100 + "..."
             assert response.preview.endswith("...")
+
+    def test_preview_can_be_supplied(self, tmp_path):
+        """Test that a pre-built preview is preserved."""
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            response = create_cached_output(
+                content="full content",
+                secret="secret",
+                base_url="http://localhost:8000",
+                ttl_seconds=3600,
+                preview_chars=1,
+                preview="bounded preview",
+            )
+
+        assert response.preview == "bounded preview"
 
 
 class TestCreateCachedOutputWithMeta:
@@ -512,7 +561,10 @@ class TestCacheRoutes:
             query = url_parts[1]
             http_response = client.get(f"/cache/{response.token}?{query}")
             assert http_response.status_code == 200
-            assert http_response.text == "http test content"
+            payload = http_response.json()
+            assert payload["content"] == "http test content"
+            assert payload["truncated"] is False
+            assert payload["original"]["chars"] == len("http test content")
 
     @pytest.mark.asyncio
     async def test_retrieve_cache_line_window(self, tmp_path):
@@ -542,7 +594,38 @@ class TestCacheRoutes:
                 f"/cache/{response.token}?{query}&line_offset=1&line_count=1"
             )
             assert http_response.status_code == 200
-            assert http_response.text == "second"
+            payload = http_response.json()
+            assert payload["content"] == "second"
+            assert payload["next_line_offset"] == 2
+            assert payload["truncated"] is True
+
+    @pytest.mark.asyncio
+    async def test_retrieve_cache_explicit_download(self, tmp_path):
+        """Test HTTP cache retrieval returns full content when requested."""
+        from starlette.testclient import TestClient
+
+        with patch("mcp_proxy.cache.CACHE_DIR", tmp_path):
+            from mcp_proxy import cache
+
+            cache.CACHE_DIR = tmp_path
+            response = create_cached_output_with_meta(
+                content="first\nsecond\nthird",
+                secret="secret",
+                base_url="http://localhost:8000",
+                ttl_seconds=3600,
+                preview_chars=100,
+            )
+
+            routes = create_cache_routes("secret")
+            from starlette.applications import Starlette
+
+            app = Starlette(routes=routes)
+            client = TestClient(app)
+
+            query = response.retrieve_url.split("?")[1]
+            http_response = client.get(f"/cache/{response.token}?{query}&download=1")
+            assert http_response.status_code == 200
+            assert http_response.text == "first\nsecond\nthird"
 
     @pytest.mark.asyncio
     async def test_retrieve_cache_jmespath_expression(self, tmp_path):
@@ -575,7 +658,9 @@ class TestCacheRoutes:
                 f"/cache/{response.token}?{signed_query}&{filter_query}"
             )
             assert http_response.status_code == 200
-            assert json.loads(http_response.text) == ["A", "B"]
+            payload = http_response.json()
+            assert json.loads(payload["content"]) == ["A", "B"]
+            assert payload["jmespath_expression"] == "items[].title"
 
     @pytest.mark.asyncio
     async def test_retrieve_cache_invalid_line_count(self, tmp_path):
