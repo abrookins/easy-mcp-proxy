@@ -15,6 +15,7 @@ from mcp_proxy.cli.commands import (
 )
 from mcp_proxy.cli.nginx import nginx
 from mcp_proxy.cli.server import server
+from mcp_proxy.cli.users import manage, users
 from mcp_proxy.cli.utils import (
     DEFAULT_CONFIG_DIR,
     DEFAULT_CONFIG_FILE,
@@ -48,6 +49,8 @@ main.add_command(instructions)
 main.add_command(server)
 main.add_command(view)
 main.add_command(nginx)
+main.add_command(users)
+main.add_command(manage)
 
 __all__ = [
     "main",

@@ -200,3 +200,14 @@ make test   # Run tests (requires 100% coverage)
 ## License
 
 AGPL-3.0 — See [LICENSE](LICENSE)
+
+## Managed user configuration
+
+`mcp-proxy serve` now uses explicitly provisioned, OAuth-owned configuration from
+`MCP_PROXY_STATE_DIR`. Import existing YAML and OAuth state before upgrading;
+there is no global configuration fallback. Live preview/apply, encrypted secret
+references, client grants, remote CLI, responsive browser administration, and
+portable MCP Apps administration are described in the
+[user-owned configuration guide](docs/user-owned-configuration.md).
+See the [acceptance record](docs/specs/remote-configuration-acceptance.md) for
+verified behavior and outstanding real-client release checks.

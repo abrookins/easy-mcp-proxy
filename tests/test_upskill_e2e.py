@@ -29,7 +29,15 @@ def upskill_binary(tmp_path_factory) -> Path:
         pytest.skip(f"Upskill checkout not found at {UPSKILL_REPO}; set UPSKILL_REPO")
     binary = tmp_path_factory.mktemp("upskill-bin") / "upskill"
     subprocess.run(
-        ["go", "build", "-o", str(binary), "./cmd/upskill"],
+        [
+            "go",
+            "build",
+            "-ldflags",
+            "-X upskill/internal/version.value=0.1.0",
+            "-o",
+            str(binary),
+            "./cmd/upskill",
+        ],
         cwd=UPSKILL_REPO,
         check=True,
         capture_output=True,

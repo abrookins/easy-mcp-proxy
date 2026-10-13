@@ -1,0 +1,19 @@
+---
+id: 020-m3-build-shared-configuration-validation-and-impact-preview
+sequence: 20
+slug: m3-build-shared-configuration-validation-and-impact-preview
+name: 'M3: Build shared configuration validation and impact preview'
+status: complete
+order: 19
+depends_on:
+    - 009-m2-implement-revisioned-per-user-configuration-store
+    - 011-m2-enforce-per-user-and-per-client-authorization
+    - 016-m2-scope-tool-discovery-and-instructions-to-the-user
+assignee: codex
+created_at: 2026-10-13T15:03:59.586449Z
+updated_at: 2026-10-13T16:41:07.60543Z
+completed_at: 2026-10-13T16:41:07.60543Z
+archived_at: 2026-10-13T16:41:07.60543Z
+---
+
+Implement management service for scoped reads and draft edits with full model/reference/grant/name/transform validation. Produce redacted diffs, tool-surface changes, affected upstreams, and supported-live versus restart-required changes. Separate pure validation from explicit connection probes so validation never imports/executes arbitrary hooks. Acceptance: malformed references, collisions, deletion semantics, secrets, and unauthorized settings covered; preview records exact base/candidate revision. Implementation/local evidence: docs/specs/remote-configuration-acceptance.md. Production and native-host verification remain separate release gates.

@@ -510,10 +510,14 @@ def serve(
     from dotenv import load_dotenv
 
     from mcp_proxy.debug import configure_file_logging
-    from mcp_proxy.proxy import MCPProxy
 
     # Load environment variables from .env file
     load_dotenv(env_file)
+
+    if config is not None:
+        raise click.UsageError(
+            "serve uses user-owned state. Import YAML with users import first."
+        )
 
     log_file = os.environ.get("MCP_PROXY_LOG_FILE")
     if log_file:
@@ -521,14 +525,23 @@ def serve(
         level = getattr(logging, level_name, logging.INFO)
         configure_file_logging(log_file, level=level)
 
-    cfg = load_config(str(get_config_path(config)))
-    proxy = MCPProxy(cfg)
+    if transport == "http":
+        import uvicorn
 
-    # Enable debug instrumentation if requested
-    if debug:
-        proxy.enable_debug()
+        from mcp_proxy.user_gateway import configured_gateway
 
-    proxy.run(transport=transport, port=port, access_log=access_log)
+        gateway = configured_gateway()
+        uvicorn.run(
+            gateway.app,
+            host=os.environ.get("MCP_PROXY_HOST", "127.0.0.1"),
+            port=port,
+            access_log=access_log,
+        )
+        return
+
+    from mcp_proxy.user_stdio import serve_owned_stdio
+
+    run_async(serve_owned_stdio())
 
 
 @click.command()

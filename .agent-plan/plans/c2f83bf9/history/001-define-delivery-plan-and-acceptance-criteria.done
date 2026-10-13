@@ -1,0 +1,14 @@
+---
+id: 001-define-delivery-plan-and-acceptance-criteria
+sequence: 1
+slug: define-delivery-plan-and-acceptance-criteria
+name: Define delivery plan and acceptance criteria
+status: complete
+order: 0
+created_at: 2026-10-13T14:57:23.767816Z
+updated_at: 2026-10-13T15:04:47.513533Z
+completed_at: 2026-10-13T15:04:47.513533Z
+archived_at: 2026-10-13T15:04:47.513533Z
+---
+
+Create the implementation brief and dependency graph, incorporating the explicit requirement that all configuration and views resolve from the current logged-in OAuth user. Validate acceptance criteria, task references, optional scope, and dashboard binding. Planning only.

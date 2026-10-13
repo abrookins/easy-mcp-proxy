@@ -1,0 +1,87 @@
+import {test,expect} from '@playwright/test';
+
+test('phone browser preview/apply, stale edit, two owners, rollback and logout',async ({page,browser})=>{
+  await page.goto('/test/login/alice');
+  await expect(page.locator('#message')).toContainText('Configuration loaded');
+  await page.locator('#view-name').fill('phone');
+  await page.locator('#add-view').click();
+  await page.locator('#preview').click();
+  await expect(page.locator('#review')).toContainText('phone');
+  await page.locator('#apply').click();
+  await expect(page.locator('#message')).toContainText('Changes applied');
+  await expect(page.locator('#views')).toContainText('phone');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({path:'test-results/phone-admin.png',fullPage:true});
+  const stale = await page.context().newPage();
+  await stale.goto('/config');
+  await expect(stale.locator('#message')).toContainText('Configuration loaded');
+  await page.locator('#view-name').fill('newer');
+  await page.locator('#add-view').click();
+  await page.locator('#preview').click();
+  await page.locator('#apply').click();
+  await expect(page.locator('#message')).toContainText('Changes applied');
+  await stale.locator('#preview').click();
+  await expect(stale.locator('#message')).toContainText('Configuration changed');
+  const other = await browser.newContext({viewport:{width:390,height:844}});
+  const bob = await other.newPage();
+  await bob.goto('http://127.0.0.1:8769/test/login/bob');
+  await expect(bob.locator('#message')).toContainText('Configuration loaded');
+  await expect(bob.locator('#config')).not.toContainText('phone');
+  await page.getByRole('button',{name:'Preview rollback'}).last().click();
+  await expect(page.locator('#apply')).toBeEnabled();
+  await page.locator('#apply').click();
+  await expect(page.locator('#message')).toContainText('Changes applied');
+  await expect(page.locator('#views')).not.toContainText('newer');
+  await page.locator('#logout').click();
+  await expect(page).not.toHaveURL(/\/config$/);
+  await other.close();
+});
+
+test('sandboxed MCP App uses standard bridge and rejects inline credentials',async ({page})=>{
+  await page.goto('/test/login/alice');
+  await page.goto('/test/host');
+  const app = page.frameLocator('#app');
+  await expect(app.locator('#message')).toContainText('Configuration loaded');
+  await expect(app.locator('#logout')).toBeHidden();
+  await expect(app.locator('#browser-link')).toBeVisible();
+  await app.locator('#view-name').fill('embedded');
+  await app.locator('#add-view').click();
+  await app.locator('#preview').click();
+  await expect(app.locator('#review')).toContainText('embedded');
+  await app.locator('#apply').click();
+  await expect(app.locator('#message')).toContainText('Changes applied');
+  const config = JSON.parse(await app.locator('#config').inputValue());
+  config.mcp_servers.private={command:'echo',env:{KEY:'do-not-send'}};
+  await app.locator('#config').fill(JSON.stringify(config));
+  await app.locator('#preview').click();
+  await expect(app.locator('#message')).toContainText('Invalid request');
+  await page.screenshot({path:'test-results/embedded-admin.png',fullPage:true});
+});
+
+test('phone view edit applies while an existing MCP call finishes',async ({page,request})=>{
+  await page.goto('/test/login/alice');
+  await expect(page.locator('#message')).toContainText('Configuration loaded');
+  await page.locator('#server-name').fill('fixture');
+  await page.locator('#server-transport').selectOption('command');
+  await page.locator('#server-target').fill('fixture');
+  await page.locator('#save-server').click();
+  await page.locator('#preview').click();
+  await expect(page.getByRole('button',{name:'Test fixture'})).toBeVisible();
+  await page.getByRole('button',{name:'Test fixture'}).click();
+  await expect(page.locator('#message')).toContainText('connected');
+  await page.locator('#apply').click();
+  await expect(page.locator('#message')).toContainText('Changes applied');
+  const pending=request.post('/mcp',{headers:{Authorization:'Bearer alice',Accept:'application/json, text/event-stream','MCP-Protocol-Version':'2025-03-26'},data:{jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'hold',arguments:{}}}});
+  await expect.poll(async()=>{
+    const response=await request.get('/config/api/status',{headers:{Authorization:'Bearer alice'}});
+    return (await response.json()).in_flight;
+  }).toBe(1);
+  await page.locator('#view-name').fill('during-call');
+  await page.locator('#add-view').click();
+  await page.locator('#preview').click();
+  await page.locator('#apply').click();
+  await expect(page.locator('#message')).toContainText('Changes applied');
+  const result=await pending;
+  expect(result.ok()).toBe(true);
+  expect(await result.text()).toContain('fixture:completed');
+});

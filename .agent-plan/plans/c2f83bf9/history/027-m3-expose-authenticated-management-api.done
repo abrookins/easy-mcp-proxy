@@ -1,0 +1,21 @@
+---
+id: 027-m3-expose-authenticated-management-api
+sequence: 27
+slug: m3-expose-authenticated-management-api
+name: 'M3: Expose authenticated management API'
+status: complete
+order: 26
+depends_on:
+    - 007-m1-repair-browser-sessions-and-oauth-callback-validation
+    - 020-m3-build-shared-configuration-validation-and-impact-preview
+    - 021-m3-add-bounded-upstream-connection-probes
+    - 023-m3-implement-transactional-live-apply-and-recovery
+    - 025-m3-add-revision-history-and-policy-aware-rollback
+assignee: codex
+created_at: 2026-10-13T15:03:59.900685Z
+updated_at: 2026-10-13T16:18:09.619413Z
+completed_at: 2026-10-13T16:18:09.619413Z
+archived_at: 2026-10-13T16:18:09.619413Z
+---
+
+Implement user-scoped config/revision reads, typed edits, preview/apply, probe, operation status and rollback HTTP endpoints over the shared service. Enforce admin grants, CSRF for cookie auth, input/body limits, structured errors, concurrency tokens and idempotency. Replace unsafe legacy write/restart semantics with explicit compatibility responses. Acceptance: API contract and auth/error/concurrency tests cover every mutation; no user selector overrides OAuth.

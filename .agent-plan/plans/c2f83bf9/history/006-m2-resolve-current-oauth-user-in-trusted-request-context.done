@@ -1,0 +1,17 @@
+---
+id: 006-m2-resolve-current-oauth-user-in-trusted-request-context
+sequence: 6
+slug: m2-resolve-current-oauth-user-in-trusted-request-context
+name: 'M2: Resolve current OAuth user in trusted request context'
+status: complete
+order: 5
+depends_on:
+    - 004-m0-specify-oauth-user-ownership-and-activation-architecture
+assignee: codex
+created_at: 2026-10-13T15:03:59.035365Z
+updated_at: 2026-10-13T16:18:08.935311Z
+completed_at: 2026-10-13T16:18:08.935311Z
+archived_at: 2026-10-13T16:18:08.935311Z
+---
+
+Implement stable identity mapping from verified issuer and subject with admission policy. Carry user and grant context through HTTP, MCP handlers, background activation jobs, and browser requests. Do not treat OAuth client_id, email, URL params, or model arguments as the user. Bind MCP sessions to the authenticated identity or reject identity changes. Acceptance: two verified users and spoofed/missing/changed identities tested; no implicit global owner. Accidentally admitted valid OAuth subjects remain unprovisioned/denied by default; never auto-map them to existing owner or copy credential-bearing defaults.

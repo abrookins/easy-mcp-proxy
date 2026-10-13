@@ -228,6 +228,14 @@ def _create_oidc_provider() -> "AuthProvider":
     else:
         required_scopes = None
 
+    persistence = {}
+    if state_dir := os.environ.get("MCP_PROXY_STATE_DIR"):
+        from pathlib import Path
+
+        from mcp_proxy.state import oauth_persistence
+
+        persistence = oauth_persistence(Path(state_dir))
+
     return OIDCProxy(
         config_url=os.environ.get(AUTH0_CONFIG_URL_VAR),
         client_id=os.environ.get(AUTH0_CLIENT_ID_VAR),
@@ -236,6 +244,7 @@ def _create_oidc_provider() -> "AuthProvider":
         base_url=os.environ.get(AUTH0_BASE_URL_VAR),
         required_scopes=required_scopes,
         enable_cimd=enable_cimd(),
+        **persistence,
     )
 
 
