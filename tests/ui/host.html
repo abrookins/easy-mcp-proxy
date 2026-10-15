@@ -1,0 +1,20 @@
+<!doctype html><html><body><iframe id="app" title="Proxy app" sandbox="allow-scripts" style="width:100%;height:1800px;border:0"></iframe>
+<script>
+const iframe=document.getElementById('app');
+window.addEventListener('message',async event=>{
+ if(event.source!==iframe.contentWindow || event.data.jsonrpc!=='2.0') return;
+ const message=event.data;
+ if(message.id===undefined) return;
+ let result;
+ if(message.method==='ui/initialize') result={protocolVersion:'2026-01-26',hostInfo:{name:'Acceptance fixture',version:'1'},hostCapabilities:{serverTools:{},openLinks:{}},hostContext:{theme:'light'}};
+ else if(message.method==='tools/call') {
+   const response=await fetch('/view/admin/mcp',{method:'POST',headers:{'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json','Accept':'application/json, text/event-stream','MCP-Protocol-Version':'2025-03-26'},body:JSON.stringify({jsonrpc:'2.0',id:message.id,method:'tools/call',params:message.params})});
+   const text=await response.text();
+   const data=JSON.parse(text.split('\n').reverse().find(line=>line.startsWith('data: ')).slice(6));
+   result=data.result || {isError:true,content:[{type:'text',text:data.error.message}]};
+ } else if(message.method==='ui/open-link') result={};
+ else {iframe.contentWindow.postMessage({jsonrpc:'2.0',id:message.id,error:{code:-32601,message:'Unsupported'}},'*');return;}
+ iframe.contentWindow.postMessage({jsonrpc:'2.0',id:message.id,result},'*');
+});
+fetch('/test/embedded').then(r=>r.text()).then(html=>iframe.srcdoc=html);
+</script></body></html>

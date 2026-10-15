@@ -1,0 +1,920 @@
+{
+  "version": 2,
+  "plan_id": "c2f83bf9",
+  "created_at": "2026-10-13T14:54:42.199429Z",
+  "updated_at": "2026-10-15T19:07:44.499078Z",
+  "next_sequence": 51,
+  "tasks": [
+    {
+      "id": "001-define-delivery-plan-and-acceptance-criteria",
+      "sequence": 1,
+      "name": "Define delivery plan and acceptance criteria",
+      "status": "complete",
+      "order": 0,
+      "created_at": "2026-10-13T14:57:23.767816Z",
+      "updated_at": "2026-10-13T15:04:47.513533Z",
+      "completed_at": "2026-10-13T15:04:47.513533Z",
+      "archived_at": "2026-10-13T15:04:47.513533Z",
+      "path": "history/001-define-delivery-plan-and-acceptance-criteria.done",
+      "description_preview": "Create the implementation brief and dependency graph, incorporating the explicit requirement that all configuration a...",
+      "record_hash": "2332e70e3f4ed02b3a7d9bc076de4c9e1616d993365891f688bbdc73a1f847bc"
+    },
+    {
+      "id": "002-m0-inventory-runtime-and-reproduce-restart-failures",
+      "sequence": 2,
+      "name": "M0: Inventory runtime and reproduce restart failures",
+      "status": "complete",
+      "order": 1,
+      "depends_on": [
+        "001-define-delivery-plan-and-acceptance-criteria"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:58.917864Z",
+      "updated_at": "2026-10-13T15:30:35.306138Z",
+      "completed_at": "2026-10-13T15:30:35.306138Z",
+      "archived_at": "2026-10-13T15:30:35.306138Z",
+      "path": "history/002-m0-inventory-runtime-and-reproduce-restart-failures.done",
+      "description_preview": "Inspect deployed version, service manager, config paths, OAuth state storage, keys, endpoint resource identifiers, br...",
+      "record_hash": "70b5cde1b4c7fd919d9d5f47ceac014081734e4ad0c7d444acc69e0d96a3b117"
+    },
+    {
+      "id": "003-m0-establish-client-and-mobile-compatibility-matrix",
+      "sequence": 3,
+      "name": "M0: Establish client and mobile compatibility matrix",
+      "status": "complete",
+      "order": 2,
+      "depends_on": [
+        "001-define-delivery-plan-and-acceptance-criteria"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:58.951944Z",
+      "updated_at": "2026-10-13T15:30:35.340033Z",
+      "completed_at": "2026-10-13T15:30:35.340033Z",
+      "archived_at": "2026-10-13T15:30:35.340033Z",
+      "path": "history/003-m0-establish-client-and-mobile-compatibility-matrix.done",
+      "description_preview": "Verify current primary docs and actual-account capabilities for private custom MCP apps, embedded UI, OAuth refresh, ...",
+      "record_hash": "e100bf0b4e296fb43e86769ba9b26d3eb5b5456b061c7325fc0040a370565ddf"
+    },
+    {
+      "id": "004-m0-specify-oauth-user-ownership-and-activation-architecture",
+      "sequence": 4,
+      "name": "M0: Specify OAuth user ownership and activation architecture",
+      "status": "complete",
+      "order": 3,
+      "depends_on": [
+        "002-m0-inventory-runtime-and-reproduce-restart-failures"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:58.977104Z",
+      "updated_at": "2026-10-13T15:31:54.364922Z",
+      "completed_at": "2026-10-13T15:31:54.364922Z",
+      "archived_at": "2026-10-13T15:31:54.364922Z",
+      "path": "history/004-m0-specify-oauth-user-ownership-and-activation-architecture.done",
+      "description_preview": "Write ADR defining verified issuer+subject -\u003e internal user, request-scoped identity, user-owned config/runtime/store...",
+      "record_hash": "5ff6d69631211a7ad6d44b00fd7ea43ea2e79e983cf599d04c34633dbfe34cc1"
+    },
+    {
+      "id": "005-m1-make-oauth-persistence-and-key-lifecycles-explicit",
+      "sequence": 5,
+      "name": "M1: Make OAuth persistence and key lifecycles explicit",
+      "status": "complete",
+      "order": 4,
+      "depends_on": [
+        "004-m0-specify-oauth-user-ownership-and-activation-architecture"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.006103Z",
+      "updated_at": "2026-10-13T15:35:10.120697Z",
+      "completed_at": "2026-10-13T15:35:10.120697Z",
+      "archived_at": "2026-10-13T15:35:10.120697Z",
+      "path": "history/005-m1-make-oauth-persistence-and-key-lifecycles-explicit.done",
+      "description_preview": "Configure durable encrypted OAuth state and stable signing/encryption material based on baseline findings, preserving...",
+      "record_hash": "75f5fc0f6df389a417df35ccfe9361f57926383997b7312d69b94495ba490053"
+    },
+    {
+      "id": "006-m2-resolve-current-oauth-user-in-trusted-request-context",
+      "sequence": 6,
+      "name": "M2: Resolve current OAuth user in trusted request context",
+      "status": "complete",
+      "order": 5,
+      "depends_on": [
+        "004-m0-specify-oauth-user-ownership-and-activation-architecture"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.035365Z",
+      "updated_at": "2026-10-13T16:18:08.935311Z",
+      "completed_at": "2026-10-13T16:18:08.935311Z",
+      "archived_at": "2026-10-13T16:18:08.935311Z",
+      "path": "history/006-m2-resolve-current-oauth-user-in-trusted-request-context.done",
+      "description_preview": "Implement stable identity mapping from verified issuer and subject with admission policy. Carry user and grant contex...",
+      "record_hash": "27c9ef7e972d928509db771db1d87ea71ba8db9247e2d6f39284143633cb8ed2"
+    },
+    {
+      "id": "007-m1-repair-browser-sessions-and-oauth-callback-validation",
+      "sequence": 7,
+      "name": "M1: Repair browser sessions and OAuth callback validation",
+      "status": "complete",
+      "order": 6,
+      "depends_on": [
+        "005-m1-make-oauth-persistence-and-key-lifecycles-explicit",
+        "006-m2-resolve-current-oauth-user-in-trusted-request-context"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.067509Z",
+      "updated_at": "2026-10-13T16:18:08.969243Z",
+      "completed_at": "2026-10-13T16:18:08.969243Z",
+      "archived_at": "2026-10-13T16:18:08.969243Z",
+      "path": "history/007-m1-repair-browser-sessions-and-oauth-callback-validation.done",
+      "description_preview": "Use dedicated durable browser signing material; fix per-call random-secret fallback. Authenticate callback identity a...",
+      "record_hash": "a677c988b4a6ce8c22e73fcbf86f41aea5e311b931fbb8513cec2a241d2e3e2f"
+    },
+    {
+      "id": "008-m1-verify-authentication-across-actual-process-restarts",
+      "sequence": 8,
+      "name": "M1: Verify authentication across actual process restarts",
+      "status": "complete",
+      "order": 7,
+      "depends_on": [
+        "005-m1-make-oauth-persistence-and-key-lifecycles-explicit",
+        "007-m1-repair-browser-sessions-and-oauth-callback-validation"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.099915Z",
+      "updated_at": "2026-10-13T16:18:09.001597Z",
+      "completed_at": "2026-10-13T16:18:09.001597Z",
+      "archived_at": "2026-10-13T16:18:09.001597Z",
+      "path": "history/008-m1-verify-authentication-across-actual-process-restarts.done",
+      "description_preview": "Add process-level integration coverage for OAuth access, refresh, browser sessions, discovery and named-view resource...",
+      "record_hash": "e7118feb339ab9737530275e98931dfb498f4c1eef1932261e5fb99f73b715a6"
+    },
+    {
+      "id": "009-m2-implement-revisioned-per-user-configuration-store",
+      "sequence": 9,
+      "name": "M2: Implement revisioned per-user configuration store",
+      "status": "complete",
+      "order": 8,
+      "depends_on": [
+        "004-m0-specify-oauth-user-ownership-and-activation-architecture"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.131907Z",
+      "updated_at": "2026-10-13T15:43:23.355791Z",
+      "completed_at": "2026-10-13T15:43:23.355791Z",
+      "archived_at": "2026-10-13T15:43:23.355791Z",
+      "path": "history/009-m2-implement-revisioned-per-user-configuration-store.done",
+      "description_preview": "Add versioned database schema and repository interfaces with required user ownership for servers, views, revisions, o...",
+      "record_hash": "714bc04c142c4b5cb80c712cb2dc8c3e1c5451ca3fcd1be0bbd1a5f4db37dfb4"
+    },
+    {
+      "id": "010-m2-add-user-scoped-secret-references-and-redaction",
+      "sequence": 10,
+      "name": "M2: Add user-scoped secret references and redaction",
+      "status": "complete",
+      "order": 9,
+      "depends_on": [
+        "009-m2-implement-revisioned-per-user-configuration-store",
+        "006-m2-resolve-current-oauth-user-in-trusted-request-context"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.166485Z",
+      "updated_at": "2026-10-13T16:18:09.038586Z",
+      "completed_at": "2026-10-13T16:18:09.038586Z",
+      "archived_at": "2026-10-13T16:18:09.038586Z",
+      "path": "history/010-m2-add-user-scoped-secret-references-and-redaction.done",
+      "description_preview": "Store or resolve secrets under owner-scoped references with an explicit encryption/key strategy; preserve external en...",
+      "record_hash": "ee92b8599d20de59d933ab1ce0340e939e03941c843b5e582743f77066f8452a"
+    },
+    {
+      "id": "011-m2-enforce-per-user-and-per-client-authorization",
+      "sequence": 11,
+      "name": "M2: Enforce per-user and per-client authorization",
+      "status": "complete",
+      "order": 10,
+      "depends_on": [
+        "006-m2-resolve-current-oauth-user-in-trusted-request-context",
+        "009-m2-implement-revisioned-per-user-configuration-store"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.200394Z",
+      "updated_at": "2026-10-13T16:18:09.075095Z",
+      "completed_at": "2026-10-13T16:18:09.075095Z",
+      "archived_at": "2026-10-13T16:18:09.075095Z",
+      "path": "history/011-m2-enforce-per-user-and-per-client-authorization.done",
+      "description_preview": "Implement separate runtime-use and administration grants; enforce view access and current revocation at discovery and...",
+      "record_hash": "c28ecf08b9d81233fcc51eafc125e84e9a1bee50dbeb3d643e8acdf9a6bae86a"
+    },
+    {
+      "id": "012-m2-prevent-host-capabilities-from-bypassing-ownership",
+      "sequence": 12,
+      "name": "M2: Prevent host capabilities from bypassing ownership",
+      "status": "complete",
+      "order": 11,
+      "depends_on": [
+        "011-m2-enforce-per-user-and-per-client-authorization",
+        "010-m2-add-user-scoped-secret-references-and-redaction"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.238652Z",
+      "updated_at": "2026-10-13T16:18:09.117567Z",
+      "completed_at": "2026-10-13T16:18:09.117567Z",
+      "archived_at": "2026-10-13T16:18:09.117567Z",
+      "path": "history/012-m2-prevent-host-capabilities-from-bypassing-ownership.done",
+      "description_preview": "Separate per-user configuration administration from installation-operator permission to create commands, Python hooks...",
+      "record_hash": "9f449a726e1141e661c63b73b873ef3da6ca31ec265902e53c104f02561d5d1f"
+    },
+    {
+      "id": "013-m2-migrate-legacy-config-to-an-explicit-oauth-user",
+      "sequence": 13,
+      "name": "M2: Migrate legacy config to an explicit OAuth user",
+      "status": "complete",
+      "order": 12,
+      "depends_on": [
+        "009-m2-implement-revisioned-per-user-configuration-store",
+        "010-m2-add-user-scoped-secret-references-and-redaction",
+        "011-m2-enforce-per-user-and-per-client-authorization"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.279519Z",
+      "updated_at": "2026-10-13T16:41:07.569566Z",
+      "completed_at": "2026-10-13T16:41:07.569566Z",
+      "archived_at": "2026-10-13T16:41:07.569566Z",
+      "path": "history/013-m2-migrate-legacy-config-to-an-explicit-oauth-user.done",
+      "description_preview": "Implement dry-run import of effective YAML plus overrides, assigning all views/upstreams to an explicit verified/prov...",
+      "record_hash": "79bb086b4a8e73562ae5c286ad96ddf22ec6abcdbc6cfa87e54f30acae214bdd"
+    },
+    {
+      "id": "014-m2-introduce-user-scoped-upstream-lifecycle-management",
+      "sequence": 14,
+      "name": "M2: Introduce user-scoped upstream lifecycle management",
+      "status": "complete",
+      "order": 13,
+      "depends_on": [
+        "006-m2-resolve-current-oauth-user-in-trusted-request-context",
+        "011-m2-enforce-per-user-and-per-client-authorization",
+        "010-m2-add-user-scoped-secret-references-and-redaction",
+        "012-m2-prevent-host-capabilities-from-bypassing-ownership"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.318723Z",
+      "updated_at": "2026-10-13T16:18:09.156271Z",
+      "completed_at": "2026-10-13T16:18:09.156271Z",
+      "archived_at": "2026-10-13T16:18:09.156271Z",
+      "path": "history/014-m2-introduce-user-scoped-upstream-lifecycle-management.done",
+      "description_preview": "Replace server-name-only client pools with owner-scoped managers and independently managed upstream lifecycles. Prese...",
+      "record_hash": "799d15d6d89772c6da014baeec38ad930f92c4876d137b60e889be1c50c7514e"
+    },
+    {
+      "id": "015-m2-route-all-mcp-views-by-authenticated-user",
+      "sequence": 15,
+      "name": "M2: Route all MCP views by authenticated user",
+      "status": "complete",
+      "order": 14,
+      "depends_on": [
+        "009-m2-implement-revisioned-per-user-configuration-store",
+        "006-m2-resolve-current-oauth-user-in-trusted-request-context",
+        "011-m2-enforce-per-user-and-per-client-authorization",
+        "014-m2-introduce-user-scoped-upstream-lifecycle-management"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.362864Z",
+      "updated_at": "2026-10-13T16:18:09.198276Z",
+      "completed_at": "2026-10-13T16:18:09.198276Z",
+      "archived_at": "2026-10-13T16:18:09.198276Z",
+      "path": "history/015-m2-route-all-mcp-views-by-authenticated-user.done",
+      "description_preview": "Refactor long-lived HTTP mounts and dispatch so /mcp, /view/\u003cname\u003e/mcp, /search/mcp and view listings select the curr...",
+      "record_hash": "3ebba5b0d6d6dc3a6b11f05d707d2a66d16578fb68d9fe6c7266082437129c37"
+    },
+    {
+      "id": "016-m2-scope-tool-discovery-and-instructions-to-the-user",
+      "sequence": 16,
+      "name": "M2: Scope tool discovery and instructions to the user",
+      "status": "complete",
+      "order": 15,
+      "depends_on": [
+        "015-m2-route-all-mcp-views-by-authenticated-user"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.406972Z",
+      "updated_at": "2026-10-13T16:18:09.2394Z",
+      "completed_at": "2026-10-13T16:18:09.2394Z",
+      "archived_at": "2026-10-13T16:18:09.2394Z",
+      "path": "history/016-m2-scope-tool-discovery-and-instructions-to-the-user.done",
+      "description_preview": "Make direct tools/list, per-view registries, search/describe/call metadata, aggregated instructions, config tool brow...",
+      "record_hash": "69ec956a645339eafc0adca8af01b74912c69e17d355593059a980a66c4abed1"
+    },
+    {
+      "id": "017-m2-enforce-identity-through-every-execution-path",
+      "sequence": 17,
+      "name": "M2: Enforce identity through every execution path",
+      "status": "complete",
+      "order": 16,
+      "depends_on": [
+        "015-m2-route-all-mcp-views-by-authenticated-user",
+        "016-m2-scope-tool-discovery-and-instructions-to-the-user"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.450619Z",
+      "updated_at": "2026-10-13T16:18:09.278496Z",
+      "completed_at": "2026-10-13T16:18:09.278495Z",
+      "archived_at": "2026-10-13T16:18:09.278495Z",
+      "path": "history/017-m2-enforce-identity-through-every-execution-path.done",
+      "description_preview": "Carry immutable user/runtime context through direct wrappers, search helpers, ToolView, custom Python tools, hooks, p...",
+      "record_hash": "4c05116bf854140bf92d4e8d19da56ee68d9d7c76e938e1d8fbc89cc4b797661"
+    },
+    {
+      "id": "018-m2-scope-cached-outputs-and-resources-by-owner",
+      "sequence": 18,
+      "name": "M2: Scope cached outputs and resources by owner",
+      "status": "complete",
+      "order": 17,
+      "depends_on": [
+        "017-m2-enforce-identity-through-every-execution-path",
+        "010-m2-add-user-scoped-secret-references-and-redaction"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.49564Z",
+      "updated_at": "2026-10-13T16:18:09.31948Z",
+      "completed_at": "2026-10-13T16:18:09.31948Z",
+      "archived_at": "2026-10-13T16:18:09.31948Z",
+      "path": "history/018-m2-scope-cached-outputs-and-resources-by-owner.done",
+      "description_preview": "Bind cached output records, lookups, MCP resource reads, HTTP retrieval URLs and any search caches to user ownership ...",
+      "record_hash": "e242f91b12980efe20b8cdb77fe2a23a7ba0a5b1e5f553db20e5d1334579615b"
+    },
+    {
+      "id": "019-m2-prove-end-to-end-oauth-user-isolation",
+      "sequence": 19,
+      "name": "M2: Prove end-to-end OAuth user isolation",
+      "status": "complete",
+      "order": 18,
+      "depends_on": [
+        "013-m2-migrate-legacy-config-to-an-explicit-oauth-user",
+        "016-m2-scope-tool-discovery-and-instructions-to-the-user",
+        "017-m2-enforce-identity-through-every-execution-path",
+        "018-m2-scope-cached-outputs-and-resources-by-owner",
+        "012-m2-prevent-host-capabilities-from-bypassing-ownership"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.539287Z",
+      "updated_at": "2026-10-13T16:18:09.360731Z",
+      "completed_at": "2026-10-13T16:18:09.360731Z",
+      "archived_at": "2026-10-13T16:18:09.360731Z",
+      "path": "history/019-m2-prove-end-to-end-oauth-user-isolation.done",
+      "description_preview": "Add integration tests using two OAuth subjects with colliding server/view/tool names and multiple clients per user. C...",
+      "record_hash": "9cb06c6fb4e4f839cf5e6293cbf4129013c6776f6361c2a7be9420b493fce47c"
+    },
+    {
+      "id": "020-m3-build-shared-configuration-validation-and-impact-preview",
+      "sequence": 20,
+      "name": "M3: Build shared configuration validation and impact preview",
+      "status": "complete",
+      "order": 19,
+      "depends_on": [
+        "009-m2-implement-revisioned-per-user-configuration-store",
+        "011-m2-enforce-per-user-and-per-client-authorization",
+        "016-m2-scope-tool-discovery-and-instructions-to-the-user"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.586449Z",
+      "updated_at": "2026-10-13T16:41:07.60543Z",
+      "completed_at": "2026-10-13T16:41:07.60543Z",
+      "archived_at": "2026-10-13T16:41:07.60543Z",
+      "path": "history/020-m3-build-shared-configuration-validation-and-impact-preview.done",
+      "description_preview": "Implement management service for scoped reads and draft edits with full model/reference/grant/name/transform validati...",
+      "record_hash": "22e71fcc4ca5cbd5d12df90c735a9ec0fb17020ca027b6a82d73c0dc2a51b4bc"
+    },
+    {
+      "id": "021-m3-add-bounded-upstream-connection-probes",
+      "sequence": 21,
+      "name": "M3: Add bounded upstream connection probes",
+      "status": "complete",
+      "order": 20,
+      "depends_on": [
+        "020-m3-build-shared-configuration-validation-and-impact-preview",
+        "014-m2-introduce-user-scoped-upstream-lifecycle-management"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.629136Z",
+      "updated_at": "2026-10-13T16:18:09.402125Z",
+      "completed_at": "2026-10-13T16:18:09.402125Z",
+      "archived_at": "2026-10-13T16:18:09.402125Z",
+      "path": "history/021-m3-add-bounded-upstream-connection-probes.done",
+      "description_preview": "Implement explicitly requested, authorized probes for proposed upstream configs. Bound time/output; redact credential...",
+      "record_hash": "7f6a924761a7e90f2bd4d17fea01467e3581e896b3082f0c6d8dc2267475c96e"
+    },
+    {
+      "id": "022-m3-implement-immutable-per-user-runtime-generations",
+      "sequence": 22,
+      "name": "M3: Implement immutable per-user runtime generations",
+      "status": "complete",
+      "order": 21,
+      "depends_on": [
+        "017-m2-enforce-identity-through-every-execution-path",
+        "018-m2-scope-cached-outputs-and-resources-by-owner",
+        "020-m3-build-shared-configuration-validation-and-impact-preview"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.670522Z",
+      "updated_at": "2026-10-13T16:18:09.445532Z",
+      "completed_at": "2026-10-13T16:18:09.445532Z",
+      "archived_at": "2026-10-13T16:18:09.445532Z",
+      "path": "history/022-m3-implement-immutable-per-user-runtime-generations.done",
+      "description_preview": "Build candidate tool registry, dispatch, transforms, instructions and resource mappings as one immutable generation. ...",
+      "record_hash": "3d110e6556ac48006742508c4ba1fd0b4bd447c81692b5deea697bf2bb01519f"
+    },
+    {
+      "id": "023-m3-implement-transactional-live-apply-and-recovery",
+      "sequence": 23,
+      "name": "M3: Implement transactional live apply and recovery",
+      "status": "complete",
+      "order": 22,
+      "depends_on": [
+        "022-m3-implement-immutable-per-user-runtime-generations",
+        "021-m3-add-bounded-upstream-connection-probes"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.71497Z",
+      "updated_at": "2026-10-13T16:18:09.489983Z",
+      "completed_at": "2026-10-13T16:18:09.489982Z",
+      "archived_at": "2026-10-13T16:18:09.489982Z",
+      "path": "history/023-m3-implement-transactional-live-apply-and-recovery.done",
+      "description_preview": "Implement operation IDs, expected-revision checks, serialized per-user activation and idempotent retries. Prepare cha...",
+      "record_hash": "357cc25d74f5ed5b432b225870b3c84fe04553fbbd271b5ba73b50dd76ae3794"
+    },
+    {
+      "id": "024-m3-drain-retired-upstreams-and-support-dynamic-views",
+      "sequence": 24,
+      "name": "M3: Drain retired upstreams and support dynamic views",
+      "status": "complete",
+      "order": 23,
+      "depends_on": [
+        "023-m3-implement-transactional-live-apply-and-recovery"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.759333Z",
+      "updated_at": "2026-10-13T16:18:09.533484Z",
+      "completed_at": "2026-10-13T16:18:09.533484Z",
+      "archived_at": "2026-10-13T16:18:09.533484Z",
+      "path": "history/024-m3-drain-retired-upstreams-and-support-dynamic-views.done",
+      "description_preview": "Keep unchanged clients alive; hold references for in-flight old-generation calls, close only retired clients after co...",
+      "record_hash": "2a5266281d790ded986a36c057bc2c1571c39ffe1e55e328895bbc2c70acb84b"
+    },
+    {
+      "id": "025-m3-add-revision-history-and-policy-aware-rollback",
+      "sequence": 25,
+      "name": "M3: Add revision history and policy-aware rollback",
+      "status": "complete",
+      "order": 24,
+      "depends_on": [
+        "023-m3-implement-transactional-live-apply-and-recovery",
+        "010-m2-add-user-scoped-secret-references-and-redaction"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.80733Z",
+      "updated_at": "2026-10-13T16:18:09.575877Z",
+      "completed_at": "2026-10-13T16:18:09.575877Z",
+      "archived_at": "2026-10-13T16:18:09.575877Z",
+      "path": "history/025-m3-add-revision-history-and-policy-aware-rollback.done",
+      "description_preview": "Expose user-scoped redacted history and rollback as a fresh revision through validation and apply. Require expected a...",
+      "record_hash": "77e818e59e8c43f1d5975155ba44f01d18d98abce94608f5840c041e6a91ef11"
+    },
+    {
+      "id": "026-m3-refresh-client-tool-discovery-without-reconnecting",
+      "sequence": 26,
+      "name": "M3: Refresh client tool discovery without reconnecting",
+      "status": "complete",
+      "order": 25,
+      "depends_on": [
+        "024-m3-drain-retired-upstreams-and-support-dynamic-views",
+        "016-m2-scope-tool-discovery-and-instructions-to-the-user",
+        "003-m0-establish-client-and-mobile-compatibility-matrix"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.853512Z",
+      "updated_at": "2026-10-13T16:41:07.638696Z",
+      "completed_at": "2026-10-13T16:41:07.638695Z",
+      "archived_at": "2026-10-13T16:41:07.638695Z",
+      "path": "history/026-m3-refresh-client-tool-discovery-without-reconnecting.done",
+      "description_preview": "Send tool-list changes only to authorized affected clients where supported by the actual SDK/protocol; preserve stabl...",
+      "record_hash": "6461033d7a6e853879e755d5ef02e322c042da5da8e80d870571105f9d293020"
+    },
+    {
+      "id": "027-m3-expose-authenticated-management-api",
+      "sequence": 27,
+      "name": "M3: Expose authenticated management API",
+      "status": "complete",
+      "order": 26,
+      "depends_on": [
+        "007-m1-repair-browser-sessions-and-oauth-callback-validation",
+        "020-m3-build-shared-configuration-validation-and-impact-preview",
+        "021-m3-add-bounded-upstream-connection-probes",
+        "023-m3-implement-transactional-live-apply-and-recovery",
+        "025-m3-add-revision-history-and-policy-aware-rollback"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.900685Z",
+      "updated_at": "2026-10-13T16:18:09.619413Z",
+      "completed_at": "2026-10-13T16:18:09.619413Z",
+      "archived_at": "2026-10-13T16:18:09.619413Z",
+      "path": "history/027-m3-expose-authenticated-management-api.done",
+      "description_preview": "Implement user-scoped config/revision reads, typed edits, preview/apply, probe, operation status and rollback HTTP en...",
+      "record_hash": "808289716991371f70ff1e9b68490f6e46c224af17b08a85afcdc18b840d63ea"
+    },
+    {
+      "id": "028-m3-add-remote-administration-cli",
+      "sequence": 28,
+      "name": "M3: Add remote administration CLI",
+      "status": "complete",
+      "order": 27,
+      "depends_on": [
+        "027-m3-expose-authenticated-management-api",
+        "013-m2-migrate-legacy-config-to-an-explicit-oauth-user"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.947916Z",
+      "updated_at": "2026-10-13T16:18:09.659776Z",
+      "completed_at": "2026-10-13T16:18:09.659776Z",
+      "archived_at": "2026-10-13T16:18:09.659776Z",
+      "path": "history/028-m3-add-remote-administration-cli.done",
+      "description_preview": "Add remote show/edit/import/export/preview/apply/status/rollback/probe operations using the management API; include O...",
+      "record_hash": "2c7bea5ee4062d517c2a4b2146de46b041837324f7cf23aaba620ad0bd0cd9f4"
+    },
+    {
+      "id": "029-m3-build-responsive-user-specific-administration-ui",
+      "sequence": 29,
+      "name": "M3: Build responsive user-specific administration UI",
+      "status": "complete",
+      "order": 28,
+      "depends_on": [
+        "027-m3-expose-authenticated-management-api",
+        "026-m3-refresh-client-tool-discovery-without-reconnecting"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:03:59.992522Z",
+      "updated_at": "2026-10-13T16:41:07.671776Z",
+      "completed_at": "2026-10-13T16:41:07.671776Z",
+      "archived_at": "2026-10-13T16:41:07.671776Z",
+      "path": "history/029-m3-build-responsive-user-specific-administration-ui.done",
+      "description_preview": "Extend /config with signed-in identity, active revision, server health/probes, view/tool editing, redacted diff, impa...",
+      "record_hash": "6b13f4b515b4b0aee7e375e748867bfcd97023778b279fc673575c99f0af2b2b"
+    },
+    {
+      "id": "030-m3-add-scoped-activation-and-recovery-diagnostics",
+      "sequence": 30,
+      "name": "M3: Add scoped activation and recovery diagnostics",
+      "status": "complete",
+      "order": 29,
+      "depends_on": [
+        "027-m3-expose-authenticated-management-api",
+        "024-m3-drain-retired-upstreams-and-support-dynamic-views"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:04:00.0378Z",
+      "updated_at": "2026-10-13T16:18:09.702797Z",
+      "completed_at": "2026-10-13T16:18:09.702796Z",
+      "archived_at": "2026-10-13T16:18:09.702796Z",
+      "path": "history/030-m3-add-scoped-activation-and-recovery-diagnostics.done",
+      "description_preview": "Record user/actor/revision/operation identifiers, activation time, desired-vs-active revision, upstream health, drain...",
+      "record_hash": "8a9de5a4c331d62d26f50289624bf2cc6ef7e7b0db4324ed6ca8e98fd4a832f0"
+    },
+    {
+      "id": "031-m4-exercise-live-update-concurrency-and-failure-recovery",
+      "sequence": 31,
+      "name": "M4: Exercise live-update concurrency and failure recovery",
+      "status": "complete",
+      "order": 30,
+      "depends_on": [
+        "024-m3-drain-retired-upstreams-and-support-dynamic-views",
+        "025-m3-add-revision-history-and-policy-aware-rollback",
+        "026-m3-refresh-client-tool-discovery-without-reconnecting",
+        "030-m3-add-scoped-activation-and-recovery-diagnostics"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:04:00.083595Z",
+      "updated_at": "2026-10-13T16:18:09.745528Z",
+      "completed_at": "2026-10-13T16:18:09.745528Z",
+      "archived_at": "2026-10-13T16:18:09.745528Z",
+      "path": "history/031-m4-exercise-live-update-concurrency-and-failure-recovery.done",
+      "description_preview": "Add deterministic integration/fault tests for long calls, simultaneous edits, partial upstream failure, failed candid...",
+      "record_hash": "99449a849f110a666150edbba20d377f8610d4b0b326a0ffcd267fce1fd13dd4"
+    },
+    {
+      "id": "032-m4-verify-phone-browser-and-real-client-workflow",
+      "sequence": 32,
+      "name": "M4: Verify phone browser and real client workflow",
+      "status": "blocked",
+      "order": 31,
+      "depends_on": [
+        "029-m3-build-responsive-user-specific-administration-ui",
+        "028-m3-add-remote-administration-cli",
+        "031-m4-exercise-live-update-concurrency-and-failure-recovery",
+        "008-m1-verify-authentication-across-actual-process-restarts",
+        "019-m2-prove-end-to-end-oauth-user-isolation",
+        "003-m0-establish-client-and-mobile-compatibility-matrix"
+      ],
+      "created_at": "2026-10-13T15:04:00.134721Z",
+      "updated_at": "2026-10-15T16:53:30.483656Z",
+      "path": "tasks/032-m4-verify-phone-browser-and-real-client-workflow.md",
+      "claim_path": "tasks/032-m4-verify-phone-browser-and-real-client-workflow.claim",
+      "description_preview": "Execute first-release scenario: edit/preview/apply a view from a phone browser during a long tool call, keep unchange...",
+      "record_hash": "7c90456887f09d8eb108f68876dad54d37e238c9a31a6d2da90af01904c7dad3"
+    },
+    {
+      "id": "033-m4-write-migration-backup-and-recovery-runbooks",
+      "sequence": 33,
+      "name": "M4: Write migration, backup and recovery runbooks",
+      "status": "complete",
+      "order": 32,
+      "depends_on": [
+        "013-m2-migrate-legacy-config-to-an-explicit-oauth-user",
+        "025-m3-add-revision-history-and-policy-aware-rollback",
+        "030-m3-add-scoped-activation-and-recovery-diagnostics",
+        "008-m1-verify-authentication-across-actual-process-restarts"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:04:00.185183Z",
+      "updated_at": "2026-10-13T16:41:07.739532Z",
+      "completed_at": "2026-10-13T16:41:07.739532Z",
+      "archived_at": "2026-10-13T16:41:07.739532Z",
+      "path": "history/033-m4-write-migration-backup-and-recovery-runbooks.done",
+      "description_preview": "Document explicit-owner provisioning, OAuth admission/grants, service bootstrap versus user config, import/export, ba...",
+      "record_hash": "f87094c107b3a5772fc965632abbcc7a624bed33e621980c4444147f4a73620e"
+    },
+    {
+      "id": "034-m4-rehearse-migration-and-release-rollback",
+      "sequence": 34,
+      "name": "M4: Rehearse migration and release rollback",
+      "status": "complete",
+      "order": 33,
+      "depends_on": [
+        "033-m4-write-migration-backup-and-recovery-runbooks",
+        "032-m4-verify-phone-browser-and-real-client-workflow"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:04:00.225676Z",
+      "updated_at": "2026-10-13T16:41:07.773842Z",
+      "completed_at": "2026-10-13T16:41:07.773842Z",
+      "archived_at": "2026-10-13T16:41:07.773842Z",
+      "path": "history/034-m4-rehearse-migration-and-release-rollback.done",
+      "description_preview": "On isolated representative data, back up existing config/auth, import to explicit owner, start new runtime, compare e...",
+      "record_hash": "d0c02f331202eff1d388a43c7b5c7dd359ffbe2d3f29201076de4b35bfbb480e"
+    },
+    {
+      "id": "035-m4-pass-core-release-quality-and-acceptance-gate",
+      "sequence": 35,
+      "name": "M4: Pass core release quality and acceptance gate",
+      "status": "blocked",
+      "order": 34,
+      "depends_on": [
+        "034-m4-rehearse-migration-and-release-rollback",
+        "031-m4-exercise-live-update-concurrency-and-failure-recovery",
+        "019-m2-prove-end-to-end-oauth-user-isolation"
+      ],
+      "created_at": "2026-10-13T15:04:00.269413Z",
+      "updated_at": "2026-10-15T16:53:30.52283Z",
+      "path": "tasks/035-m4-pass-core-release-quality-and-acceptance-gate.md",
+      "claim_path": "tasks/035-m4-pass-core-release-quality-and-acceptance-gate.claim",
+      "description_preview": "Run make check and make test with existing 100% branch-aware coverage, review endpoint/auth compatibility and all bri...",
+      "record_hash": "744b1e3f1ce11395b41c1c1a2489ae56d5b40d4b3e74d3312485f53c888507b5"
+    },
+    {
+      "id": "036-m5-expose-scoped-mcp-administration-tools",
+      "sequence": 36,
+      "name": "M5: Expose scoped MCP administration tools",
+      "status": "complete",
+      "order": 35,
+      "depends_on": [
+        "035-m4-pass-core-release-quality-and-acceptance-gate"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:04:00.310128Z",
+      "updated_at": "2026-10-13T16:41:07.848225Z",
+      "completed_at": "2026-10-13T16:41:07.848225Z",
+      "archived_at": "2026-10-13T16:41:07.848225Z",
+      "path": "history/036-m5-expose-scoped-mcp-administration-tools.done",
+      "description_preview": "Expose bounded typed read/preview/apply/status/rollback/probe operations over the existing management service. Requir...",
+      "record_hash": "c08bdbf409b65b644762a0e16dac3d5d09fe285538a0f3b234a8ed1361cb71c2"
+    },
+    {
+      "id": "037-m5-validate-private-mcp-apps-compatibility",
+      "sequence": 37,
+      "name": "M5: Validate private MCP Apps compatibility",
+      "status": "blocked",
+      "order": 36,
+      "depends_on": [
+        "035-m4-pass-core-release-quality-and-acceptance-gate",
+        "003-m0-establish-client-and-mobile-compatibility-matrix"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:04:00.354485Z",
+      "updated_at": "2026-10-15T16:53:30.55973Z",
+      "path": "tasks/037-m5-validate-private-mcp-apps-compatibility.md",
+      "claim_path": "tasks/037-m5-validate-private-mcp-apps-compatibility.claim",
+      "description_preview": "Refresh primary docs and build a minimal non-mutating UI resource against actual Claude and ChatGPT accounts. Verify ...",
+      "record_hash": "08c7794bc11a99713619dfc4518bcf44db28ab750a714aa49ba875684869c363"
+    },
+    {
+      "id": "038-m5-add-portable-embedded-administration-screens",
+      "sequence": 38,
+      "name": "M5: Add portable embedded administration screens",
+      "status": "complete",
+      "order": 37,
+      "depends_on": [
+        "036-m5-expose-scoped-mcp-administration-tools",
+        "037-m5-validate-private-mcp-apps-compatibility"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:04:00.400165Z",
+      "updated_at": "2026-10-13T16:41:07.916684Z",
+      "completed_at": "2026-10-13T16:41:07.916684Z",
+      "archived_at": "2026-10-13T16:41:07.916684Z",
+      "path": "history/038-m5-add-portable-embedded-administration-screens.done",
+      "description_preview": "Serve proxy-owned UI resources and portable host-bridge components for status, view edits and change preview/apply. R...",
+      "record_hash": "4fec45be6c87b8f59be963e034678d820c3bb081e69e041eaebf0833cada02b6"
+    },
+    {
+      "id": "039-m5-validate-embedded-ui-isolation-and-host-behavior",
+      "sequence": 39,
+      "name": "M5: Validate embedded UI isolation and host behavior",
+      "status": "blocked",
+      "order": 38,
+      "depends_on": [
+        "038-m5-add-portable-embedded-administration-screens"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:04:00.442834Z",
+      "updated_at": "2026-10-15T16:53:30.594019Z",
+      "path": "tasks/039-m5-validate-embedded-ui-isolation-and-host-behavior.md",
+      "claim_path": "tasks/039-m5-validate-embedded-ui-isolation-and-host-behavior.claim",
+      "description_preview": "Test sandbox/CSP, resource auth, app tool visibility, concurrent/stale component instances, credential redaction, una...",
+      "record_hash": "b7ea54aaeb3e461bed517936f8ebfb6884b84dd4267acf2c95b4e0872750d8cc"
+    },
+    {
+      "id": "040-m5-complete-embedded-administration-release-gate",
+      "sequence": 40,
+      "name": "M5: Complete embedded administration release gate",
+      "status": "blocked",
+      "order": 39,
+      "depends_on": [
+        "039-m5-validate-embedded-ui-isolation-and-host-behavior"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:04:00.488723Z",
+      "updated_at": "2026-10-15T16:53:30.634392Z",
+      "path": "tasks/040-m5-complete-embedded-administration-release-gate.md",
+      "claim_path": "tasks/040-m5-complete-embedded-administration-release-gate.claim",
+      "description_preview": "Update user/operator docs with installation and host capability matrix; run make check, make test and UI build/checks...",
+      "record_hash": "122056aa8d5a37013d6fe4cd5a54e115225d74ec1ae65f4e601080a0dc1a0c41"
+    },
+    {
+      "id": "041-optional-decide-upstream-mcp-apps-forwarding-scope",
+      "sequence": 41,
+      "name": "Optional: Decide upstream MCP Apps forwarding scope",
+      "status": "complete",
+      "order": 40,
+      "depends_on": [
+        "040-m5-complete-embedded-administration-release-gate"
+      ],
+      "assignee": "codex",
+      "created_at": "2026-10-13T15:04:00.53487Z",
+      "updated_at": "2026-10-13T16:41:08.021691Z",
+      "completed_at": "2026-10-13T16:41:08.021691Z",
+      "archived_at": "2026-10-13T16:41:08.021691Z",
+      "path": "history/041-optional-decide-upstream-mcp-apps-forwarding-scope.done",
+      "description_preview": "Assess whether forwarding third-party UI is needed beyond proxy-owned admin screens. Audit ToolInfo metadata, resourc...",
+      "record_hash": "62950aaa1d430246ae44750259c233822f52813fc98162eea739009ba8fc0591"
+    },
+    {
+      "id": "042-optional-forward-upstream-apps-metadata-and-resources",
+      "sequence": 42,
+      "name": "Optional: Forward upstream Apps metadata and resources",
+      "status": "cancelled",
+      "order": 41,
+      "depends_on": [
+        "041-optional-decide-upstream-mcp-apps-forwarding-scope"
+      ],
+      "created_at": "2026-10-13T15:04:00.582914Z",
+      "updated_at": "2026-10-13T16:41:08.054463Z",
+      "path": "tasks/042-optional-forward-upstream-apps-metadata-and-resources.md",
+      "claim_path": "tasks/042-optional-forward-upstream-apps-metadata-and-resources.claim",
+      "description_preview": "Execute only after proceed decision; otherwise cancel. Preserve _meta.ui and required result metadata, namespace and ...",
+      "record_hash": "2610bb8533f8464f002f81d122c5161c05722d13520bb1b9bb872e0b80012393"
+    },
+    {
+      "id": "043-optional-verify-upstream-apps-compatibility-and-isolation",
+      "sequence": 43,
+      "name": "Optional: Verify upstream Apps compatibility and isolation",
+      "status": "cancelled",
+      "order": 42,
+      "depends_on": [
+        "042-optional-forward-upstream-apps-metadata-and-resources"
+      ],
+      "created_at": "2026-10-13T15:04:00.628157Z",
+      "updated_at": "2026-10-13T16:41:08.090753Z",
+      "path": "tasks/043-optional-verify-upstream-apps-compatibility-and-isolation.md",
+      "claim_path": "tasks/043-optional-verify-upstream-apps-compatibility-and-isolation.claim",
+      "description_preview": "Execute only for selected forwarding scope. Test resource collisions, aliases, app-only tools, search helpers, struct...",
+      "record_hash": "450220a7ca2b008d60ba3f6ef3ac56cbc98c7c4f773e2d727be0d732e534418c"
+    },
+    {
+      "id": "044-align-all-documentation-with-managed-user-configuration",
+      "sequence": 44,
+      "name": "Align all documentation with managed user configuration",
+      "status": "complete",
+      "order": 43,
+      "assignee": "codex",
+      "created_at": "2026-10-15T16:22:08.121334Z",
+      "updated_at": "2026-10-15T16:32:38.753892Z",
+      "completed_at": "2026-10-15T16:32:38.753891Z",
+      "archived_at": "2026-10-15T16:32:38.753891Z",
+      "path": "history/044-align-all-documentation-with-managed-user-configuration.done",
+      "description_preview": "Updated all 21 repository Markdown documents for managed serving, explicit ownership and grants, import/live-edit bou...",
+      "record_hash": "70845111049129891bc089d92780abbe3b556a415aaef0900b0f65f5931c0bee"
+    },
+    {
+      "id": "045-migrate-and-switch-the-running-service-to-the-feature-branch",
+      "sequence": 45,
+      "name": "Migrate and switch the running service to the feature branch",
+      "status": "complete",
+      "order": 44,
+      "assignee": "codex",
+      "created_at": "2026-10-15T16:41:14.827676Z",
+      "updated_at": "2026-10-15T16:54:20.205421Z",
+      "completed_at": "2026-10-15T16:54:20.205421Z",
+      "archived_at": "2026-10-15T16:54:20.205421Z",
+      "path": "history/045-migrate-and-switch-the-running-service-to-the-feature-branch.done",
+      "description_preview": "Switched launchd from detached main deployment 73c6449 to feature checkout commit 904a61b. Verified private backups o...",
+      "record_hash": "10f86cd16a429829107df2bf9a6d065fa3e2e6c462e942bdea5953272877ce1e"
+    },
+    {
+      "id": "046-respect-per-server-tool-namespaces-during-activation",
+      "sequence": 46,
+      "name": "Respect per-server tool namespaces during activation",
+      "status": "complete",
+      "order": 45,
+      "assignee": "codex",
+      "created_at": "2026-10-15T16:45:59.630164Z",
+      "updated_at": "2026-10-15T16:48:01.566725Z",
+      "completed_at": "2026-10-15T16:48:01.566725Z",
+      "archived_at": "2026-10-15T16:48:01.566725Z",
+      "path": "history/046-respect-per-server-tool-namespaces-during-activation.done",
+      "description_preview": "Activation now validates tool-name collisions within each server namespace for search_per_server, while retaining glo...",
+      "record_hash": "d3158f1624ea702c2c2aaabd8505182f776f7a778e558cab3e784c4edf41a981"
+    },
+    {
+      "id": "047-fix-live-oauth-discovery-and-browser-login-compatibility",
+      "sequence": 47,
+      "name": "Fix live OAuth discovery and browser login compatibility",
+      "status": "complete",
+      "order": 46,
+      "created_at": "2026-10-15T18:22:34.013165Z",
+      "updated_at": "2026-10-15T18:31:03.553497Z",
+      "completed_at": "2026-10-15T18:31:03.553496Z",
+      "archived_at": "2026-10-15T18:31:03.553496Z",
+      "path": "history/047-fix-live-oauth-discovery-and-browser-login-compatibility.done",
+      "description_preview": "Fixed and deployed in dac6ff4: shared-origin OAuth metadata/audiences with strict legacy /mcp token compatibility; br...",
+      "record_hash": "b6b37087d9171336cba44f68fb227d7db8c9a8a0782a9a34d3b0bf37ca9caa71"
+    },
+    {
+      "id": "048-support-user-bound-api-keys-and-migrate-the-existing-agent-key",
+      "sequence": 48,
+      "name": "Support user-bound API keys and migrate the existing agent key",
+      "status": "complete",
+      "order": 47,
+      "created_at": "2026-10-15T18:35:21.360916Z",
+      "updated_at": "2026-10-15T18:44:48.060755Z",
+      "completed_at": "2026-10-15T18:44:48.060754Z",
+      "archived_at": "2026-10-15T18:44:48.060754Z",
+      "path": "history/048-support-user-bound-api-keys-and-migrate-the-existing-agent-key.done",
+      "description_preview": "Implemented and deployed ceeff50: SHA-256 hashed owner-bound keys with independent grants, create/import/list/revoke ...",
+      "record_hash": "24eafe3bcbdaf42ec068c05dda44c0ff612e86b2e67a6db9a5383443a483c6cc"
+    },
+    {
+      "id": "049-grant-existing-api-key-administration-and-push-the-feature-branch",
+      "sequence": 49,
+      "name": "Grant existing API key administration and push the feature branch",
+      "status": "complete",
+      "order": 48,
+      "created_at": "2026-10-15T18:52:02.316031Z",
+      "updated_at": "2026-10-15T18:53:08.789153Z",
+      "completed_at": "2026-10-15T18:53:08.789152Z",
+      "archived_at": "2026-10-15T18:53:08.789152Z",
+      "path": "history/049-grant-existing-api-key-administration-and-push-the-feature-branch.done",
+      "description_preview": "Granted the existing bound API key admin permission and admin view while preserving default/remote/coding-agent/searc...",
+      "record_hash": "773d9c2aa3364c0dee001842547e3acdfcae68a718e577ca55c7c4dd1c26aa1a"
+    },
+    {
+      "id": "050-merge-the-feature-branch-into-main-and-push-main",
+      "sequence": 50,
+      "name": "Merge the feature branch into main and push main",
+      "status": "complete",
+      "order": 49,
+      "created_at": "2026-10-15T19:07:05.56073Z",
+      "updated_at": "2026-10-15T19:07:44.499078Z",
+      "completed_at": "2026-10-15T19:07:44.499078Z",
+      "archived_at": "2026-10-15T19:07:44.499078Z",
+      "path": "history/050-merge-the-feature-branch-into-main-and-push-main.done",
+      "description_preview": "Fetched origin and confirmed main had no divergent commits. Fast-forwarded main in an isolated worktree and pushed or...",
+      "record_hash": "31540773f934a1ee2f79d8c627412521e3d98f9c71e4d525096a084f0c29bd4d"
+    }
+  ]
+}

@@ -67,8 +67,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from fastmcp.server.auth.auth import AccessToken, AuthProvider
 
-    from mcp_proxy.api_keys import ApiKeyStore, ApiKeyVerifier
-
 # Environment variable names
 AUTH_TOKENS_VAR = "MCP_PROXY_AUTH_TOKENS"
 AUTH0_CONFIG_URL_VAR = "FASTMCP_SERVER_AUTH_AUTH0_CONFIG_URL"
@@ -230,7 +228,18 @@ def _create_oidc_provider() -> "AuthProvider":
     else:
         required_scopes = None
 
-    return OIDCProxy(
+    persistence = {}
+    provider_class = OIDCProxy
+    if state_dir := os.environ.get("MCP_PROXY_STATE_DIR"):
+        from pathlib import Path
+
+        from mcp_proxy.managed_auth import ManagedOIDCProxy
+        from mcp_proxy.state import oauth_persistence
+
+        persistence = oauth_persistence(Path(state_dir))
+        provider_class = ManagedOIDCProxy
+
+    return provider_class(
         config_url=os.environ.get(AUTH0_CONFIG_URL_VAR),
         client_id=os.environ.get(AUTH0_CLIENT_ID_VAR),
         client_secret=os.environ.get(AUTH0_CLIENT_SECRET_VAR),
@@ -238,6 +247,7 @@ def _create_oidc_provider() -> "AuthProvider":
         base_url=os.environ.get(AUTH0_BASE_URL_VAR),
         required_scopes=required_scopes,
         enable_cimd=enable_cimd(),
+        **persistence,
     )
 
 
@@ -254,11 +264,9 @@ class CompositeAuthProvider:
         self,
         static_provider: "AuthProvider | None" = None,
         oidc_provider: "AuthProvider | None" = None,
-        api_key_provider: "ApiKeyVerifier | None" = None,
     ):
         self.static_provider = static_provider
         self.oidc_provider = oidc_provider
-        self.api_key_provider = api_key_provider
 
     @property
     def required_scopes(self) -> list[str]:
@@ -311,15 +319,10 @@ class CompositeAuthProvider:
         return base
 
     async def verify_token(self, token: str) -> "AccessToken | None":
-        """Verify token against static tokens, managed API keys, then OIDC."""
+        """Verify token against static tokens first, then OIDC."""
         # Try static token first (fast path)
         if self.static_provider:
             result = await self.static_provider.verify_token(token)
-            if result is not None:
-                return result
-
-        if self.api_key_provider:
-            result = await self.api_key_provider.verify_token(token)
             if result is not None:
                 return result
 
@@ -443,13 +446,10 @@ class RestrictedAuthProvider:
         return True
 
 
-def create_auth_provider(
-    api_key_store: "ApiKeyStore | None" = None,
-) -> "AuthProvider | None":
+def create_auth_provider() -> "AuthProvider | None":
     """Create an auth provider from environment variables.
 
-    Returns None if no authentication is configured. When `api_key_store` is
-    given, user-owned API keys from the store are also accepted.
+    Returns None if no authentication is configured.
 
     Supports three modes:
     1. Static tokens only (MCP_PROXY_AUTH_TOKENS)
@@ -481,15 +481,6 @@ def create_auth_provider(
             oidc_provider,
             allowed_emails=allowed_emails,
             require_email_verified=require_verified_email(),
-        )
-
-    if api_key_store is not None:
-        from mcp_proxy.api_keys import ApiKeyVerifier
-
-        return CompositeAuthProvider(
-            static_provider=static_provider,
-            oidc_provider=oidc_provider,
-            api_key_provider=ApiKeyVerifier(api_key_store),
         )
 
     if has_static and not has_oidc:

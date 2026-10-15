@@ -1,0 +1,17 @@
+---
+id: 009-m2-implement-revisioned-per-user-configuration-store
+sequence: 9
+slug: m2-implement-revisioned-per-user-configuration-store
+name: 'M2: Implement revisioned per-user configuration store'
+status: complete
+order: 8
+depends_on:
+    - 004-m0-specify-oauth-user-ownership-and-activation-architecture
+assignee: codex
+created_at: 2026-10-13T15:03:59.131907Z
+updated_at: 2026-10-13T15:43:23.355791Z
+completed_at: 2026-10-13T15:43:23.355791Z
+archived_at: 2026-10-13T15:43:23.355791Z
+---
+
+Add versioned database schema and repository interfaces with required user ownership for servers, views, revisions, operations and audit entries. Separate service bootstrap settings from user config. Implement expected-revision conflict checks, atomic transactions, explicit deletion, schema upgrades and retention. Acceptance: same names coexist for two users; reads/writes always scope by owner; missing identity never selects global config; concurrent writers and rollback tested.

@@ -8,16 +8,17 @@ An MCP proxy server that aggregates tools from multiple upstream MCP servers and
 
 ## Quick Start
 
-### 1. Install
+### 1. Install and prepare a configuration
+
+From the repository checkout:
 
 ```bash
-uv pip install -e .
+uv sync --frozen
 ```
 
-### 2. Create a config file
+Create `config.yaml` with an existing directory that the service may access:
 
 ```yaml
-# config.yaml
 mcp_servers:
   filesystem:
     command: npx
@@ -31,50 +32,66 @@ tool_views:
         list_directory: {}
 ```
 
-### 3. Run the proxy
+YAML is an import format and a local inspection input. The running service reads
+an encrypted, user-owned store. Existing deployments should follow the
+[migration guide](docs/user-owned-configuration.md#migrate-an-existing-installation)
+to preserve OAuth state before starting this version.
+
+### 2. Provision the owner and import
+
+For a new local installation, use the owner's verified OAuth issuer and subject.
+Replace the placeholders before running these commands:
 
 ```bash
-# For Claude Desktop (stdio)
-mcp-proxy serve --config config.yaml
-
-# For HTTP clients
-mcp-proxy serve --config config.yaml --transport http --port 8000
+export MCP_PROXY_STATE_DIR="$HOME/.local/state/easy-mcp-proxy"
+export MCP_PROXY_OWNER_ISSUER='https://YOUR-ISSUER/'
+export MCP_PROXY_OWNER_SUBJECT='VERIFIED-SUBJECT'
+proxy_user_id=$(uv run mcp-proxy users provision \
+  --issuer "$MCP_PROXY_OWNER_ISSUER" --subject "$MCP_PROXY_OWNER_SUBJECT" --operator)
+uv run mcp-proxy users grant "$proxy_user_id" \
+  --client mcp-proxy-local --admin --view default
+uv run mcp-proxy users import --issuer "$MCP_PROXY_OWNER_ISSUER" \
+  --subject "$MCP_PROXY_OWNER_SUBJECT" --config config.yaml
+uv run mcp-proxy users import --issuer "$MCP_PROXY_OWNER_ISSUER" \
+  --subject "$MCP_PROXY_OWNER_SUBJECT" --config config.yaml --apply
 ```
 
-### 4. Use with Claude Desktop
+The first import validates without activating. Import requires the runtime to be
+stopped. `--operator` permits this owner to configure host processes and upstream
+destinations; grant it only to a trusted host operator.
 
-**Local (stdio)** — runs the proxy as a subprocess:
+### 3. Connect a client
 
-```json
-{
-  "mcpServers": {
-    "proxy": {
-      "command": "uv",
-      "args": ["run", "mcp-proxy", "serve", "--config", "/path/to/config.yaml"]
-    }
-  }
-}
+For local stdio, run `uv run mcp-proxy serve` with the three environment variables
+above. A desktop client can launch it using the
+[stdio configuration example](docs/tutorial.md#option-a-stdio-for-a-local-client).
+Only one runtime can use a state directory at a time.
+
+For a remote service, complete the [OAuth and grant setup](docs/user-owned-configuration.md#bootstrap-and-grants), then start:
+
+```bash
+uv run mcp-proxy serve --transport http --port 8000
 ```
 
-**Remote (HTTP)** — connect to a proxy running on a server:
+Connect an OAuth-capable MCP client to `https://YOUR-PROXY/mcp` or a granted
+`/view/NAME/mcp` endpoint. Open `https://YOUR-PROXY/config` for browser administration.
+Agents can also use [user-bound API keys](docs/user-owned-configuration.md#user-bound-api-keys)
+with explicit view grants and no browser sign-in.
+The [acceptance record](docs/specs/remote-configuration-acceptance.md) distinguishes
+local verification from pending Claude/ChatGPT and physical-device checks.
 
-```json
-{
-  "mcpServers": {
-    "proxy": {
-      "type": "http",
-      "url": "https://your-proxy-server.example.com/mcp",
-      "headers": {
-        "Authorization": "Bearer your-auth-token"
-      }
-    }
-  }
-}
-```
+### 4. Change configuration while running
 
-This requires [authentication](docs/reference.md#authentication) to be configured on the proxy. See `mcp-proxy serve --help` for auth options.
+Use the browser editor or `mcp-proxy manage` to preview, probe, and apply changes.
+Unchanged upstream connections are reused; replaced connections drain existing
+calls for up to 10 seconds. Clients may need to refresh their tool list.
+Editing the original YAML has no effect until an offline import; passing
+`--config` to `serve` is rejected.
 
 ## Example Use Cases
+
+The YAML below describes configuration fields. Import it for an explicit owner,
+or edit the equivalent JSON in the browser and preview/apply it.
 
 ### Reduce Tool Count with Search Mode
 
@@ -154,16 +171,15 @@ output_cache:
   retrieval_default_line_count: 100
   retrieval_max_line_count: 500
   retrieval_max_chars: 12000
-
-cache_secret: "${CACHE_SECRET}"
-cache_base_url: "https://your-proxy.example.com"
 ```
 
 The LLM gets a preview plus a retrieval token. It can request line windows with
 `preview_cached_output`, character windows with `range_cached_output`, or JSON
-slices with `query_cached_output`. `retrieve_cached_output` and `/cache/{token}`
+slices with `query_cached_output`. `retrieve_cached_output` and `/view/{view}/cache/{token}`
 return bounded content by default; append `download=1` or `full=1` to the signed
 HTTP URL for explicit full-content processing outside the model context.
+HTTP retrieval also requires OAuth, a bound API key, or a browser session for the same owner and
+view. The service manages cache keys and URLs.
 This enables **Recursive Language Model (RLM)** patterns where agents pass file
 references instead of file contents, dramatically reducing context usage while
 maintaining full access to the data.
@@ -187,12 +203,12 @@ See the **[Use Cases Guide](docs/use-cases.md)** for detailed examples of each c
 - **[Tutorial](docs/tutorial.md)** — Step-by-step getting started guide
 - **[Use Cases](docs/use-cases.md)** — Problem-driven feature exploration
 - **[Reference](docs/reference.md)** — Complete feature and CLI documentation
-- **[Tool discovery](docs/tool-discovery.md)** — Schemas, safe calls, CLI, web registry, and rollout
+- **[Tool discovery](docs/tool-discovery.md)** — Schemas, safe calls, local/live inspection, and rollout
 
 ## Development
 
 ```bash
-uv pip install -e ".[dev]"
+uv sync --frozen
 make check  # Lint
 make test   # Run tests (requires 100% coverage)
 ```
@@ -200,3 +216,14 @@ make test   # Run tests (requires 100% coverage)
 ## License
 
 AGPL-3.0 — See [LICENSE](LICENSE)
+
+## Administration and migration
+
+`mcp-proxy serve` now uses explicitly provisioned, OAuth-owned configuration from
+`MCP_PROXY_STATE_DIR`. Import existing YAML and OAuth state before upgrading;
+there is no global configuration fallback. Live preview/apply, encrypted secret
+references, client grants, remote CLI, responsive browser administration, and
+portable MCP Apps administration are described in the
+[user-owned configuration guide](docs/user-owned-configuration.md).
+See the [acceptance record](docs/specs/remote-configuration-acceptance.md) for
+verified behavior and outstanding real-client release checks.

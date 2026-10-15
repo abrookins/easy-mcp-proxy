@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.12'",
@@ -489,12 +489,14 @@ version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
+    { name = "cryptography" },
     { name = "faiss-cpu" },
     { name = "fastmcp" },
     { name = "httpx" },
     { name = "jmespath" },
     { name = "jsonschema" },
     { name = "numpy" },
+    { name = "py-key-value-aio" },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "python-ulid" },
@@ -515,13 +517,15 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.0.0" },
+    { name = "cryptography", specifier = ">=46" },
     { name = "faiss-cpu", specifier = ">=1.7.0" },
     { name = "fastmcp", specifier = ">=3.4.3,<4" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jmespath", specifier = ">=1.0.1" },
     { name = "jsonschema", specifier = ">=4.25" },
     { name = "numpy", specifier = ">=1.24.0" },
-    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "py-key-value-aio", specifier = ">=0.4.4,<0.5" },
+    { name = "pydantic", specifier = ">=2.12.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "python-ulid", specifier = ">=3.1.0" },
     { name = "pyyaml", specifier = ">=6.0" },

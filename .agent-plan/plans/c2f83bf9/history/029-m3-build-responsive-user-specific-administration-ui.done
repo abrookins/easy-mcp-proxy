@@ -1,0 +1,18 @@
+---
+id: 029-m3-build-responsive-user-specific-administration-ui
+sequence: 29
+slug: m3-build-responsive-user-specific-administration-ui
+name: 'M3: Build responsive user-specific administration UI'
+status: complete
+order: 28
+depends_on:
+    - 027-m3-expose-authenticated-management-api
+    - 026-m3-refresh-client-tool-discovery-without-reconnecting
+assignee: codex
+created_at: 2026-10-13T15:03:59.992522Z
+updated_at: 2026-10-13T16:41:07.671776Z
+completed_at: 2026-10-13T16:41:07.671776Z
+archived_at: 2026-10-13T16:41:07.671776Z
+---
+
+Extend /config with signed-in identity, active revision, server health/probes, view/tool editing, redacted diff, impact preview, Apply progress/status and rollback. Use shared service and selected-user context from OAuth only. Retain safe secret values on redacted edit; sensitive entry write-only. Acceptance: phone-width, touch/keyboard/accessibility, stale edits, expired auth, validation/probe failures and operation retry flows verified; no restart needed for supported edits. Implementation/local evidence: docs/specs/remote-configuration-acceptance.md. Production and native-host verification remain separate release gates.

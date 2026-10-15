@@ -1,0 +1,17 @@
+---
+id: 003-m0-establish-client-and-mobile-compatibility-matrix
+sequence: 3
+slug: m0-establish-client-and-mobile-compatibility-matrix
+name: 'M0: Establish client and mobile compatibility matrix'
+status: complete
+order: 2
+depends_on:
+    - 001-define-delivery-plan-and-acceptance-criteria
+assignee: codex
+created_at: 2026-10-13T15:03:58.951944Z
+updated_at: 2026-10-13T15:30:35.340033Z
+completed_at: 2026-10-13T15:30:35.340033Z
+archived_at: 2026-10-13T15:30:35.340033Z
+---
+
+Verify current primary docs and actual-account capabilities for private custom MCP apps, embedded UI, OAuth refresh, tool-list notifications, Claude/ChatGPT web and desktop, and iOS/Android. Distinguish native mobile from mobile browser. Acceptance: dated matrix with versions/plans, evidence, available test devices, and supported/unavailable/unverified results; responsive browser remains baseline.

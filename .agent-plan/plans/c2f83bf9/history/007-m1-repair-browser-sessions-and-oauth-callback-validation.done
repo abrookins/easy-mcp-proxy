@@ -1,0 +1,18 @@
+---
+id: 007-m1-repair-browser-sessions-and-oauth-callback-validation
+sequence: 7
+slug: m1-repair-browser-sessions-and-oauth-callback-validation
+name: 'M1: Repair browser sessions and OAuth callback validation'
+status: complete
+order: 6
+depends_on:
+    - 005-m1-make-oauth-persistence-and-key-lifecycles-explicit
+    - 006-m2-resolve-current-oauth-user-in-trusted-request-context
+assignee: codex
+created_at: 2026-10-13T15:03:59.067509Z
+updated_at: 2026-10-13T16:18:08.969243Z
+completed_at: 2026-10-13T16:18:08.969243Z
+archived_at: 2026-10-13T16:18:08.969243Z
+---
+
+Use dedicated durable browser signing material; fix per-call random-secret fallback. Authenticate callback identity and enforce admission policy; validate OAuth state, expiry, redirect targets and relevant PKCE behavior. Secure cookie settings, logout/revocation policy, CSRF/origin checks, and no mutating GET. Acceptance: session restart survival, rejected callbacks/CSRF, expiry, logout, and both secret configuration paths tested; browser identity matches API user.

@@ -319,7 +319,3 @@ tool_views:
       skills-server:
         search_skills: {}
         get_skill: {}
-
-# Emails of signed-in users who may change configuration in the web UI
-admins:
-  - you@example.com

@@ -1,0 +1,17 @@
+---
+id: 002-m0-inventory-runtime-and-reproduce-restart-failures
+sequence: 2
+slug: m0-inventory-runtime-and-reproduce-restart-failures
+name: 'M0: Inventory runtime and reproduce restart failures'
+status: complete
+order: 1
+depends_on:
+    - 001-define-delivery-plan-and-acceptance-criteria
+assignee: codex
+created_at: 2026-10-13T15:03:58.917864Z
+updated_at: 2026-10-13T15:30:35.306138Z
+completed_at: 2026-10-13T15:30:35.306138Z
+archived_at: 2026-10-13T15:30:35.306138Z
+---
+
+Inspect deployed version, service manager, config paths, OAuth state storage, keys, endpoint resource identifiers, browser session behavior, and upstream lifecycle. Reconcile security plan 1ff53bcd without changing it. Reproduce transport loss versus access/refresh rejection using redacted evidence; inventory custom tools, hooks, compositions, cache routes, and stdio usage. Acceptance: baseline report and restart reproduction identify verified facts and unresolved causes; no secret values or live mutations.

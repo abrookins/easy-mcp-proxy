@@ -1,0 +1,20 @@
+---
+id: 014-m2-introduce-user-scoped-upstream-lifecycle-management
+sequence: 14
+slug: m2-introduce-user-scoped-upstream-lifecycle-management
+name: 'M2: Introduce user-scoped upstream lifecycle management'
+status: complete
+order: 13
+depends_on:
+    - 006-m2-resolve-current-oauth-user-in-trusted-request-context
+    - 011-m2-enforce-per-user-and-per-client-authorization
+    - 010-m2-add-user-scoped-secret-references-and-redaction
+    - 012-m2-prevent-host-capabilities-from-bypassing-ownership
+assignee: codex
+created_at: 2026-10-13T15:03:59.318723Z
+updated_at: 2026-10-13T16:18:09.156271Z
+completed_at: 2026-10-13T16:18:09.156271Z
+archived_at: 2026-10-13T16:18:09.156271Z
+---
+
+Replace server-name-only client pools with owner-scoped managers and independently managed upstream lifecycles. Preserve unchanged clients, bound connection startup, and handle subprocess context-manager ownership, cancellation, and cleanup. Never reuse credentials or sessions across users. Acceptance: same upstream names under two users use separate credentials/connections; partial startup, disconnect and cancellation tests pass without leaked tasks/processes.

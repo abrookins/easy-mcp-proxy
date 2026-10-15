@@ -7,6 +7,18 @@ processing large tool outputs:
 1. **Direct approach**: The LLM receives the full log data in its context
 2. **RLM approach**: The LLM receives a cached reference, delegates to a sub-agent
 
+## Scope of this demo
+
+This experiment simulates cached responses and starts a separate demo HTTP file
+server. It does not use the managed gateway's OAuth, user store, or cache access
+checks, and it is not a production deployment example. Keep it in an isolated
+local environment with synthetic data.
+
+In the managed service, a signed cache URL also requires OAuth or a browser
+session authorized for the same owner and view. A worker needs its own authorized
+retrieval path; passing the URL alone is insufficient. See the
+[administration guide](../../docs/user-owned-configuration.md).
+
 ## Prerequisites
 
 - Python 3.11+

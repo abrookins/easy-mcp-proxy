@@ -1048,39 +1048,3 @@ class TestIsOidcAuthConfigured:
             clear=True,
         ):
             assert is_oidc_auth_configured() is True
-
-
-class TestManagedApiKeys:
-    """Tests for accepting UI-managed API keys."""
-
-    @pytest.mark.asyncio
-    async def test_composite_checks_api_keys_after_static(self):
-        from mcp_proxy.auth import CompositeAuthProvider
-
-        static = MagicMock(verify_token=AsyncMock(return_value=None))
-        keys = MagicMock(verify_token=AsyncMock(return_value="key-result"))
-        oidc = MagicMock(verify_token=AsyncMock(return_value="oidc-result"))
-        composite = CompositeAuthProvider(
-            static_provider=static, oidc_provider=oidc, api_key_provider=keys
-        )
-
-        assert await composite.verify_token("t") == "key-result"
-        oidc.verify_token.assert_not_called()
-
-        keys.verify_token = AsyncMock(return_value=None)
-        assert await composite.verify_token("t") == "oidc-result"
-
-    def test_create_auth_provider_includes_api_key_store(self, tmp_path):
-        from mcp_proxy.api_keys import ApiKeyStore, ApiKeyVerifier
-        from mcp_proxy.auth import CompositeAuthProvider, create_auth_provider
-
-        store = ApiKeyStore(tmp_path / "keys.json")
-        with patch.dict(os.environ, {"MCP_PROXY_AUTH_TOKENS": "t"}, clear=True):
-            provider = create_auth_provider(api_key_store=store)
-        assert isinstance(provider, CompositeAuthProvider)
-        assert isinstance(provider.api_key_provider, ApiKeyVerifier)
-        assert provider.api_key_provider.store is store
-        assert provider.oidc_provider is None
-
-        with patch.dict(os.environ, {}, clear=True):
-            assert create_auth_provider(api_key_store=store) is None

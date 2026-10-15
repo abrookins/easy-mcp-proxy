@@ -1,0 +1,15 @@
+{
+  "name": "easy-mcp-proxy-admin-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:ui": "node scripts/build-admin-ui.mjs",
+    "test:ui": "playwright test",
+    "check:ui": "node --check mcp_proxy/admin_ui/app.js"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/ext-apps": "2.0.3",
+    "@playwright/test": "1.64.0",
+    "esbuild": "0.28.2"
+  }
+}

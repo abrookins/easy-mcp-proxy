@@ -1,121 +1,135 @@
-"""User-owned API keys managed through the web UI.
-
-Keys are stored as SHA-256 hashes in a JSON file next to the config file.
-Each key belongs to the email of the user who created it, and authenticates
-as that user when presented as a Bearer token.
-"""
-
-from __future__ import annotations
+"""Local operator-issued API keys bound to an owner and independent grants."""
 
 import hashlib
-import hmac
 import json
 import secrets
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+import time
+import uuid
 
-if TYPE_CHECKING:
-    from fastmcp.server.auth.auth import AccessToken
+from fastmcp.server.auth import AccessToken
 
-API_KEY_PREFIX = "mcpp_"
-PUBLIC_FIELDS = ("id", "name", "owner", "prefix", "created_at")
+from mcp_proxy.auth import CompositeAuthProvider
+from mcp_proxy.identity import AccessDenied, Identity
 
 
-def get_api_keys_path(config_path: Path) -> Path:
-    """Get the path for the API key store (JSON next to YAML)."""
-    return config_path.with_suffix(".api_keys.json")
-
-
-def _hash_key(key: str) -> str:
-    return hashlib.sha256(key.encode()).hexdigest()
-
-
-def _public(record: dict[str, Any]) -> dict[str, Any]:
-    return {field: record.get(field) for field in PUBLIC_FIELDS}
-
-
-class ApiKeyStore:
-    """File-backed store of hashed, user-owned API keys."""
-
-    def __init__(self, path: Path):
-        self.path = path
-
-    def _load(self) -> list[dict[str, Any]]:
-        if not self.path.exists():
-            return []
-        with open(self.path) as f:
-            return json.load(f).get("keys", [])
-
-    def _save(self, records: list[dict[str, Any]]) -> None:
-        with open(self.path, "w") as f:
-            json.dump({"keys": records}, f, indent=2)
-        self.path.chmod(0o600)
-
-    def list_for(self, owner: str) -> list[dict[str, Any]]:
-        """List public metadata for keys owned by `owner`."""
-        owner = owner.casefold()
-        return [_public(r) for r in self._load() if r["owner"] == owner]
-
-    def create(self, owner: str, name: str) -> tuple[dict[str, Any], str]:
-        """Create a key for `owner`. Returns (metadata, plaintext key)."""
-        key = API_KEY_PREFIX + secrets.token_urlsafe(32)
-        record = {
-            "id": secrets.token_hex(8),
-            "name": name,
-            "owner": owner.casefold(),
-            "prefix": key[: len(API_KEY_PREFIX) + 6],
-            "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "hash": _hash_key(key),
-        }
-        records = self._load()
-        records.append(record)
-        self._save(records)
-        return _public(record), key
-
-    def revoke(self, owner: str, key_id: str) -> bool:
-        """Delete a key owned by `owner`. Returns False if not found."""
-        owner = owner.casefold()
-        records = self._load()
-        remaining = [
-            r for r in records if not (r["id"] == key_id and r["owner"] == owner)
-        ]
-        if len(remaining) == len(records):
-            return False
-        self._save(remaining)
-        return True
-
-    def lookup(self, key: str) -> dict[str, Any] | None:
-        """Return metadata for a plaintext key, or None if unknown."""
-        if not key.startswith(API_KEY_PREFIX):
-            return None
-        digest = _hash_key(key)
-        for record in self._load():
-            if hmac.compare_digest(record["hash"], digest):
-                return _public(record)
-        return None
-
-
-class ApiKeyVerifier:
-    """Token verifier that authenticates managed API keys as their owner."""
-
-    def __init__(self, store: ApiKeyStore):
+class APIKeys:
+    def __init__(self, store):
         self.store = store
 
-    async def verify_token(self, token: str) -> "AccessToken | None":
-        from fastmcp.server.auth.auth import AccessToken
+    def create(
+        self,
+        user_id,
+        name,
+        *,
+        token=None,
+        views=("default",),
+        admin=False,
+        expires_in=None,
+    ):
+        """Generate or explicitly import a key; retain only its SHA-256 digest.
 
-        record = self.store.lookup(token)
-        if record is None:
+        Generated keys contain 256 random bits. Imports must be existing strong
+        random credentials, never passwords. A digest cannot be rebound to a
+        different owner, even after revocation.
+        """
+        if token is None:
+            token = "mcp_key_" + secrets.token_urlsafe(32)
+        if not (32 <= len(token) <= 4096) or any(c.isspace() for c in token):
+            raise ValueError("Key must be 32–4096 characters without whitespace")
+        if (
+            not name.strip()
+            or not views
+            or not all(isinstance(v, str) and v for v in views)
+        ):
+            raise ValueError("Name and explicit views required")
+        if expires_in is not None and expires_in <= 0:
+            raise ValueError("Expiry must be in the future")
+        key_id = uuid.uuid4().hex
+        client = "api-key:" + key_id
+        now = time.time()
+        expires = None if expires_in is None else now + expires_in
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        with self.store.transaction():
+            if not self.store.db.execute(
+                "SELECT id FROM users WHERE id=? AND enabled=1", (user_id,)
+            ).fetchone():
+                raise ValueError("Enabled, provisioned owner required")
+            if self.store.db.execute(
+                "SELECT id FROM api_keys WHERE digest=?", (digest,)
+            ).fetchone():
+                raise ValueError("Key already bound; generate a new key")
+            self.store.db.execute(
+                "INSERT INTO api_keys VALUES(?,?,?,?,?,?,?,0)",
+                (key_id, user_id, client, name, digest, now, expires),
+            )
+            self.store.db.execute(
+                "INSERT INTO grants VALUES(?,?,?,?)",
+                (user_id, client, admin, json.dumps(list(views))),
+            )
+        return {"id": key_id, "client_id": client, "token": token, "expires": expires}
+
+    def identity(self, token):
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        with self.store._lock:
+            row = self.store.db.execute(
+                "SELECT k.*,u.issuer,u.subject,u.enabled FROM api_keys k "
+                "JOIN users u ON u.id=k.user_id WHERE digest=?",
+                (digest,),
+            ).fetchone()
+        if row is None:
             return None
-        return AccessToken(
-            token=token,
-            client_id=f"api-key:{record['id']}",
-            scopes=[],
-            claims={
-                "sub": record["owner"],
-                "email": record["owner"],
-                "email_verified": True,
-                "api_key_id": record["id"],
-            },
-        )
+        if (
+            row["revoked"]
+            or not row["enabled"]
+            or (row["expires"] is not None and row["expires"] <= time.time())
+        ):
+            raise AccessDenied("API key expired or revoked")
+        return Identity(row["issuer"], row["subject"], row["client"])
+
+    def list(self, user_id):
+        with self.store._lock:
+            rows = self.store.db.execute(
+                "SELECT k.id,k.client,k.name,k.created,k.expires,k.revoked,"
+                "g.admin,g.views FROM api_keys k LEFT JOIN grants g "
+                "ON g.user_id=k.user_id AND g.client=k.client WHERE k.user_id=? "
+                "ORDER BY k.created",
+                (user_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def revoke(self, user_id, key_id):
+        with self.store.transaction():
+            row = self.store.db.execute(
+                "SELECT client FROM api_keys WHERE user_id=? AND id=?",
+                (user_id, key_id),
+            ).fetchone()
+            if row is None:
+                raise ValueError("Key not found for this owner")
+            self.store.db.execute("UPDATE api_keys SET revoked=1 WHERE id=?", (key_id,))
+            for table in ("grants", "sessions"):
+                self.store.db.execute(
+                    f"DELETE FROM {table} WHERE user_id=? AND client=?",
+                    (user_id, row["client"]),
+                )
+
+
+class KeyAuthProvider(CompositeAuthProvider):
+    """Recognize bound keys inside FastMCP's bearer middleware as well."""
+
+    def __init__(self, provider, keys):
+        super().__init__(oidc_provider=provider)
+        self.keys = keys
+
+    async def verify_token(self, token):
+        try:
+            identity = self.keys.identity(token)
+        except AccessDenied:
+            return None
+        if identity is not None:
+            return AccessToken(
+                token=token,
+                client_id=identity.client_id,
+                scopes=[],
+                claims={"iss": identity.issuer, "sub": identity.subject},
+            )
+        return await self.oidc_provider.verify_token(token)

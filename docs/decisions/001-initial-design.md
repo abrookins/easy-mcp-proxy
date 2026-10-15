@@ -1,5 +1,10 @@
 # MCP Tool View Proxy Design
 
+> Historical design record. Managed serving, ownership, authentication, and cache
+> access now follow [ADR-010](010-user-owned-configuration.md) and the
+> [administration guide](../user-owned-configuration.md). Examples below describe
+> the implementation at the time of this decision, not current setup instructions.
+
 ## Overview
 
 This document describes the design for an MCP proxy server built with FastMCP 2 that provides **tool views** - named configurations that expose filtered subsets of tools from upstream MCP servers with optional transformations and hooks.

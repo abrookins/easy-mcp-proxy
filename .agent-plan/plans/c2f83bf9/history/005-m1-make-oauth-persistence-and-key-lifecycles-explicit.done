@@ -1,0 +1,17 @@
+---
+id: 005-m1-make-oauth-persistence-and-key-lifecycles-explicit
+sequence: 5
+slug: m1-make-oauth-persistence-and-key-lifecycles-explicit
+name: 'M1: Make OAuth persistence and key lifecycles explicit'
+status: complete
+order: 4
+depends_on:
+    - 004-m0-specify-oauth-user-ownership-and-activation-architecture
+assignee: codex
+created_at: 2026-10-13T15:03:59.006103Z
+updated_at: 2026-10-13T15:35:10.120697Z
+completed_at: 2026-10-13T15:35:10.120697Z
+archived_at: 2026-10-13T15:35:10.120697Z
+---
+
+Configure durable encrypted OAuth state and stable signing/encryption material based on baseline findings, preserving root discovery/DCR and view resource compatibility. Specify storage permissions, backup, key rotation, and restart behavior. Do not assume local FastMCP defaults match deployment or replace encryption with plaintext storage. Acceptance: access and refresh survive new process construction with persistent state; corrupt/missing state and rotation errors are controlled; focused regression tests.

@@ -1,0 +1,15 @@
+---
+id: 045-migrate-and-switch-the-running-service-to-the-feature-branch
+sequence: 45
+slug: migrate-and-switch-the-running-service-to-the-feature-branch
+name: Migrate and switch the running service to the feature branch
+status: complete
+order: 44
+assignee: codex
+created_at: 2026-10-15T16:41:14.827676Z
+updated_at: 2026-10-15T16:54:20.205421Z
+completed_at: 2026-10-15T16:54:20.205421Z
+archived_at: 2026-10-15T16:54:20.205421Z
+---
+
+Switched launchd from detached main deployment 73c6449 to feature checkout commit 904a61b. Verified private backups of plist/env/YAML/overrides and 135 OAuth files; imported signing key/state and effective config for verified owner; granted four current Claude clients. All 8 upstreams initialized; prior tools retained plus range_cached_output. Public and loopback health/discovery/identity passed; same pre-switch Auth0-backed probe credential survived migration and a second restart. Static bearer correctly rejected. Codex config was not edited: user must remove static header, OAuth login, obtain explicit coding-agent client grant, and reconnect. Production refresh exchange remains unverified because existing sessions lack refresh tokens. Details in acceptance deployment section; private rollback material in ~/.local/state/easy-mcp-proxy-migration-20261015.

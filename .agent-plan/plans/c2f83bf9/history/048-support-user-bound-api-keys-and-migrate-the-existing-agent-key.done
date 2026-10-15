@@ -1,0 +1,14 @@
+---
+id: 048-support-user-bound-api-keys-and-migrate-the-existing-agent-key
+sequence: 48
+slug: support-user-bound-api-keys-and-migrate-the-existing-agent-key
+name: Support user-bound API keys and migrate the existing agent key
+status: complete
+order: 47
+created_at: 2026-10-15T18:35:21.360916Z
+updated_at: 2026-10-15T18:44:48.060755Z
+completed_at: 2026-10-15T18:44:48.060754Z
+archived_at: 2026-10-15T18:44:48.060754Z
+---
+
+Implemented and deployed ceeff50: SHA-256 hashed owner-bound keys with independent grants, create/import/list/revoke CLI, optional expiry and persistent revocation. Explicitly bound the existing Codex/agent key to the verified owner for default/remote/coding-agent/search, no admin, no automatic expiry; secret and agent configs unchanged. Private SQLite backup taken. Public/loopback identity and permissions passed; remote 20 and coding-agent 29 tools; live temporary-key revocation passed; same existing key survived a second restart. make check and 1325 tests pass with 100% coverage. Updated docs and verified 111 links plus bootstrap examples. External real-host/device gates remain pending.

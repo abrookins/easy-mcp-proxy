@@ -1,0 +1,20 @@
+---
+id: 031-m4-exercise-live-update-concurrency-and-failure-recovery
+sequence: 31
+slug: m4-exercise-live-update-concurrency-and-failure-recovery
+name: 'M4: Exercise live-update concurrency and failure recovery'
+status: complete
+order: 30
+depends_on:
+    - 024-m3-drain-retired-upstreams-and-support-dynamic-views
+    - 025-m3-add-revision-history-and-policy-aware-rollback
+    - 026-m3-refresh-client-tool-discovery-without-reconnecting
+    - 030-m3-add-scoped-activation-and-recovery-diagnostics
+assignee: codex
+created_at: 2026-10-13T15:04:00.083595Z
+updated_at: 2026-10-13T16:18:09.745528Z
+completed_at: 2026-10-13T16:18:09.745528Z
+archived_at: 2026-10-13T16:18:09.745528Z
+---
+
+Add deterministic integration/fault tests for long calls, simultaneous edits, partial upstream failure, failed candidate cleanup, cancellation, crashes around persistence/activation, restart recovery and rollback. Track unchanged process IDs/connections and retired resources. Acceptance: active config always known/recoverable, unrelated traffic continues, grant revocation enforced, and no global identity leakage under concurrent user updates.

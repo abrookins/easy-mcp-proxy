@@ -261,35 +261,3 @@ class TestConfigOverrides:
 
         config = load_config(config_file, apply_overrides=False)
         assert config.mcp_servers["server1"].command == "original"
-
-
-def test_none_override_removes_key():
-    from mcp_proxy.config import _deep_merge
-
-    base = {"mcp_servers": {"a": {"command": "x"}, "b": {"command": "y"}}}
-    assert _deep_merge(base, {"mcp_servers": {"a": None}, "missing": None}) == {
-        "mcp_servers": {"b": {"command": "y"}}
-    }
-
-
-def test_compute_overrides_round_trips_through_merge():
-    from mcp_proxy.config import _deep_merge, compute_overrides
-
-    base = {
-        "mcp_servers": {"a": {"command": "x", "args": ["1"]}, "b": {"url": "u"}},
-        "admins": ["x@example.com"],
-    }
-    target = {
-        "mcp_servers": {"a": {"command": "x", "args": ["1", "2"]}, "c": {"url": "v"}},
-        "tool_views": {"v": {}},
-    }
-
-    overrides = compute_overrides(base, target)
-
-    assert overrides == {
-        "admins": None,
-        "mcp_servers": {"b": None, "a": {"args": ["1", "2"]}, "c": {"url": "v"}},
-        "tool_views": {"v": {}},
-    }
-    assert _deep_merge(base, overrides) == target
-    assert compute_overrides(base, base) == {}
