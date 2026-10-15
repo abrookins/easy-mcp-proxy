@@ -275,3 +275,26 @@ The live configuration and status APIs returned HTTP 200, and `/view/admin/mcp`
 advertised all seven administration tools, including `proxy_apply`. This grant
 change took effect without restarting the service. The earlier denied-admin
 checks above describe the key's original runtime-only grant.
+
+### Skills error investigation: 2026-10-15
+
+Task 051 reproduced a real managed-gateway diagnostic regression over the live
+`remote` MCP view. For `upsert_skill_overlay_file` on `daily-standup`, using
+`operation: "add"` returned `Upstream execution failed; inspect connection health`.
+Changing only the operation to `files` returned a successful preview with
+`dry_run: true`, `applied: false` and `base_mutated: false`. No skill files changed.
+The overlay schema describes six operations (`append`, `root_append`, `files`,
+`replace`, `template`, `patch`) but declares a string without an enum.
+
+An invalid source on `upsert_source_skill_file` and an unexpected argument
+rejected by local proxy validation produced the same generic error. The live
+source listing confirmed `Obsidian` and `local-skills` both advertise
+`direct_allowed`; no actual source writes were attempted.
+
+`ScopedTool.run` in `user_gateway.py` masks every exception from the inner tool,
+including the proxy's value-free structured validation errors. This protects
+private exception details but incorrectly implies a connection failure.
+Task 052 tracks a correction: preserve explicitly safe bounded validation
+errors, distinguish tool rejections from transport/authentication failures, keep
+arbitrary exception details masked, and tighten the upstream operation schema.
+This investigation does not mark that correction implemented or deployed.

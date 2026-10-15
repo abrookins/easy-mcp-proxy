@@ -1,0 +1,14 @@
+---
+id: 051-investigate-misleading-errors-from-skills-tool-calls
+sequence: 51
+slug: investigate-misleading-errors-from-skills-tool-calls
+name: Investigate misleading errors from skills tool calls
+status: complete
+order: 50
+created_at: 2026-10-15T21:11:29.327306Z
+updated_at: 2026-10-15T21:14:36.259712Z
+completed_at: 2026-10-15T21:14:36.259712Z
+archived_at: 2026-10-15T21:14:36.259712Z
+---
+
+Confirmed live via proxy MCP tools: screenshot operation add yields the generic connection-health error; operation files with otherwise identical args succeeds as dry_run with applied=false/base_mutated=false. Invalid source and local unexpected-argument validation also yield the generic error. Both Obsidian and local-skills advertise direct_allowed. Root cause: user_gateway.py ScopedTool.run catches every inner exception, hiding existing structured ToolArgumentValidationError and upstream rejections. Overlay schema describes allowed operations but lacks enum. No skill writes, auth changes or service restart. Evidence recorded in acceptance doc; task 052 tracks the unimplemented correction.

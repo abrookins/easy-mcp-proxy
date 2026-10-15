@@ -4,6 +4,6 @@
   "description": "Make all proxy configuration and views belong to the current authenticated OAuth user, with request-time user resolution and no global-config fallback. Deliver revisioned remote administration, live updates, restart-resilient authentication, mobile browser UI, and later portable MCP Apps administration. Preserve endpoint and OAuth compatibility. Upstream Apps forwarding is optional.",
   "spec_path": "docs/specs/remote-configuration-and-user-isolation.md",
   "created_at": "2026-10-13T14:54:42.199429Z",
-  "updated_at": "2026-10-15T19:07:44.499078Z",
-  "version": 153
+  "updated_at": "2026-10-15T21:14:36.259713Z",
+  "version": 157
 }

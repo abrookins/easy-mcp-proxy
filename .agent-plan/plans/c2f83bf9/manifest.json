@@ -2,8 +2,8 @@
   "version": 2,
   "plan_id": "c2f83bf9",
   "created_at": "2026-10-13T14:54:42.199429Z",
-  "updated_at": "2026-10-15T19:07:44.499078Z",
-  "next_sequence": 51,
+  "updated_at": "2026-10-15T21:14:36.259713Z",
+  "next_sequence": 53,
   "tasks": [
     {
       "id": "001-define-delivery-plan-and-acceptance-criteria",
@@ -915,6 +915,36 @@
       "path": "history/050-merge-the-feature-branch-into-main-and-push-main.done",
       "description_preview": "Fetched origin and confirmed main had no divergent commits. Fast-forwarded main in an isolated worktree and pushed or...",
       "record_hash": "31540773f934a1ee2f79d8c627412521e3d98f9c71e4d525096a084f0c29bd4d"
+    },
+    {
+      "id": "051-investigate-misleading-errors-from-skills-tool-calls",
+      "sequence": 51,
+      "name": "Investigate misleading errors from skills tool calls",
+      "status": "complete",
+      "order": 50,
+      "created_at": "2026-10-15T21:11:29.327306Z",
+      "updated_at": "2026-10-15T21:14:36.259712Z",
+      "completed_at": "2026-10-15T21:14:36.259712Z",
+      "archived_at": "2026-10-15T21:14:36.259712Z",
+      "path": "history/051-investigate-misleading-errors-from-skills-tool-calls.done",
+      "description_preview": "Confirmed live via proxy MCP tools: screenshot operation add yields the generic connection-health error; operation fi...",
+      "record_hash": "ebfae51aee31c6798f6841e3c1be47b5af69fc9610f7b22eb8f946c96e7cd4cc"
+    },
+    {
+      "id": "052-restore-actionable-tool-validation-errors-without-leaking-secrets",
+      "sequence": 52,
+      "name": "Restore actionable tool validation errors without leaking secrets",
+      "status": "not_started",
+      "order": 51,
+      "depends_on": [
+        "051-investigate-misleading-errors-from-skills-tool-calls"
+      ],
+      "created_at": "2026-10-15T21:14:01.212792Z",
+      "updated_at": "2026-10-15T21:14:01.212801Z",
+      "path": "tasks/052-restore-actionable-tool-validation-errors-without-leaking-secrets.md",
+      "claim_path": "tasks/052-restore-actionable-tool-validation-errors-without-leaking-secrets.claim",
+      "description_preview": "Investigation 051 reproduced gateway error masking. ScopedTool.run catches every inner exception, including safe loca...",
+      "record_hash": "7c00f6f706913ad07861692aef0ce6a8e48117f3873a3c8ecfe90e92dda367f3"
     }
   ]
 }
