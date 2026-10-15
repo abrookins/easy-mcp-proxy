@@ -265,3 +265,13 @@ hashed persistence, expiry, account disabling, permanent revocation, duplicate
 binding refusal, and secret-free CLI output. Documentation checks passed for
 111 relative links and both bootstrap examples. Actual Claude desktop/mobile
 host behavior remains subject to the existing external acceptance gates.
+
+### Existing API key administration grant: 2026-10-15
+
+The user subsequently requested configuration-administration permission for the
+existing key. Its grant now includes `admin=true` and the `admin` view, while
+retaining `default`, `remote`, `coding-agent` and `search`. The secret is unchanged.
+The live configuration and status APIs returned HTTP 200, and `/view/admin/mcp`
+advertised all seven administration tools, including `proxy_apply`. This grant
+change took effect without restarting the service. The earlier denied-admin
+checks above describe the key's original runtime-only grant.
