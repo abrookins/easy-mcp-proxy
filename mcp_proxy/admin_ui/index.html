@@ -1,16 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Proxy configuration</title><link rel="stylesheet" href="/config/assets/style.css">
+<title>MCP Proxy configuration</title><link rel="stylesheet" href="/config/assets/style.css">
 <script src="/config/assets/app.js" defer></script></head>
-<body><main><header><div><p class="eyebrow">MCP PROXY</p><h1>Your configuration</h1></div><button id="logout" class="secondary">Sign out</button></header>
-<p id="identity"></p>
-<p>Update your tools and views without restarting the proxy. Changes belong to your signed-in account.</p>
-<p id="message" role="status" aria-live="polite">Loading configuration…</p>
-<section aria-labelledby="status-heading"><h2 id="status-heading">Connection status</h2><p id="status"></p><button id="refresh" class="secondary">Refresh status</button><details><summary>Technical details</summary><pre id="status-details"></pre></details></section>
-<section aria-labelledby="servers-heading"><h2 id="servers-heading">Upstream servers</h2><p>Adding or changing a connection requires installation operator permission. Use the advanced editor for credentials and command arguments.</p><div id="servers"></div><label for="server-name">Server name</label><input id="server-name" placeholder="calendar"><label for="server-transport">Connection type</label><select id="server-transport"><option value="url">HTTP URL</option><option value="command">Local command</option></select><label for="server-target">URL or command</label><input id="server-target" placeholder="https://example.org/mcp" autocomplete="off"><button id="save-server" class="secondary">Add or update server</button></section>
-<section aria-labelledby="views-heading"><h2 id="views-heading">Views</h2><p>Give a client a focused set of tools. Client grants are managed by the installation operator.</p><div id="views"></div><label for="view-name">New view name</label><div class="row"><input id="view-name" placeholder="work" pattern="[A-Za-z0-9][A-Za-z0-9_.-]*"><button id="add-view" class="secondary">Add view</button></div></section>
-<section aria-labelledby="config-heading"><h2 id="config-heading">Configuration</h2><p>Existing credentials appear as opaque <code>$secret</code> references. Keep those references to preserve values. To rotate a credential, replace its reference with the new value. Credentials are stored encrypted after preview.</p><label for="config">Advanced JSON editor</label><textarea id="config" spellcheck="false" autocapitalize="off" autocomplete="off" rows="18"></textarea><div class="row"><button id="preview">Preview changes</button><button id="reload" class="secondary">Reload saved configuration</button></div></section>
-<section id="review-section" hidden aria-labelledby="review-heading"><h2 id="review-heading">Review changes</h2><p>Apply only after reviewing this candidate. Editing the configuration requires a new preview.</p><pre id="review"></pre><div id="probes"></div><button id="apply" disabled>Apply reviewed changes</button></section>
-<section aria-labelledby="history-heading"><h2 id="history-heading">Revision history</h2><p>Rollback creates a new preview and rechecks your current permissions.</p><div id="history"></div></section>
-<footer>After applying, refresh your agent’s tool list if it still shows old tools. Some hosts require a connector refresh. Active calls finish on their original configuration.</footer>
-</main></body></html>
+<body>
+<header class="topbar"><h1>MCP Proxy</h1><span id="identity"></span><span id="role" class="badge" hidden></span><button id="logout" class="link">Sign out</button></header>
+<div class="layout"><nav id="nav" class="sidebar" aria-label="Sections"></nav>
+<main><p id="message" role="status" aria-live="polite">Loading configuration…</p><section id="review" aria-label="Review changes" hidden></section><div id="page"></div></main></div>
+</body></html>

@@ -75,6 +75,7 @@ AUTH0_CLIENT_SECRET_VAR = "FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET"
 AUTH0_AUDIENCE_VAR = "FASTMCP_SERVER_AUTH_AUTH0_AUDIENCE"
 AUTH0_BASE_URL_VAR = "FASTMCP_SERVER_AUTH_AUTH0_BASE_URL"
 AUTH_ALLOWED_EMAILS_VAR = "MCP_PROXY_AUTH_ALLOWED_EMAILS"
+ADMIN_EMAILS_VAR = "MCP_PROXY_ADMIN_EMAILS"
 AUTH_REQUIRE_VERIFIED_EMAIL_VAR = "MCP_PROXY_AUTH_REQUIRE_EMAIL_VERIFIED"
 AUTH_ENABLE_CIMD_VAR = "MCP_PROXY_AUTH_ENABLE_CIMD"
 
@@ -154,14 +155,20 @@ def get_static_token_configs() -> dict[str, dict]:
     return result
 
 
-def get_allowed_emails() -> set[str]:
-    """Get the set of explicitly allowed email addresses from the environment."""
-    emails_env = os.environ.get(AUTH_ALLOWED_EMAILS_VAR, "")
-    if not emails_env:
-        return set()
-
+def _email_set(var: str) -> set[str]:
+    emails_env = os.environ.get(var, "")
     parts = emails_env.replace(";", ",").split(",")
     return {email.strip().casefold() for email in parts if email.strip()}
+
+
+def get_allowed_emails() -> set[str]:
+    """Get the set of explicitly allowed email addresses from the environment."""
+    return _email_set(AUTH_ALLOWED_EMAILS_VAR)
+
+
+def get_admin_emails() -> set[str]:
+    """Emails whose verified OAuth users administer their own configuration."""
+    return _email_set(ADMIN_EMAILS_VAR)
 
 
 def require_verified_email() -> bool:

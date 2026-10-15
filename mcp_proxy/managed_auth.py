@@ -1,5 +1,6 @@
 """One OAuth resource for all managed views, with legacy token compatibility."""
 
+import httpx
 from fastmcp.server.auth.jwt_issuer import JWTIssuer
 from fastmcp.server.auth.oidc_proxy import OIDCProxy
 from joserfc.errors import JoseError
@@ -50,5 +51,32 @@ class SharedResourceOAuth:
         return await super().authorize(client, params)
 
 
-class ManagedOIDCProxy(SharedResourceOAuth, OIDCProxy):
+class UserinfoEmailClaims:
+    """Best effort: carry the user's email from OIDC userinfo in proxy tokens.
+
+    Access tokens often omit email. The result is embedded in the signed proxy
+    token as upstream claims and used only to match the admin email list.
+    """
+
+    async def _extract_upstream_claims(self, idp_tokens):
+        endpoint = self.oidc_config.userinfo_endpoint
+        token = idp_tokens.get("access_token")
+        if not endpoint or not token:
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.get(
+                    str(endpoint), headers={"Authorization": f"Bearer {token}"}
+                )
+                response.raise_for_status()
+                info = response.json()
+        except (httpx.HTTPError, ValueError):
+            return None
+        if not isinstance(info, dict):
+            return None
+        claims = {k: info[k] for k in ("email", "email_verified") if k in info}
+        return claims or None
+
+
+class ManagedOIDCProxy(UserinfoEmailClaims, SharedResourceOAuth, OIDCProxy):
     """OIDC token exchange for the managed gateway's shared OAuth resource."""

@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS secrets (
 );
 CREATE TABLE IF NOT EXISTS sessions (
  id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id),
- client TEXT NOT NULL, expires REAL NOT NULL
+ client TEXT NOT NULL, expires REAL NOT NULL, email TEXT
 );
 CREATE TABLE IF NOT EXISTS audit (
  sequence INTEGER PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id),
@@ -67,7 +67,10 @@ class UserStore:
     All other entry points re-check the principal against durable account state.
     """
 
-    def __init__(self, directory: Path):
+    def __init__(self, directory: Path, admin_emails=()):
+        # Best effort: a verified email in this list grants configuration
+        # administration. Users without an email fall back to their grants.
+        self.admin_emails = frozenset(e.casefold() for e in admin_emails)
         self.directory = private_directory(directory)
         self.cipher = encryption_key(directory, "config")
         self._lock = threading.RLock()
@@ -81,6 +84,9 @@ class UserStore:
             self.db.close()
             raise ValueError("Unsupported configuration database version")
         self.db.executescript(SCHEMA)
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(sessions)")}
+        if "email" not in columns:
+            self.db.execute("ALTER TABLE sessions ADD COLUMN email TEXT")
         self.db.execute("PRAGMA user_version = 1")
         self.db.commit()
 
@@ -176,13 +182,32 @@ class UserStore:
             ).fetchone()
         if row is None:
             raise AccessDenied("Application is not authorized")
-        if admin and not row["admin"]:
+        if admin and not (row["admin"] or self.is_admin_email(principal)):
             raise AccessDenied("Configuration administration permission required")
         if operator and not row["operator"]:
             raise AccessDenied("Installation operator permission required")
         views = json.loads(row["views"])
         if not admin and principal.view not in views and "*" not in views:
             raise AccessDenied("View is not authorized")
+
+    def is_admin_email(self, principal: Principal) -> bool:
+        email = principal.identity.email
+        return email is not None and email.casefold() in self.admin_emails
+
+    def access(self, principal: Principal) -> dict:
+        """Describe the caller's own grant so clients can offer allowed actions."""
+        self.authorize(principal)
+        with self._lock:
+            row = self.db.execute(
+                "SELECT g.admin,g.views,u.operator FROM users u JOIN grants g "
+                "ON u.id=g.user_id WHERE u.id=? AND g.client=?",
+                (principal.user_id, principal.identity.client_id),
+            ).fetchone()
+        return {
+            "admin": bool(row["admin"]) or self.is_admin_email(principal),
+            "operator": bool(row["operator"]),
+            "views": json.loads(row["views"]),
+        }
 
     def active(self, principal: Principal):
         self.authorize(principal)
@@ -388,12 +413,14 @@ class UserStore:
             self.authorize(principal, admin=True)
             self.db.execute("DELETE FROM sessions WHERE expires<?", (time.time(),))
             self.db.execute(
-                "INSERT INTO sessions VALUES(?,?,?,?)",
+                "INSERT INTO sessions(id,user_id,client,expires,email) "
+                "VALUES(?,?,?,?,?)",
                 (
                     session,
                     principal.user_id,
                     principal.identity.client_id,
                     time.time() + 86400,
+                    principal.identity.email,
                 ),
             )
         return session
@@ -401,13 +428,16 @@ class UserStore:
     def session_principal(self, session: str) -> Principal:
         with self._lock:
             row = self.db.execute(
-                "SELECT u.issuer,u.subject,s.client FROM sessions s JOIN users u "
+                "SELECT u.issuer,u.subject,s.client,s.email FROM sessions s "
+                "JOIN users u "
                 "ON u.id=s.user_id WHERE s.id=? AND s.expires>? AND u.enabled=1",
                 (session, time.time()),
             ).fetchone()
         if row is None:
             raise AccessDenied("Browser session expired")
-        return self.resolve(Identity(row["issuer"], row["subject"], row["client"]))
+        return self.resolve(
+            Identity(row["issuer"], row["subject"], row["client"], row["email"])
+        )
 
     def logout(self, session: str):
         with self.transaction():

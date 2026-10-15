@@ -55,6 +55,19 @@ uv run mcp-proxy users grant USER_ID --client ADMIN_CLIENT_ID --admin --view adm
 uv run mcp-proxy users revoke USER_ID --client REGISTERED_CLIENT_ID
 ```
 
+### Admin email list
+
+Optionally set `MCP_PROXY_ADMIN_EMAILS` (comma-separated) in the service
+environment. A provisioned, granted user whose OAuth token carries a matching
+email is treated as an admin of their own configuration, even if their grant
+lacks `--admin`. Matching is best effort: the email must be verified unless
+`MCP_PROXY_AUTH_REQUIRE_EMAIL_VERIFIED=false`. When the access token has no
+email claim, the proxy asks the provider's OIDC userinfo endpoint at sign-in and
+token refresh, and records the result in the tokens it issues; sign in again after
+upgrading to pick it up. Users with no available email, and API keys, fall back to
+their grants. The email never identifies the account and never grants operator
+status, provisioning, or extra views.
+
 An admin grant does not grant the `admin` endpoint automatically; specify
 `--admin --view admin` for that connector. Omitting `--view` grants `default`.
 Re-granting replaces that client's grant, so include all views it should retain.
@@ -113,7 +126,12 @@ next authorization check. Running calls may finish. Use `users grant USER_ID
 --client api-key:KEY_ID ...` to change an active key's grants; include all views
 it should retain. Administrative keys require both `--admin` and `--view admin`
 to use the admin MCP endpoint. Host-capability changes still require an operator
-owner. Key issuance and binding are host-local operations, not remote MCP tools.
+owner. Key issuance is not available as a remote MCP tool.
+
+Signed-in users can also create, list, and revoke **their own** keys on the
+browser's **API keys** page (or `/config/api/keys`). A key created this way can
+use only views the creating grant can already access, and is administrative only
+if that grant is. Keys cannot create or revoke keys. The token is shown once.
 
 ## Migrate an existing installation
 
@@ -180,8 +198,12 @@ last 24 hours, survive restart, and are revocable. HTTPS cookies are secure and
 HTTP-only. Cookie-authenticated writes require the exact configured Origin;
 logout is POST-only. The page uses a restrictive CSP and no external frontend host.
 
-The browser supports upstream connection edits, view creation/exposure modes,
-an advanced JSON editor, preview, probe, apply, history, and rollback previews.
+The browser has separate pages for upstream servers (command, ordered arguments,
+working directory, environment, URL, headers, tool allowlist), views (exposure
+mode, included servers and tools, renames, descriptions, hooks, custom and
+composite tools), output-handling settings, an advanced JSON editor, status,
+history with rollback previews, and API keys. Every edit becomes a preview; review
+its impact, optionally test changed servers, then apply.
 Existing credentials appear as `{"$secret":"opaque-id"}`. Preserve that object
 when editing. Replace it with a new value in the browser to rotate the credential.
 Use `env`, `headers`, `args`, or parameter defaults for credentials, never tool
@@ -193,6 +215,10 @@ HTTP management operations are:
 | Method and path suffix under `/config/api/` | Body / result |
 | --- | --- |
 | GET `identity` | Verified bearer identity; no grant/provisioning side effect |
+| GET `session` | Caller's identity and own grant (admin, operator, views) |
+| GET `keys` | Caller's own API keys, without secrets |
+| POST `keys` | `{name, views, admin?, expires_in?}` → new key, shown once |
+| DELETE `keys/KEY_ID` | Revoke one of the caller's keys |
 | GET `config` | Current revision and config with opaque secret references |
 | GET `history` | Last 100 revision metadata records |
 | GET `status` | Identity, durable/runtime revisions, upstreams, calls, audit events |

@@ -44,13 +44,17 @@ BROWSER_CLIENT = "mcp-proxy-browser"
 
 def configured_gateway():
     """HTTP serving never falls back to the legacy global configuration."""
-    from mcp_proxy.auth import create_auth_provider, is_oidc_auth_configured
+    from mcp_proxy.auth import (
+        create_auth_provider,
+        get_admin_emails,
+        is_oidc_auth_configured,
+    )
     from mcp_proxy.user_store import UserStore
 
     directory = os.environ.get("MCP_PROXY_STATE_DIR")
     if not directory or not is_oidc_auth_configured():
         raise ValueError("HTTP requires MCP_PROXY_STATE_DIR and complete OAuth setup")
-    store = UserStore(Path(directory))
+    store = UserStore(Path(directory), admin_emails=get_admin_emails())
     try:
         runtime = UserRuntime(
             store, base_url=os.environ["FASTMCP_SERVER_AUTH_AUTH0_BASE_URL"]
@@ -195,6 +199,9 @@ class UserGateway:
             Route("/config", self.ui),
             Route("/config/assets/{name}", self.asset),
             Route("/config/api/identity", self.identity),
+            Route("/config/api/session", self.session),
+            Route("/config/api/keys", self.api_keys, methods=["GET", "POST"]),
+            Route("/config/api/keys/{key_id}", self.revoke_key, methods=["DELETE"]),
             Route("/config/api/{action}", self.api, methods=["GET", "POST"]),
             Route("/views", self.views),
             Route("/view/{view}/cache/{token}", self.cache),
@@ -231,6 +238,87 @@ class UserGateway:
             return JSONResponse(asdict(identity), headers={"Cache-Control": "no-store"})
         except AccessDenied:
             return self.denied(request)
+
+    async def session(self, request):
+        """The caller's own identity and grant, for choosing what the UI offers."""
+        from dataclasses import asdict
+
+        try:
+            principal = await self.principal(request, view=None, browser=True)
+            value = {
+                "identity": asdict(principal.identity),
+                **self.store.access(principal),
+            }
+            return JSONResponse(value, headers={"Cache-Control": "no-store"})
+        except AccessDenied:
+            return self.denied(request)
+
+    async def key_owner(self, request):
+        principal = await self.principal(request, view=None, browser=True)
+        if principal.identity.client_id.startswith("api-key:"):
+            raise AccessDenied("API keys cannot manage API keys")
+        return principal
+
+    async def api_keys(self, request):
+        """List or create keys for the caller only, within the caller's grant."""
+        try:
+            principal = await self.key_owner(request)
+            if request.method == "GET":
+                keys = [
+                    {
+                        **row,
+                        "revoked": bool(row["revoked"]),
+                        "admin": bool(row["admin"]),
+                        "views": json.loads(row["views"] or "[]"),
+                    }
+                    for row in self.keys.list(principal.user_id)
+                ]
+                return JSONResponse(
+                    {"keys": keys}, headers={"Cache-Control": "no-store"}
+                )
+            body = await request.body()
+            if len(body) > 65536:
+                raise ValueError("Request too large")
+            data = json.loads(body)
+            name, views = data["name"], data["views"]
+            admin, expires_in = data.get("admin", False), data.get("expires_in")
+            if not isinstance(name, str) or not isinstance(admin, bool):
+                raise TypeError("Invalid key request")
+            if not isinstance(views, list) or not views:
+                raise TypeError("Explicit views required")
+            if expires_in is not None and type(expires_in) is not int:
+                raise TypeError("Expiry must be whole seconds")
+            # A key never exceeds the permissions of the grant creating it.
+            for view in views:
+                if not isinstance(view, str):
+                    raise TypeError("Invalid view")
+                self.store.authorize(replace(principal, view=view))
+            if admin:
+                self.store.authorize(principal, admin=True)
+            created = self.keys.create(
+                principal.user_id,
+                name,
+                views=tuple(views),
+                admin=admin,
+                expires_in=expires_in,
+            )
+            return JSONResponse(
+                created, status_code=201, headers={"Cache-Control": "no-store"}
+            )
+        except AccessDenied:
+            return self.denied(request)
+        except (ValueError, KeyError, TypeError):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+
+    async def revoke_key(self, request):
+        try:
+            principal = await self.key_owner(request)
+            self.keys.revoke(principal.user_id, request.path_params["key_id"])
+            return JSONResponse({"status": "revoked"})
+        except AccessDenied:
+            return self.denied(request)
+        except ValueError:
+            return JSONResponse({"error": "not_found"}, status_code=404)
 
     async def bearer_identity(self, token):
         identity = self.keys.identity(token)

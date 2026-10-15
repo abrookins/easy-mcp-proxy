@@ -71,7 +71,9 @@ async def test_mcp_admin_operations_metadata_and_notification(gateway):
                 resource["result"]["contents"][0]["mimeType"]
                 == "text/html;profile=mcp-app"
             )
-            assert "Your configuration" in resource["result"]["contents"][0]["text"]
+            assert (
+                "MCP Proxy configuration" in resource["result"]["contents"][0]["text"]
+            )
             result = await rpc(client, "/mcp", "resources/read", {"uri": APP_URI})
             assert "error" in result
             client.headers["Authorization"] = "Bearer bob"

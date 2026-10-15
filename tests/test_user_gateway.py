@@ -342,7 +342,7 @@ async def test_browser_callback_pkce_state_client_binding_and_assets(gateway):
         assert len(exchanges) == 1
         ui = await client.get("/config")
         assert "frame-ancestors 'none'" in ui.headers["content-security-policy"]
-        assert "Your configuration" in ui.text
+        assert "/config/assets/app.js" in ui.text
         for name in ("app.js", "style.css"):
             assert (await client.get(f"/config/assets/{name}")).status_code == 200
         assert (await client.get("/config/assets/secret.key")).status_code == 404
@@ -464,6 +464,7 @@ async def test_identity_bootstrap_reports_verified_client_without_grant(gateway)
             "issuer": "issuer",
             "subject": "accidentally-admitted",
             "client_id": "app",
+            "email": None,
         }
         assert (await client.get("/config/api/config")).status_code == 403
         assert (await client.post("/mcp", json={})).status_code == 401
@@ -483,3 +484,174 @@ async def test_upstream_exception_details_do_not_escape_scope(gateway):
         assert "private-token" not in str(exc.value)
         assert exc.value.__suppress_context__
     await app.runtime.close()
+
+
+async def test_session_reports_own_grant(gateway):
+    app, alice, _ = gateway
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app.app), base_url="https://proxy.test"
+    ) as client:
+        assert (await client.get("/config/api/session")).status_code == 401
+        client.headers["Authorization"] = "Bearer alice"
+        response = await client.get("/config/api/session")
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {
+        "identity": {
+            "issuer": "issuer",
+            "subject": "alice",
+            "client_id": "app",
+            "email": None,
+        },
+        "admin": True,
+        "operator": True,
+        "views": ["*"],
+    }
+
+
+async def test_users_manage_only_their_own_keys_within_their_grant(gateway):
+    app, alice, bob = gateway
+    narrow = app.store.provision("issuer", "accidentally-admitted")
+    app.store.grant(narrow, "app", views=["default"])
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app.app), base_url="https://proxy.test"
+    ) as client:
+        assert (await client.get("/config/api/keys")).status_code == 401
+        client.headers["Authorization"] = "Bearer alice"
+        created = await client.post(
+            "/config/api/keys",
+            json={"name": "agent", "views": ["remote"], "expires_in": 3600},
+        )
+        assert created.status_code == 201
+        key = created.json()
+        assert key["token"].startswith("mcp_key_")
+        assert key["expires"] is not None
+        listed = (await client.get("/config/api/keys")).json()["keys"]
+        assert [(k["id"], k["views"], k["admin"], k["revoked"]) for k in listed] == [
+            (key["id"], ["remote"], False, False)
+        ]
+        assert "digest" not in listed[0] and "token" not in listed[0]
+
+        client.headers["Authorization"] = "Bearer bob"
+        assert (await client.get("/config/api/keys")).json() == {"keys": []}
+        other = await client.delete(f"/config/api/keys/{key['id']}")
+        assert other.status_code == 404
+
+        # Keys never exceed the creating grant, and keys cannot mint keys.
+        client.headers["Authorization"] = "Bearer accidentally-admitted"
+        for body in (
+            {"name": "x", "views": ["remote"]},
+            {"name": "x", "views": ["default"], "admin": True},
+        ):
+            assert (await client.post("/config/api/keys", json=body)).status_code == 403
+        client.headers["Authorization"] = "Bearer " + key["token"]
+        assert (await client.get("/config/api/keys")).status_code == 403
+        assert (await client.delete(f"/config/api/keys/{key['id']}")).status_code == 403
+
+        client.headers["Authorization"] = "Bearer alice"
+        revoked = await client.delete(f"/config/api/keys/{key['id']}")
+        assert revoked.json() == {"status": "revoked"}
+        listed = (await client.get("/config/api/keys")).json()["keys"]
+        assert listed[0]["revoked"] is True and listed[0]["views"] == []
+    with pytest.raises(AccessDenied):
+        app.keys.identity(key["token"])
+
+
+async def test_key_creation_rejects_invalid_requests(gateway):
+    app, _, _ = gateway
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app.app),
+        base_url="https://proxy.test",
+        headers={"Authorization": "Bearer alice"},
+    ) as client:
+        for body in (
+            b"{",
+            b"[]",
+            b'{"name": 1, "views": ["default"]}',
+            b'{"name": "x", "views": ["default"], "admin": "yes"}',
+            b'{"name": "x", "views": []}',
+            b'{"name": "x", "views": "default"}',
+            b'{"name": "x", "views": [1]}',
+            b'{"name": "x", "views": ["default"], "expires_in": 1.5}',
+            b'{"name": "x", "views": ["default"], "expires_in": -1}',
+            b'{"name": " ", "views": ["default"]}',
+            b'{"name": "x"}',
+            b"x" * 70000,
+        ):
+            response = await client.post("/config/api/keys", content=body)
+            assert response.status_code == 400, body[:60]
+        admin = await client.post(
+            "/config/api/keys",
+            json={"name": "admin", "views": ["default", "admin"], "admin": True},
+        )
+        assert admin.status_code == 201
+
+
+def test_verified_email_is_best_effort(monkeypatch):
+    from mcp_proxy.identity import verified_email
+
+    assert verified_email({}) is None
+    assert verified_email({"email": " "}) is None
+    assert verified_email({"email": "a@x.test"}) is None
+    assert verified_email({"email": " a@x.test ", "email_verified": True}) == (
+        "a@x.test"
+    )
+    monkeypatch.setenv("MCP_PROXY_AUTH_REQUIRE_EMAIL_VERIFIED", "false")
+    assert verified_email({"email": "a@x.test"}) == "a@x.test"
+    token = SimpleNamespace(
+        client_id="app",
+        claims={"iss": "i", "sub": "s", "email": "a@x.test"},
+    )
+    identity = Identity.from_verified_token(token)
+    assert identity.email == "a@x.test"
+    assert identity == Identity("i", "s", "app")
+
+
+def test_admin_email_list_grants_admin_by_matching_email(tmp_path, monkeypatch):
+    from mcp_proxy.auth import get_admin_emails
+
+    monkeypatch.setenv("MCP_PROXY_ADMIN_EMAILS", "Admin@X.test; other@x.test")
+    assert get_admin_emails() == {"admin@x.test", "other@x.test"}
+    store = UserStore(tmp_path / "state", admin_emails=get_admin_emails())
+    uid = store.provision("issuer", "carol")
+    store.grant(uid, "mcp-proxy-browser", views=["default"])
+
+    without_email = store.resolve(Identity("issuer", "carol", "mcp-proxy-browser"))
+    with pytest.raises(AccessDenied):
+        store.authorize(without_email, admin=True)
+    with pytest.raises(AccessDenied):
+        store.create_session(without_email)
+    assert store.access(without_email)["admin"] is False
+
+    stranger = store.resolve(
+        Identity("issuer", "carol", "mcp-proxy-browser", "nobody@x.test")
+    )
+    with pytest.raises(AccessDenied):
+        store.authorize(stranger, admin=True)
+
+    admin = store.resolve(
+        Identity("issuer", "carol", "mcp-proxy-browser", "admin@x.test")
+    )
+    store.authorize(admin, admin=True)
+    assert store.access(admin)["admin"] is True
+    # Browser sessions remember the email, so they stay admin after sign-in.
+    session = store.create_session(admin)
+    restored = store.session_principal(session)
+    assert restored.identity.email == "admin@x.test"
+    store.authorize(restored, admin=True)
+    store.close()
+
+
+def test_existing_session_table_gains_email_column(tmp_path):
+    import sqlite3
+
+    UserStore(tmp_path / "state").close()
+    db = sqlite3.connect(tmp_path / "state" / "users.sqlite3")
+    db.executescript(
+        "DROP TABLE sessions; CREATE TABLE sessions (id TEXT PRIMARY KEY, "
+        "user_id TEXT NOT NULL, client TEXT NOT NULL, expires REAL NOT NULL);"
+    )
+    db.close()
+    store = UserStore(tmp_path / "state")
+    columns = {r[1] for r in store.db.execute("PRAGMA table_info(sessions)")}
+    assert "email" in columns
+    store.close()
