@@ -137,15 +137,19 @@ def view_add_server(
         view_config["tools"] = {}
 
     # Build tools config for this server
-    if include_all:
-        # Empty dict means all tools
-        view_config["tools"][server_name] = {}
-    elif tools_str:
+    if include_all or not tools_str:
+        view_config["tools"].pop(server_name, None)
+        all_servers = view_config.setdefault("include_all_servers", [])
+        if server_name not in all_servers:
+            all_servers.append(server_name)
+    else:
+        view_config["include_all_servers"] = [
+            name
+            for name in view_config.get("include_all_servers", [])
+            if name != server_name
+        ]
         tools = [t.strip() for t in tools_str.split(",") if t.strip()]
         view_config["tools"][server_name] = {t: {} for t in tools}
-    else:
-        # Default to empty (all tools)
-        view_config["tools"][server_name] = {}
 
     save_config_raw(config_path, data)
     click.echo(f"Added server '{server_name}' to view '{view_name}'")
@@ -166,11 +170,18 @@ def view_remove_server(view_name: str, server_name: str, config: str | None):
 
     view_config = data["tool_views"][view_name]
 
-    if "tools" not in view_config or server_name not in view_config.get("tools", {}):
+    in_tools = server_name in view_config.get("tools", {})
+    in_all = server_name in view_config.get("include_all_servers", [])
+    if not in_tools and not in_all:
         click.echo(f"Error: Server '{server_name}' not in view '{view_name}'", err=True)
         raise SystemExit(1)
 
-    del view_config["tools"][server_name]
+    view_config.get("tools", {}).pop(server_name, None)
+    view_config["include_all_servers"] = [
+        name
+        for name in view_config.get("include_all_servers", [])
+        if name != server_name
+    ]
     save_config_raw(config_path, data)
     click.echo(f"Removed server '{server_name}' from view '{view_name}'")
 
@@ -199,11 +210,18 @@ def view_set_tools(
 
     # Parse tools list and set
     if tools_str.strip():
+        view_config["include_all_servers"] = [
+            name
+            for name in view_config.get("include_all_servers", [])
+            if name != server_name
+        ]
         tools = [t.strip() for t in tools_str.split(",") if t.strip()]
         view_config["tools"][server_name] = {t: {} for t in tools}
     else:
-        # Empty string clears tools for this server
-        view_config["tools"][server_name] = {}
+        view_config["tools"].pop(server_name, None)
+        all_servers = view_config.setdefault("include_all_servers", [])
+        if server_name not in all_servers:
+            all_servers.append(server_name)
 
     save_config_raw(config_path, data)
     click.echo(f"Updated tools for '{server_name}' in view '{view_name}'")
@@ -224,12 +242,16 @@ def view_clear_tools(view_name: str, server_name: str, config: str | None):
 
     view_config = data["tool_views"][view_name]
 
-    if "tools" not in view_config or server_name not in view_config.get("tools", {}):
+    in_tools = server_name in view_config.get("tools", {})
+    in_all = server_name in view_config.get("include_all_servers", [])
+    if not in_tools and not in_all:
         click.echo(f"Error: Server '{server_name}' not in view '{view_name}'", err=True)
         raise SystemExit(1)
 
-    # Clear to empty dict (means all tools)
-    view_config["tools"][server_name] = {}
+    view_config.get("tools", {}).pop(server_name, None)
+    all_servers = view_config.setdefault("include_all_servers", [])
+    if server_name not in all_servers:
+        all_servers.append(server_name)
 
     save_config_raw(config_path, data)
     click.echo(f"Cleared tool filter for '{server_name}' in view '{view_name}'")

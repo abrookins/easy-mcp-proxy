@@ -424,6 +424,8 @@ class UserGateway:
             if request.method == "GET":
                 if action == "config":
                     value = self.service.read(principal)
+                    value["revealed_args"] = self.service.revealed_args(principal)
+                    value["tool_catalog"] = await self.runtime.tool_catalog(principal)
                 elif action == "history":
                     value = {"revisions": self.store.history(principal)}
                 elif action == "status":

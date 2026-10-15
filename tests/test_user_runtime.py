@@ -114,6 +114,14 @@ async def test_empty_owner_lazy_runtime_and_revocation(runtime):
     await manager.close()
 
 
+async def test_runtime_rejects_unknown_include_all_server(runtime):
+    manager, _, alice, _, _ = runtime
+    value = config()
+    value["tool_views"]["default"] = {"include_all_servers": ["missing"]}
+    with pytest.raises(ValueError, match="unknown upstream"):
+        await manager._build(alice, "invalid", value)
+
+
 class BrokenClient:
     def __init__(self, *, hangs=False):
         self.hangs = hangs

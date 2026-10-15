@@ -118,7 +118,10 @@ class ToolView:
         if self.config.include_all:
             return
 
-        for server_name in self.config.tools.keys():
+        referenced_servers = set(self.config.tools) | set(
+            self.config.include_all_servers
+        )
+        for server_name in referenced_servers:
             if server_name in self.config.exclude_servers:
                 continue
             if server_name not in upstream_clients:

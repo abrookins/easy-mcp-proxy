@@ -342,6 +342,8 @@ def _process_view_explicit_tools(
     for server_name, server_tools in view_config.tools.items():
         if server_name in view_config.exclude_servers:
             continue
+        if server_name in view_config.include_all_servers:
+            continue
 
         # Get upstream tools for this server to find schemas
         upstream_tools = upstream_tools_cache.get(server_name, [])

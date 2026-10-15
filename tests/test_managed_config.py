@@ -45,8 +45,9 @@ def test_preview_redacts_and_retains_secret_references(managed):
     revision = preview["revision"]
     activate(service.store, owner, revision)
     read = service.read(owner)
-    assert "credential" not in str(read)
-    assert "$secret" in str(read)
+    assert "credential" not in str(read["config"])
+    assert service.revealed_args(owner) == {"same": ["credential"]}
+    assert "$secret" in str(read["config"])
     assert materialize_config(service.store, owner, read["config"]) == config
     second = service.preview(owner, revision, read["config"])
     assert second["impact"]["mcp_servers"]["changed"] == []
@@ -92,6 +93,7 @@ def test_host_privilege_independent_of_config_admin(managed):
         {"tool_views": {"bad/name": {}}},
         {"tool_views": {"default": {"exposure_mode": "invalid"}}},
         {"tool_views": {"default": {"tools": {"unknown": {}}}}},
+        {"tool_views": {"default": {"include_all_servers": ["unknown"]}}},
         {"tool_views": {"default": {"exclude_servers": ["unknown"]}}},
         {"cache_secret": "secret"},
         {"cache_base_url": "https://example.org"},

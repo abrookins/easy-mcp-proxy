@@ -122,6 +122,79 @@ class TestIncludeAllFetchesFromUpstream:
         }
         assert tool_servers == {"search_memory": "memory"}
 
+    async def test_include_all_servers_combines_all_and_explicit_tools(self):
+        """A view can include one whole server and allowlist another."""
+        config = ProxyConfig(
+            mcp_servers={
+                "memory": {"command": "echo"},
+                "skills": {"command": "echo"},
+            },
+            tool_views={
+                "remote": {
+                    "include_all_servers": ["memory"],
+                    "tools": {
+                        "memory": {"search_memory": {}},
+                        "skills": {"find_skills": {}},
+                    },
+                }
+            },
+        )
+        proxy = MCPProxy(config)
+
+        memory_search = MagicMock(name="memory_search", description="Search memory")
+        memory_search.name = "search_memory"
+        document_write = MagicMock(name="document_write", description="Write")
+        document_write.name = "upsert_document"
+        find_skills = MagicMock(name="find_skills", description="Find skills")
+        find_skills.name = "find_skills"
+        hidden_skill = MagicMock(name="hidden_skill", description="Hidden")
+        hidden_skill.name = "delete_skill"
+
+        memory_client = AsyncMock()
+        memory_client.list_tools.return_value = [memory_search, document_write]
+        skills_client = AsyncMock()
+        skills_client.list_tools.return_value = [find_skills, hidden_skill]
+        proxy.upstream_clients = {
+            "memory": memory_client,
+            "skills": skills_client,
+        }
+        await proxy.fetch_upstream_tools("memory")
+        await proxy.fetch_upstream_tools("skills")
+
+        assert {tool.name for tool in proxy.get_view_tools("remote")} == {
+            "search_memory",
+            "upsert_document",
+            "find_skills",
+        }
+
+    def test_include_all_servers_handles_excluded_unknown_and_fallback(self):
+        """Scoped all-tools servers tolerate library-only edge cases."""
+        config = ProxyConfig(
+            mcp_servers={
+                "excluded": {"command": "echo"},
+                "empty": {"command": "echo"},
+                "fallback": {
+                    "command": "echo",
+                    "tools": {"configured": {}},
+                },
+            },
+            tool_views={
+                "view": {
+                    "include_all_servers": [
+                        "fallback",
+                        "empty",
+                        "excluded",
+                        "missing",
+                    ],
+                    "exclude_servers": ["excluded"],
+                }
+            },
+        )
+
+        assert [tool.name for tool in MCPProxy(config).get_view_tools("view")] == [
+            "configured"
+        ]
+
     async def test_include_all_skips_server_disabled_upstream_tool(self):
         """include_all should hide upstream tools disabled on the server."""
         config = ProxyConfig(

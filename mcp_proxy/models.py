@@ -97,6 +97,7 @@ class ToolViewConfig(BaseModel):
     tools: dict[str, dict[str, ToolConfig]] = {}
     hooks: HooksConfig | None = None
     include_all: bool = False
+    include_all_servers: list[str] = []
     exclude_servers: list[str] = []
     custom_tools: list[dict] = []
     composite_tools: dict[str, CompositeToolConfig] = {}

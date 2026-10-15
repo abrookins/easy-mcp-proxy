@@ -115,6 +115,7 @@ class Administration:
             bounded(data)
             if action == "config":
                 value = self.service.read(principal)
+                value["tool_catalog"] = await self.runtime.tool_catalog(principal)
             elif action == "status":
                 value = self.runtime.status(principal)
             elif action == "history":

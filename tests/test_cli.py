@@ -1480,7 +1480,13 @@ class TestCLIViewAddServer:
 
         assert result.exit_code == 0
         content = config_file.read_text()
+        assert "include_all_servers" in content
         assert "github" in content
+        repeated = runner.invoke(
+            main,
+            ["view", "add-server", "research", "github", "--config", str(config_file)],
+        )
+        assert repeated.exit_code == 0
 
     def test_view_add_server_specific_tools(self, tmp_path):
         """'view add-server --tools' should add only specified tools."""
@@ -2349,6 +2355,9 @@ class TestCLIViewAddServerEdgeCases:
 
         # Should add server with all tools (not filtered)
         assert result.exit_code == 0
+        content = config_file.read_text()
+        assert "include_all_servers" in content
+        assert "github" in content
 
 
 class TestCLIViewDeleteEdgeCases:
@@ -2757,6 +2766,19 @@ class TestCLIViewSetTools:
         assert result.exit_code == 0
         content = config_file.read_text()
         assert "old_tool" not in content or "github: {}" in content
+        repeated = runner.invoke(
+            main,
+            [
+                "view",
+                "set-tools",
+                "research",
+                "github",
+                "",
+                "--config",
+                str(config_file),
+            ],
+        )
+        assert repeated.exit_code == 0
 
     def test_view_set_tools_creates_tools_dict(self, tmp_path):
         """'view set-tools' should create tools dict if missing."""
@@ -2822,6 +2844,11 @@ class TestCLIViewClearTools:
         content = config_file.read_text()
         # Tools should be cleared (empty dict or removed)
         assert "search_code" not in content or "github: {}" in content
+        repeated = runner.invoke(
+            main,
+            ["view", "clear-tools", "research", "github", "--config", str(config_file)],
+        )
+        assert repeated.exit_code == 0
 
     def test_view_clear_tools_nonexistent_view(self, tmp_path):
         """'view clear-tools' should fail for non-existent view."""

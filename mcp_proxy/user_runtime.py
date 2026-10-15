@@ -178,6 +178,10 @@ class UserRuntime:
                     raise ValueError("Configured upstream tool was not discovered")
             for view in config.tool_views.values():
                 if not view.include_all:
+                    if set(view.include_all_servers) - set(connections):
+                        raise ValueError(
+                            "Configured view references an unknown upstream"
+                        )
                     for name, tools in view.tools.items():
                         available = {tool.name for tool in connections[name].tools}
                         if any(
@@ -247,6 +251,21 @@ class UserRuntime:
         if principal.view not in generation.mcps:
             raise NotFound("View not found")
         return generation
+
+    async def tool_catalog(self, principal: Principal) -> dict[str, list[str]]:
+        """Return active upstream tool names for configuration pickers."""
+        self.store.authorize(principal, admin=True)
+        async with self.lock(principal.user_id):
+            if principal.user_id not in self.active:
+                revision, config = self.store.active(principal)
+                self.active[principal.user_id] = await self._build(
+                    principal, revision, config
+                )
+            generation = self.active[principal.user_id]
+        return {
+            name: sorted(tool.name for tool in connection.tools)
+            for name, connection in generation.connections.items()
+        }
 
     @asynccontextmanager
     async def lease(self, principal: Principal, revision: str | None = None):

@@ -704,6 +704,28 @@ class MCPProxy:
                         )
                     )
         else:
+            for server_name in view_config.include_all_servers:
+                if server_name in view_config.exclude_servers:
+                    continue
+                server_config = self.config.mcp_servers.get(server_name)
+                if server_config is None:
+                    continue
+                upstream_tools = self._upstream_tools.get(server_name, [])
+                if upstream_tools:
+                    tools.extend(
+                        _process_view_include_all_with_upstream(
+                            server_name,
+                            upstream_tools,
+                            view_config,
+                            server_config,
+                        )
+                    )
+                elif server_config.tools:
+                    tools.extend(
+                        _process_view_include_all_fallback(
+                            server_name, server_config, view_config
+                        )
+                    )
             tools.extend(
                 _process_view_explicit_tools(
                     view_config, self._upstream_tools, self.config.mcp_servers

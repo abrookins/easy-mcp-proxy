@@ -125,7 +125,10 @@ def server_remove(name: str, config: str | None, force: bool):
     # Check if server is referenced by any views
     referencing_views = []
     for view_name, view_config in data.get("tool_views", {}).items():
-        if isinstance(view_config, dict) and name in view_config.get("tools", {}):
+        if isinstance(view_config, dict) and (
+            name in view_config.get("tools", {})
+            or name in view_config.get("include_all_servers", [])
+        ):
             referencing_views.append(view_name)
 
     if referencing_views and not force:
@@ -143,8 +146,13 @@ def server_remove(name: str, config: str | None, force: bool):
     # If force, also clean up view references
     if force and referencing_views:
         for view_name in referencing_views:
-            # referencing_views only contains views that have this server in tools
-            del data["tool_views"][view_name]["tools"][name]
+            view_config = data["tool_views"][view_name]
+            view_config.get("tools", {}).pop(name, None)
+            view_config["include_all_servers"] = [
+                server_name
+                for server_name in view_config.get("include_all_servers", [])
+                if server_name != name
+            ]
 
     save_config_raw(config_path, data)
     click.echo(f"Removed server '{name}'")

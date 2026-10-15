@@ -111,6 +111,8 @@ def validate_managed_config(
             raise ValueError("Invalid exposure mode")
         if set(view.tools) - set(config.mcp_servers):
             raise ValueError("View references an unknown upstream")
+        if set(view.include_all_servers) - set(config.mcp_servers):
+            raise ValueError("View includes all tools from an unknown upstream")
         if set(view.exclude_servers) - set(config.mcp_servers):
             raise ValueError("View excludes an unknown upstream")
     if config.cache_base_url or config.cache_secret:
@@ -188,6 +190,18 @@ class ConfigService:
         self.store.authorize(principal, admin=True)
         revision, config = self.store.active(principal)
         return {"revision": revision, "config": copy.deepcopy(config)}
+
+    def revealed_args(self, principal: Principal) -> dict[str, list]:
+        """Resolve command arguments for the authenticated browser editor."""
+        self.store.authorize(principal, admin=True)
+        _, config = self.store.active(principal)
+        revealed_args = {}
+        for name, server in config.get("mcp_servers", {}).items():
+            if isinstance(server, dict) and "args" in server:
+                revealed_args[name] = materialize_config(
+                    self.store, principal, server["args"]
+                )
+        return revealed_args
 
     def preview(self, principal: Principal, base: str | None, config: dict) -> dict:
         if len(json.dumps(config).encode()) > 1_048_576:

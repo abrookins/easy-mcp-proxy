@@ -22,7 +22,7 @@
   };
 
   var embedded = typeof window.proxyAdminTransport === 'function';
-  var state = { session: null, base: null, config: null, review: null };
+  var state = { session: null, base: null, config: null, revealedArgs: {}, toolCatalog: {}, review: null };
 
   // ---------- helpers ----------
 
@@ -110,6 +110,8 @@
     var data = await api('config');
     state.base = data.revision;
     state.config = data.config || { mcp_servers: {}, tool_views: {} };
+    state.revealedArgs = data.revealed_args || {};
+    state.toolCatalog = data.tool_catalog || {};
   }
 
   function isAdmin() { return embedded || (state.session && state.session.admin); }
@@ -201,18 +203,33 @@
 
   // A text value that may be a stored secret reference. References are kept
   // unless the user chooses to replace them with a new value.
-  function valueInput(value, label, placeholder) {
+  function valueInput(value, label, placeholder, revealedValue) {
     var holder = h('span', { class: 'secret' });
     var input = null;
+    var original = value;
+    var initial = revealedValue;
     function edit(initial) {
       input = h('input', { type: 'text', value: initial, placeholder: placeholder, 'aria-label': label, autocomplete: 'off' });
       holder.replaceChildren(input);
     }
-    if (isSecret(value)) {
+    if (isSecret(value) && revealedValue !== undefined) {
+      input = h('input', { type: 'password', value: String(revealedValue), placeholder: placeholder, 'aria-label': label, autocomplete: 'off' });
+      var toggle = h('button', { type: 'button', class: 'secondary small', text: 'Show', 'aria-label': 'Show ' + label, onclick: function () {
+        var showing = input.type === 'text';
+        input.type = showing ? 'password' : 'text';
+        toggle.textContent = showing ? 'Show' : 'Hide';
+        toggle.setAttribute('aria-label', (showing ? 'Show ' : 'Hide ') + label);
+      }});
+      holder.append(input, toggle);
+    } else if (isSecret(value)) {
       holder.append(h('code', { text: 'Stored value (hidden)' }),
         h('button', { type: 'button', class: 'secondary small', text: 'Replace', 'aria-label': 'Replace ' + label, onclick: function () { edit(''); input.focus(); } }));
     } else edit(value === undefined || value === null ? '' : String(value));
-    return { el: holder, value: function () { return input ? input.value : value; } };
+    return { el: holder, value: function () {
+      if (!input) return value;
+      if (isSecret(original) && initial !== undefined && input.value === String(initial)) return original;
+      return input.value;
+    }};
   }
 
   function kvEditor(obj, keyLabel, valueLabel) {
@@ -239,16 +256,17 @@
     };
   }
 
-  function listEditor(items, label) {
+  function listEditor(items, label, revealedItems) {
     var rows = h('div');
-    function addRow(value) {
-      var v = valueInput(value, label, label);
+    function addRow(value, index) {
+      var revealed = revealedItems && index < revealedItems.length ? revealedItems[index] : undefined;
+      var v = valueInput(value, label, label, revealed);
       var row = h('div', { class: 'kv-row' }, v.el,
         h('button', { type: 'button', class: 'secondary small', text: 'Remove', onclick: function () { row.remove(); } }));
       row._read = v.value;
       rows.appendChild(row);
     }
-    (items || []).forEach(addRow);
+    (items || []).forEach(function (value, index) { addRow(value, index); });
     return {
       el: h('div', null, rows, h('button', { type: 'button', class: 'secondary small', text: 'Add ' + label.toLowerCase(), onclick: function () { addRow(''); } })),
       value: function () {
@@ -260,13 +278,17 @@
 
   // Edits a {tool_name: ToolConfig} map. Fields without a form control
   // (aliases, parameters, cache_output) are preserved as-is.
-  function toolsEditor(tools) {
+  function toolsEditor(tools, availableTools) {
     var rows = h('div');
+    var choicesId = uid('tool-choices');
+    var choices = h('datalist', { id: choicesId }, (availableTools || []).map(function (name) {
+      return h('option', { value: name });
+    }));
     function addRow(name, cfg) {
       cfg = cfg || {};
       var extras = Object.keys(cfg).filter(function (k) { return ['name', 'description', 'enabled'].indexOf(k) < 0; });
       var row = h('div', { class: 'tool-row' },
-        h('input', { type: 'text', class: 'tool-name', value: name || '', placeholder: 'Upstream tool name', 'aria-label': 'Tool name' }),
+        h('input', { type: 'text', class: 'tool-name', value: name || '', list: choicesId, placeholder: 'Select or enter a tool name', 'aria-label': 'Tool name' }),
         h('input', { type: 'text', class: 'tool-rename', value: cfg.name || '', placeholder: 'Rename to (optional)', 'aria-label': 'Rename tool to' }),
         h('label', { class: 'check' }, h('input', { type: 'checkbox', class: 'tool-enabled', checked: cfg.enabled !== false }), 'Enabled'),
         h('button', { type: 'button', class: 'secondary small', text: 'Remove', onclick: function () { row.remove(); } }),
@@ -277,7 +299,7 @@
     }
     Object.keys(tools || {}).forEach(function (name) { addRow(name, tools[name]); });
     return {
-      el: h('div', null, rows, h('div', { class: 'actions' },
+      el: h('div', null, choices, rows, h('div', { class: 'actions' },
         h('button', { type: 'button', class: 'secondary small', text: 'Add tool', onclick: function () { addRow(); } }))),
       value: function () {
         var out = {};
@@ -400,24 +422,24 @@
       }), 'No upstream servers yet.'))];
   }
 
-  function serverForm(value) {
+  function serverForm(value, revealedArgs, availableTools) {
     var isHttp = !!value.url;
     var typeName = uid('type');
     var stdioRadio = h('input', { type: 'radio', name: typeName, checked: !isHttp, onchange: toggle });
     var httpRadio = h('input', { type: 'radio', name: typeName, checked: isHttp, onchange: toggle });
     var command = h('input', { type: 'text', value: value.command || '', placeholder: 'uvx' });
-    var args = listEditor(value.args, 'Argument');
+    var args = listEditor(value.args, 'Argument', revealedArgs);
     var cwd = h('input', { type: 'text', value: value.cwd || '' });
     var env = kvEditor(value.env, 'NAME', 'Value');
     var url = h('input', { type: 'url', value: value.url || '', placeholder: 'https://example.com/mcp' });
     var headers = kvEditor(value.headers, 'Header', 'Value');
     var limit = h('input', { type: 'checkbox', checked: !!value.tools, onchange: toggle });
-    var tools = toolsEditor(value.tools);
+    var tools = toolsEditor(value.tools, availableTools);
 
     var stdioBox = h('div', null,
       field('Command', command, 'The executable to run.', uid('cmd')),
       h('div', { class: 'field' }, h('span', { class: 'label', text: 'Arguments' }), args.el,
-        h('p', { class: 'hint', text: 'One argument per row, in order. Stored arguments stay hidden; replace one to change it.' })),
+        h('p', { class: 'hint', text: 'One argument per row, in order. Stored arguments are masked; use Show to reveal one.' })),
       field('Working directory', cwd, 'Optional.', uid('cwd')),
       h('div', { class: 'field' }, h('span', { class: 'label', text: 'Environment variables' }), env.el));
     var httpBox = h('div', null,
@@ -471,6 +493,7 @@
         Object.keys(view.tools).forEach(function (k) { put(renamed, k === from ? to : k, view.tools[k]); });
         view.tools = renamed;
       }
+      if (view.include_all_servers) view.include_all_servers = view.include_all_servers.map(function (s) { return s === from ? to : s; });
       if (view.exclude_servers) view.exclude_servers = view.exclude_servers.map(function (s) { return s === from ? to : s; });
     });
   }
@@ -499,7 +522,7 @@
         backHref: '#/servers',
         validateName: validName('Server'),
         exists: function (n) { return has(servers, n); },
-        renderForm: serverForm,
+        renderForm: function (value) { return serverForm(value, state.revealedArgs[name] || [], state.toolCatalog[name] || []); },
         onSave: function (newName, value) {
           var config = clone(state.config);
           config.mcp_servers = config.mcp_servers || {};
@@ -517,6 +540,7 @@
           Object.keys(config.tool_views || {}).forEach(function (v) {
             var view = config.tool_views[v];
             if (view.tools) delete view.tools[name];
+            if (view.include_all_servers) view.include_all_servers = view.include_all_servers.filter(function (s) { return s !== name; });
             if (view.exclude_servers) view.exclude_servers = view.exclude_servers.filter(function (s) { return s !== name; });
           });
           perform(function () { return stage(config, 'remove server "' + name + '"', '#/servers'); });
@@ -540,7 +564,7 @@
           h('td', null, h('a', { href: href, text: name })),
           h('td', { text: v.description || '' }),
           h('td', null, h('span', { class: 'badge', text: v.exposure_mode || 'direct' })),
-          h('td', { text: v.include_all ? 'all servers' : Object.keys(v.tools || {}).join(', ') || '—' })]);
+          h('td', { text: v.include_all ? 'all servers' : Array.from(new Set(Object.keys(v.tools || {}).concat(v.include_all_servers || []))).join(', ') || '—' })]);
       }), 'No views yet.'))];
   }
 
@@ -558,23 +582,43 @@
         return h('label', { class: 'check' }, excluded[s], s);
       }));
     var viewTools = value.tools || {};
+    var allToolServers = value.include_all_servers || [];
     var editors = {};
     var enabledBoxes = {};
-    var toolSets = serverNames.concat(Object.keys(viewTools).filter(function (s) { return serverNames.indexOf(s) < 0; })).map(function (s) {
-      editors[s] = toolsEditor(viewTools[s]);
-      enabledBoxes[s] = h('input', { type: 'checkbox', checked: has(viewTools, s) });
-      var body = h('div', null, editors[s].el);
-      function sync() { body.hidden = !enabledBoxes[s].checked; }
-      enabledBoxes[s].addEventListener('change', sync);
+    var allBoxes = {};
+    var configuredServers = Object.keys(viewTools).concat(allToolServers).filter(function (s, i, values) { return values.indexOf(s) === i; });
+    var toolSets = serverNames.concat(configuredServers.filter(function (s) { return serverNames.indexOf(s) < 0; })).map(function (s) {
+      editors[s] = toolsEditor(viewTools[s], state.toolCatalog[s] || []);
+      enabledBoxes[s] = h('input', { type: 'checkbox', checked: has(viewTools, s) || allToolServers.indexOf(s) >= 0 });
+      allBoxes[s] = h('input', { type: 'checkbox', checked: allToolServers.indexOf(s) >= 0 });
+      var allRow = h('label', { class: 'check' }, allBoxes[s], 'All tools from this server');
+      var body = h('div', null, allRow, editors[s].el);
+      var collapsed = enabledBoxes[s].checked;
+      var collapse = h('button', { type: 'button', class: 'secondary small', onclick: function () {
+        collapsed = !collapsed;
+        sync();
+      }});
+      function sync() {
+        body.hidden = !enabledBoxes[s].checked || collapsed;
+        collapse.hidden = !enabledBoxes[s].checked;
+        collapse.textContent = (collapsed ? 'Expand ' : 'Collapse ') + s + ' tools';
+        collapse.setAttribute('aria-expanded', String(!collapsed));
+        editors[s].el.hidden = allBoxes[s].checked;
+      }
+      enabledBoxes[s].addEventListener('change', function () {
+        if (enabledBoxes[s].checked) collapsed = false;
+        sync();
+      });
+      allBoxes[s].addEventListener('change', sync);
       sync();
-      return h('fieldset', null, h('legend', null, h('label', { class: 'check' }, enabledBoxes[s], s)),
+      return h('fieldset', null, h('legend', null, h('label', { class: 'check' }, enabledBoxes[s], s), collapse),
         serverNames.indexOf(s) < 0 ? h('p', { class: 'hint status-error', text: 'This server is not configured.' }) : null, body);
     });
     var preCall = h('input', { type: 'text', value: (value.hooks || {}).pre_call || '', placeholder: 'myapp.hooks.before_call' });
     var postCall = h('input', { type: 'text', value: (value.hooks || {}).post_call || '', placeholder: 'myapp.hooks.after_call' });
     var customTools = jsonField(value.custom_tools || [], 'Custom tools', 'List of {"module": "package.module.tool_function"} entries. Requires operator permission.');
     var composite = jsonField(value.composite_tools || {}, 'Composite tools', 'Map of tool name to {description, inputs, parallel}.');
-    var toolsBox = h('div', null, h('p', { class: 'hint', text: 'Check a server to include its tools. With no tools listed, nothing from that server is exposed.' }), toolSets);
+    var toolsBox = h('div', null, h('p', { class: 'hint', text: 'Check a server, then expose all of its tools or maintain a tool allowlist.' }), toolSets);
 
     function toggle() { excludeBox.hidden = !includeAll.checked; }
     toggle();
@@ -592,7 +636,7 @@
         h('fieldset', null, h('legend', { text: 'Advanced' }), customTools.el, composite.el)),
       value: function () {
         var out = clone(value);
-        ['description', 'exposure_mode', 'include_all', 'exclude_servers', 'tools', 'hooks', 'custom_tools', 'composite_tools'].forEach(function (k) { delete out[k]; });
+        ['description', 'exposure_mode', 'include_all', 'include_all_servers', 'exclude_servers', 'tools', 'hooks', 'custom_tools', 'composite_tools'].forEach(function (k) { delete out[k]; });
         if (description.value.trim()) out.description = description.value;
         if (mode.value !== 'direct') out.exposure_mode = mode.value;
         if (includeAll.checked) {
@@ -601,7 +645,13 @@
           if (ex.length) out.exclude_servers = ex;
         }
         var tools = {};
-        Object.keys(editors).forEach(function (s) { if (enabledBoxes[s].checked) put(tools, s, editors[s].value()); });
+        var allServers = [];
+        Object.keys(editors).forEach(function (s) {
+          if (!enabledBoxes[s].checked) return;
+          if (allBoxes[s].checked) allServers.push(s);
+          else put(tools, s, editors[s].value());
+        });
+        if (allServers.length) out.include_all_servers = allServers;
         if (!isEmpty(tools)) out.tools = tools;
         var hooks = {};
         if (preCall.value.trim()) hooks.pre_call = preCall.value.trim();
