@@ -478,7 +478,7 @@ async def test_upstream_exception_details_do_not_escape_scope(gateway):
         tool.inner = SimpleNamespace(
             run=AsyncMock(side_effect=RuntimeError("private-token"))
         )
-        with pytest.raises(ToolError, match="Upstream execution failed") as exc:
+        with pytest.raises(ToolError, match="Tool execution failed") as exc:
             await tool.run({})
         assert "private-token" not in str(exc.value)
         assert exc.value.__suppress_context__

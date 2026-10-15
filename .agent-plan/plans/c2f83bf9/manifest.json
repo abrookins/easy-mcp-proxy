@@ -2,8 +2,8 @@
   "version": 2,
   "plan_id": "c2f83bf9",
   "created_at": "2026-10-13T14:54:42.199429Z",
-  "updated_at": "2026-10-15T21:14:36.259713Z",
-  "next_sequence": 53,
+  "updated_at": "2026-10-15T21:34:49.924647Z",
+  "next_sequence": 54,
   "tasks": [
     {
       "id": "001-define-delivery-plan-and-acceptance-criteria",
@@ -934,17 +934,32 @@
       "id": "052-restore-actionable-tool-validation-errors-without-leaking-secrets",
       "sequence": 52,
       "name": "Restore actionable tool validation errors without leaking secrets",
-      "status": "not_started",
+      "status": "complete",
       "order": 51,
       "depends_on": [
         "051-investigate-misleading-errors-from-skills-tool-calls"
       ],
       "created_at": "2026-10-15T21:14:01.212792Z",
-      "updated_at": "2026-10-15T21:14:01.212801Z",
-      "path": "tasks/052-restore-actionable-tool-validation-errors-without-leaking-secrets.md",
-      "claim_path": "tasks/052-restore-actionable-tool-validation-errors-without-leaking-secrets.claim",
+      "updated_at": "2026-10-15T21:34:49.886957Z",
+      "completed_at": "2026-10-15T21:34:49.886957Z",
+      "archived_at": "2026-10-15T21:34:49.886957Z",
+      "path": "history/052-restore-actionable-tool-validation-errors-without-leaking-secrets.done",
       "description_preview": "Investigation 051 reproduced gateway error masking. ScopedTool.run catches every inner exception, including safe loca...",
-      "record_hash": "7c00f6f706913ad07861692aef0ce6a8e48117f3873a3c8ecfe90e92dda367f3"
+      "record_hash": "de34de85e00548e5d751aa32a1fe525ad5f09841af9517e5476252aa8ae0b791"
+    },
+    {
+      "id": "053-audit-and-fix-validation-across-controlled-upstream-servers",
+      "sequence": 53,
+      "name": "Audit and fix validation across controlled upstream servers",
+      "status": "complete",
+      "order": 52,
+      "created_at": "2026-10-15T21:26:22.071218Z",
+      "updated_at": "2026-10-15T21:34:49.924647Z",
+      "completed_at": "2026-10-15T21:34:49.924646Z",
+      "archived_at": "2026-10-15T21:34:49.924646Z",
+      "path": "history/053-audit-and-fix-validation-across-controlled-upstream-servers.done",
+      "description_preview": "User expanded the fix to other upstream servers we control. Audit live upstream schemas and local implementations (Up...",
+      "record_hash": "ed256c19962fc7000388a364848b1a7b3be64afc341ef7e957b6486dbe3fc1d8"
     }
   ]
 }

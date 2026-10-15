@@ -395,3 +395,31 @@ The legacy browser cookie format is not imported. Existing browser administrator
 log in once after this upgrade; managed browser sessions then survive subsequent
 restarts. Existing MCP OAuth tokens are preserved only by the compatible explicit
 OAuth-state import, not by generating a fresh state directory.
+
+## Tool argument errors
+
+Managed MCP calls return a versioned JSON error in the MCP text content when a
+request fails. Check its `error` field before changing credentials or restarting:
+
+| Error | What to check |
+| --- | --- |
+| `invalid_tool_arguments` | Use `*_describe_tool` to inspect parameter names, types, required fields, and enum choices. Search-mode errors include `validation_path` and the input schema when they fit the response limit. |
+| `unknown_tool` | Use `*_search_tools` or the returned available names and suggestion. |
+| `upstream_tool_error` | The upstream tool rejected the request. Check arguments, the selected source/resource, and permissions. This does not establish a connection failure. |
+| `upstream_protocol_error` | Check the tool schema and the upstream MCP implementation. |
+| `upstream_auth_error` | Check upstream credentials and grants after an HTTP 401/403. |
+| `upstream_http_error` | Check the upstream HTTP service status. |
+| `upstream_timeout` / `upstream_connection_error` | Inspect connection health. |
+| `tool_execution_error` | Execution failed without a more specific safe classification. Private exception details remain hidden. |
+
+The proxy preserves validation details it generates locally. It does not forward
+arbitrary upstream exception text, which can contain resolved credentials or
+private arguments. Validation responses over 16,384 characters omit detailed
+metadata and point back to discovery. Deterministic upstream tool and protocol
+errors are not retried automatically.
+
+For Upskill, adding an overlay file uses `operation: "files"`, with `dry_run: true`
+to preview. Valid operations are `append`, `root_append`, `files`, `replace`,
+`template`, and `patch`; `add` is not an operation. Source-write tools require a
+source returned by `list_sources`. After a schema update, refresh tool discovery
+or reconnect the agent so it sees the current choices.

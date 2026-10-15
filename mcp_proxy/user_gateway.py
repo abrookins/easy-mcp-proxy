@@ -33,6 +33,7 @@ from mcp_proxy.identity import (
 )
 from mcp_proxy.managed_config import ConfigService
 from mcp_proxy.state import encryption_key
+from mcp_proxy.tool_errors import public_tool_error
 from mcp_proxy.user_runtime import UserRuntime
 from mcp_proxy.user_store import Conflict, NotFound
 
@@ -97,11 +98,8 @@ class ScopedTool(Tool):
                 raise Conflict("Tools changed; refresh discovery")
             try:
                 return await self.inner.run(arguments)
-            except Exception:
-                # Transport and hook exceptions can contain resolved arguments.
-                raise ToolError(
-                    "Upstream execution failed; inspect connection health"
-                ) from None
+            except Exception as exc:
+                raise ToolError(public_tool_error(exc)) from None
 
 
 class UserProvider(Provider):

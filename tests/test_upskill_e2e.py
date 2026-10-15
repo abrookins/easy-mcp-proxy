@@ -332,3 +332,112 @@ async def test_hosted_fixture_smoke_registry_hash_and_version(upskill_state):
     _, describe, _ = await _meta_tools(proxy)
     response = await describe.fn(tool_name="promote_skill_draft")
     assert response["description"].startswith("Copy a draft")
+
+
+async def test_managed_wire_validation_and_overlay_preview(upskill_state, tmp_path):
+    import httpx
+
+    from mcp_proxy.identity import Identity
+    from mcp_proxy.user_gateway import UserGateway
+    from mcp_proxy.user_runtime import UserRuntime
+    from mcp_proxy.user_store import UserStore
+    from tests.test_user_gateway import FakeOAuth, rpc
+
+    store = UserStore(tmp_path / "managed")
+    uid = store.provision("issuer", "alice", operator=True)
+    store.grant(uid, "app", admin=True, views=["*"])
+    principal = store.resolve(Identity("issuer", "alice", "app"))
+    runtime = UserRuntime(store, base_url="https://proxy.test")
+    app = UserGateway(runtime, FakeOAuth())
+    revision = app.service.preview(
+        principal,
+        None,
+        {
+            "mcp_servers": {"skills": _upstream_config(upskill_state)},
+            "tool_views": {
+                "default": {
+                    "include_all": True,
+                    "exposure_mode": "search_per_server",
+                }
+            },
+        },
+    )["revision"]
+    await runtime.apply(principal, revision)
+    args = {
+        "skill_id": "fixture",
+        "path": "WRITE_TEST.md",
+        "content": "private-test-content",
+        "operation": "files",
+        "dry_run": True,
+    }
+    async with app.app.router.lifespan_context(app.app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app.app),
+            base_url="https://proxy.test",
+            headers={"Authorization": "Bearer alice"},
+        ) as client:
+            for name, arguments, code in [
+                (
+                    "upsert_skill_overlay_file",
+                    {**args, "operation": "add"},
+                    "invalid_tool_arguments",
+                ),
+                (
+                    "upsert_skill_overlay_file",
+                    {**args, "unexpected_argument": "secret"},
+                    "invalid_tool_arguments",
+                ),
+                (
+                    "upsert_source_skill_file",
+                    {
+                        "source": "missing",
+                        "skill_id": "fixture",
+                        "path": "WRITE_TEST.md",
+                        "content": "private-test-content",
+                        "dry_run": True,
+                    },
+                    "upstream_tool_error",
+                ),
+                ("upsert_skill_overlay_fil", args, "unknown_tool"),
+            ]:
+                response = await rpc(
+                    client,
+                    "/mcp",
+                    "tools/call",
+                    {
+                        "name": "skills_call_tool",
+                        "arguments": {"tool_name": name, "arguments": arguments},
+                    },
+                )
+                result = response["result"]
+                assert result["isError"] is True
+                payload = json.loads(result["content"][0]["text"])
+                assert payload["error"] == code
+                assert "private-test-content" not in str(result)
+                assert "connection health" not in str(result)
+                if arguments.get("operation") == "add":
+                    assert payload["validation_path"] == ["operation"]
+                    assert (
+                        "files"
+                        in payload["inputSchema"]["properties"]["operation"]["enum"]
+                    )
+            response = await rpc(
+                client,
+                "/mcp",
+                "tools/call",
+                {
+                    "name": "skills_call_tool",
+                    "arguments": {
+                        "tool_name": "upsert_skill_overlay_file",
+                        "arguments": args,
+                    },
+                },
+            )
+            result = response["result"]
+            assert not result.get("isError")
+            payload = json.loads(result["content"][0]["text"])
+            payload = json.loads(payload["content"][0]["text"])
+            assert payload["dry_run"] is True
+            assert payload["applied"] is False
+    assert not list(upskill_state["home"].rglob("WRITE_TEST.md"))
+    store.close()

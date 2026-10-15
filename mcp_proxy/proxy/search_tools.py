@@ -45,17 +45,18 @@ def create_call_tool_wrapper(
     Returns:
         An async function that validates and calls tools
     """
-    tool_map = {tool.name: tool for tool in tools} if isinstance(tools, list) else tools
+    registry = (
+        tools
+        if isinstance(tools, ToolRegistry)
+        else ToolRegistry(tools if isinstance(tools, list) else list(tools.values()))
+    )
 
     async def call_tool_wrapper(
         tool_name: str, arguments: dict | str | None = None
     ) -> Any:
-        tool_info = tool_map.get(tool_name)
+        tool_info = registry.get(tool_name)
         if tool_info is None:
-            raise ValueError(
-                f"Unknown tool '{tool_name}'. "
-                f"Use {search_tool_name} to find available tools."
-            )
+            lookup_tool_metadata(registry, tool_name, search_tool_name)
         from .validation import normalize_and_validate_arguments
 
         normalized_args = normalize_and_validate_arguments(tool_info, arguments)

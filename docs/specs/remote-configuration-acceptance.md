@@ -298,3 +298,48 @@ Task 052 tracks a correction: preserve explicitly safe bounded validation
 errors, distinguish tool rejections from transport/authentication failures, keep
 arbitrary exception details masked, and tighten the upstream operation schema.
 This investigation does not mark that correction implemented or deployed.
+
+### Tool error correction and controlled upstreams: 2026-10-15
+
+Tasks 052 and 053 supersede the diagnostic limitation recorded above. The managed
+HTTP gateway now preserves bounded local validation and unknown-tool payloads.
+It distinguishes upstream tool rejections, protocol errors, HTTP access errors,
+timeouts, and connection errors while withholding arbitrary exception text.
+The change applies to every upstream behind the gateway.
+
+The controlled upstream audit produced four additional fixes:
+
+- Upskill (`31f163d`): overlay operations are published as an enum and validated
+  before file operations. Both upsert and delete use the same choices.
+- Agent-plan (`8860b73`): required fields, types, unknown parameters, and status
+  choices are checked before the MCP server opens or creates a workspace.
+- Memory (`8750370`): `add_messages` publishes required message fields and role
+  choices; malformed batches are rejected before storage or indexing.
+- YNAB (`3b1cca2`): transaction filters, cleared status, account type, and bulk
+  transaction item fields are described and validated before API calls.
+
+The configured Obsidian/filesystem and GitHub servers use third-party npm
+packages. They receive the gateway correction without local source changes.
+
+The installed Upskill and agent-plan binaries were backed up and replaced. The
+managed launchd service restarted successfully and returned HTTP 200 from
+`/health`. Live MCP checks through the existing user-bound key confirmed:
+
+- The reported `operation: "add"` call returns `invalid_tool_arguments`, a
+  validation path of `operation`, and all six allowed enum choices.
+- An unknown parameter returns `invalid_tool_arguments`; an unknown tool returns
+  `unknown_tool` with discovery metadata.
+- A nonexistent source returns `upstream_tool_error`, without a connection-health
+  claim or private upstream exception text.
+- The corrected `operation: "files"` preview returns `dry_run: true`,
+  `applied: false`, and `base_mutated: false`.
+- Invalid memory message roles and agent-plan status filters are rejected by
+  local schema validation. YNAB discovery advertises all 13 account types.
+
+No live skill writes or YNAB API calls were made. YNAB validation tests used
+mocked HTTP. The proxy passed **1,339 tests with 100% line and branch coverage**;
+memory passed **799 tests with 100% line and branch coverage**; YNAB passed
+**235 tests**. Upskill and agent-plan Go tests and `go vet` passed. Proxy lint,
+format checks, 111 documentation links, and both bootstrap examples passed.
+These API checks do not substitute for the existing external Claude/mobile
+acceptance gates. Agents should refresh discovery after the schema changes.

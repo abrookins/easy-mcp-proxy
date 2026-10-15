@@ -1,0 +1,15 @@
+---
+id: 053-audit-and-fix-validation-across-controlled-upstream-servers
+sequence: 53
+slug: audit-and-fix-validation-across-controlled-upstream-servers
+name: Audit and fix validation across controlled upstream servers
+status: complete
+order: 52
+result: Audited configured upstreams. Fixed and deployed Upskill 31f163d, agent-plan 8860b73, memory 8750370, and YNAB 3b1cca2. Shared gateway fix covers third-party npm servers. Live invalid memory roles and plan status filters reject locally; YNAB live discovery shows enum while all YNAB execution tests are mocked. Memory 799 tests/100% coverage; YNAB 235; Go suites/vet pass. Source changes committed and pushed on fix branches; evidence in acceptance doc.
+created_at: 2026-10-15T21:26:22.071218Z
+updated_at: 2026-10-15T21:34:49.924647Z
+completed_at: 2026-10-15T21:34:49.924646Z
+archived_at: 2026-10-15T21:34:49.924646Z
+---
+
+User expanded the fix to other upstream servers we control. Audit live upstream schemas and local implementations (Upskill, agent-plan, memory, YNAB as applicable), fix deterministic argument validation that masquerades as connection failures, and verify all through the shared gateway without exposing credentials.
