@@ -1,0 +1,14 @@
+---
+id: 049-grant-existing-api-key-administration-and-push-the-feature-branch
+sequence: 49
+slug: grant-existing-api-key-administration-and-push-the-feature-branch
+name: Grant existing API key administration and push the feature branch
+status: complete
+order: 48
+created_at: 2026-10-15T18:52:02.316031Z
+updated_at: 2026-10-15T18:53:08.789153Z
+completed_at: 2026-10-15T18:53:08.789152Z
+archived_at: 2026-10-15T18:53:08.789152Z
+---
+
+Granted the existing bound API key admin permission and admin view while preserving default/remote/coding-agent/search. Verified live config/status APIs return 200 and admin MCP exposes seven tools including proxy_apply, without restarting or changing the secret. Committed deployment evidence in fb6dc63 and pushed all feature branch commits to origin/feat/user-owned-live-configuration with upstream tracking. Existing unrelated .gitignore and security-plan files were left untouched.
