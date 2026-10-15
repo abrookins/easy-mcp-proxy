@@ -1,0 +1,14 @@
+---
+id: 047-fix-live-oauth-discovery-and-browser-login-compatibility
+sequence: 47
+slug: fix-live-oauth-discovery-and-browser-login-compatibility
+name: Fix live OAuth discovery and browser login compatibility
+status: complete
+order: 46
+created_at: 2026-10-15T18:22:34.013165Z
+updated_at: 2026-10-15T18:31:03.553497Z
+completed_at: 2026-10-15T18:31:03.553496Z
+archived_at: 2026-10-15T18:31:03.553496Z
+---
+
+Fixed and deployed in dac6ff4: shared-origin OAuth metadata/audiences with strict legacy /mcp token compatibility; browser scopes come from OAuth backend and empty scope omitted. Actual MCP TypeScript SDK reproduced original failure and now accepts default, remote, coding-agent and search discovery. Public browser initiation reaches consent. Legacy/new Auth0-backed probes verify identity and list all 20 remote tools; static bearer remains rejected. make check and 1314 tests pass with 100% line/branch coverage. Updated administration, ADR and acceptance docs. Interactive Auth0/Claude completion remains in existing external acceptance gates.

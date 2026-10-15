@@ -190,8 +190,7 @@ such as `mcp-remote` validate discovery for `/view/NAME/mcp`. The old
 Previously issued `/mcp` audience tokens remain valid subject to their original
 signature, issuer, expiry, token type, stored session, and owner/client/view grants.
 New authorization requests using the former `/mcp` resource are also accepted.
-Each
-stateless HTTP request resolves its authenticated owner; there is no shared
+Each stateless HTTP request resolves its authenticated owner; there is no shared
 transport session that can carry another user's identity. Clients must keep sending
 OAuth credentials. A lost TCP/MCP request is separate from a lost OAuth login.
 
@@ -220,9 +219,10 @@ For browser administration, start at `/config`, not `/config/login/callback`.
 The latter requires a fresh OAuth state cookie and authorization code. The
 upstream Auth0 application still uses the proxy's `/auth/callback`; browser
 administration's `/config/login/callback` is registered with the proxy itself.
-An immediate `login_failed` caused by an empty scope was a proxy defect, fixed
-by omitting the scope parameter when no scopes are required. Auth0 settings do
-not need to change for this fix.
+An immediate `login_failed` caused by an empty scope was a proxy defect. Browser
+login now uses the OAuth backend's required scopes, even when a composite auth
+wrapper reports none, and omits the parameter when no scopes are required.
+Auth0 settings do not need to change for this fix.
 
 ### Discovery and cached output
 

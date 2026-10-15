@@ -2,8 +2,8 @@
   "version": 2,
   "plan_id": "c2f83bf9",
   "created_at": "2026-10-13T14:54:42.199429Z",
-  "updated_at": "2026-10-15T16:54:20.205421Z",
-  "next_sequence": 47,
+  "updated_at": "2026-10-15T18:31:03.553497Z",
+  "next_sequence": 48,
   "tasks": [
     {
       "id": "001-define-delivery-plan-and-acceptance-criteria",
@@ -859,6 +859,20 @@
       "path": "history/046-respect-per-server-tool-namespaces-during-activation.done",
       "description_preview": "Activation now validates tool-name collisions within each server namespace for search_per_server, while retaining glo...",
       "record_hash": "d3158f1624ea702c2c2aaabd8505182f776f7a778e558cab3e784c4edf41a981"
+    },
+    {
+      "id": "047-fix-live-oauth-discovery-and-browser-login-compatibility",
+      "sequence": 47,
+      "name": "Fix live OAuth discovery and browser login compatibility",
+      "status": "complete",
+      "order": 46,
+      "created_at": "2026-10-15T18:22:34.013165Z",
+      "updated_at": "2026-10-15T18:31:03.553497Z",
+      "completed_at": "2026-10-15T18:31:03.553496Z",
+      "archived_at": "2026-10-15T18:31:03.553496Z",
+      "path": "history/047-fix-live-oauth-discovery-and-browser-login-compatibility.done",
+      "description_preview": "Fixed and deployed in dac6ff4: shared-origin OAuth metadata/audiences with strict legacy /mcp token compatibility; br...",
+      "record_hash": "b6b37087d9171336cba44f68fb227d7db8c9a8a0782a9a34d3b0bf37ca9caa71"
     }
   ]
 }

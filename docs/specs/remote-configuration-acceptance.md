@@ -196,3 +196,37 @@ a new registration or an expired upstream session may still require login and
 a new explicit grant. Browser administration is at `/config`. For embedded
 administration, use a separate `/view/admin/mcp` connector with both admin and
 `admin` view grants. Physical-device and actual-host UI checks remain pending.
+
+### Live OAuth compatibility repair: 2026-10-15
+
+Claude Desktop through `mcp-remote` exposed a discovery mismatch: the named
+`/view/remote/mcp` endpoint advertised `/mcp` as its resource. The actual MCP
+TypeScript SDK reproduced this rejection against the running service. Browser
+logs separately showed `invalid_scope` before reaching Auth0: the composite auth
+wrapper supplied an empty scope instead of the OAuth backend's required scopes.
+
+Commit `dac6ff4` fixes both issues and is deployed on the existing launchd service:
+
+- Shared-origin resource metadata and newly issued token audiences cover every
+  managed view. Explicit legacy `/mcp` token verification retains signature,
+  issuer, expiry, token-type, owner and grant checks; no per-request issuer mutation.
+- Existing protected-resource discovery URLs remain aliases. The actual MCP
+  TypeScript SDK accepts public discovery at default, remote, coding-agent and
+  search endpoints after restart.
+- Browser login uses the backend's required scopes and omits an empty scope.
+  Public login initiation reaches the consent page without the former error.
+  Auth0 configuration was not changed.
+- Short-lived operator probes backed by an existing verified Auth0 session pass
+  identity checks on loopback and public HTTPS with both token audiences, and
+  both return all 20 remote tools. Static bearer authentication remains rejected.
+- Real OAuth handler tests exercise browser authorization, PKCE exchange and
+  session creation with a simulated IdP result. Process tests verify legacy
+  access and refresh token migration. `make check` and all **1314 tests** pass
+  with **100% line and branch coverage**.
+
+Private deployment evidence is recorded with the original migration backup.
+Interactive Auth0 completion and actual Claude Desktop reconnection remain
+user-side checks; this repair does not complete the pending real-host/mobile
+acceptance gates. Claude's static `Authorization`/`AUTH_TOKEN` configuration must
+be removed so `mcp-remote` can perform OAuth; newly registered clients still need
+explicit grants. See the [Claude configuration](../user-owned-configuration.md#claude-desktop-through-mcp-remote).
