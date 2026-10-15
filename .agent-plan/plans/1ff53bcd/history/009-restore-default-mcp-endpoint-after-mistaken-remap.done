@@ -1,0 +1,14 @@
+---
+id: 009-restore-default-mcp-endpoint-after-mistaken-remap
+sequence: 9
+slug: restore-default-mcp-endpoint-after-mistaken-remap
+name: Restore default MCP endpoint after mistaken remap
+status: complete
+order: 8
+created_at: 2026-08-14T05:43:59.889218Z
+updated_at: 2026-08-14T05:44:03.816049Z
+completed_at: 2026-08-14T05:44:03.816049Z
+archived_at: 2026-08-14T05:44:03.816049Z
+---
+
+Undo the temporary compatibility change that mapped /mcp to the restricted remote view. The design requires /view/remote/mcp to be the special restricted endpoint while /mcp remains the default view.

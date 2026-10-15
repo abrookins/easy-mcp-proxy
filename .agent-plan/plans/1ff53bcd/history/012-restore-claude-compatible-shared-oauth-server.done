@@ -1,0 +1,14 @@
+---
+id: 012-restore-claude-compatible-shared-oauth-server
+sequence: 12
+slug: restore-claude-compatible-shared-oauth-server
+name: Restore Claude-compatible shared OAuth server
+status: complete
+order: 11
+created_at: 2026-08-14T06:15:00.192393Z
+updated_at: 2026-08-14T06:19:38.133984Z
+completed_at: 2026-08-14T06:19:38.133984Z
+archived_at: 2026-08-14T06:19:38.133984Z
+---
+
+Roll back the path-scoped per-view OAuth authorization server introduced during remote-view work. Keep /view/remote/mcp as the restricted MCP endpoint but restore the previously working root OAuth discovery and DCR flow used by Claude.

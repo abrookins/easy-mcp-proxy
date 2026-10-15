@@ -1,0 +1,14 @@
+---
+id: 010-fix-per-view-oauth-resource-binding
+sequence: 10
+slug: fix-per-view-oauth-resource-binding
+name: Fix per-view OAuth resource binding
+status: complete
+order: 9
+created_at: 2026-08-14T05:54:27.016683Z
+updated_at: 2026-08-14T05:54:43.668668Z
+completed_at: 2026-08-14T05:54:43.668668Z
+archived_at: 2026-08-14T05:54:43.668668Z
+---
+
+The first mounted-view metadata fix still shared one mutable OAuth provider, so /authorize was bound to the last configured view resource (/view/coding-agent/mcp). Use independent auth providers and path-aware OAuth metadata per mounted view so /view/remote/authorize accepts resource /view/remote/mcp.

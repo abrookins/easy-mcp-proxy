@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "plan_id": "1ff53bcd",
+  "created_at": "2026-07-07T19:32:39.497969Z",
+  "updated_at": "2026-08-14T06:19:38.133984Z",
+  "next_sequence": 13,
+  "tasks": [
+    {
+      "id": "001-create-least-privilege-remote-mcp-view",
+      "sequence": 1,
+      "name": "Create least-privilege remote MCP view",
+      "status": "complete",
+      "order": 0,
+      "created_at": "2026-07-07T19:32:53.325486Z",
+      "updated_at": "2026-08-14T05:13:48.591453Z",
+      "completed_at": "2026-08-14T05:13:48.591453Z",
+      "archived_at": "2026-08-14T05:13:48.591453Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/history/001-create-least-privilege-remote-mcp-view.done",
+      "description_preview": "Define a dedicated remote tool view with only the MCP tools that should be reachable from outside the local machine. ..."
+    },
+    {
+      "id": "002-restrict-public-edge-routes-to-required-mcp-endpoints",
+      "sequence": 2,
+      "name": "Restrict public edge routes to required MCP endpoints",
+      "status": "in_progress",
+      "order": 1,
+      "depends_on": [
+        "001-create-least-privilege-remote-mcp-view"
+      ],
+      "created_at": "2026-07-07T19:32:59.439393Z",
+      "updated_at": "2026-08-14T05:24:28.437495Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/tasks/002-restrict-public-edge-routes-to-required-mcp-endpoints.md",
+      "claim_path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/tasks/002-restrict-public-edge-routes-to-required-mcp-endpoints.claim",
+      "description_preview": "Configure the public edge proxy to pass only the required MCP endpoint, likely /view/remote/mcp, plus any required OA..."
+    },
+    {
+      "id": "003-bind-proxy-backend-to-localhost",
+      "sequence": 3,
+      "name": "Bind proxy backend to localhost",
+      "status": "not_started",
+      "order": 2,
+      "depends_on": [
+        "002-restrict-public-edge-routes-to-required-mcp-endpoints"
+      ],
+      "created_at": "2026-07-07T19:33:04.735152Z",
+      "updated_at": "2026-07-07T19:33:04.735159Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/tasks/003-bind-proxy-backend-to-localhost.md",
+      "claim_path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/tasks/003-bind-proxy-backend-to-localhost.claim",
+      "description_preview": "Add or wire a host option for HTTP serving if needed, then update launchd/runtime config so Uvicorn listens on 127.0...."
+    },
+    {
+      "id": "004-harden-authentication-and-token-management",
+      "sequence": 4,
+      "name": "Harden authentication and token management",
+      "status": "not_started",
+      "order": 3,
+      "created_at": "2026-07-07T19:33:10.715681Z",
+      "updated_at": "2026-07-07T19:33:10.71569Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/tasks/004-harden-authentication-and-token-management.md",
+      "claim_path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/tasks/004-harden-authentication-and-token-management.claim",
+      "description_preview": "Move toward OIDC with restricted users/scopes or separate long random static bearer tokens per client. Rotate any sha..."
+    },
+    {
+      "id": "005-add-edge-rate-limiting-and-request-size-limits",
+      "sequence": 5,
+      "name": "Add edge rate limiting and request size limits",
+      "status": "not_started",
+      "order": 4,
+      "depends_on": [
+        "002-restrict-public-edge-routes-to-required-mcp-endpoints"
+      ],
+      "created_at": "2026-07-07T19:33:16.015489Z",
+      "updated_at": "2026-07-07T19:33:16.015498Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/tasks/005-add-edge-rate-limiting-and-request-size-limits.md",
+      "claim_path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/tasks/005-add-edge-rate-limiting-and-request-size-limits.claim",
+      "description_preview": "Configure edge-level method restrictions, per-IP request limits, burst behavior, and client body size caps for the pu..."
+    },
+    {
+      "id": "006-validate-and-document-public-security-posture",
+      "sequence": 6,
+      "name": "Validate and document public security posture",
+      "status": "not_started",
+      "order": 5,
+      "depends_on": [
+        "003-bind-proxy-backend-to-localhost",
+        "004-harden-authentication-and-token-management",
+        "005-add-edge-rate-limiting-and-request-size-limits"
+      ],
+      "created_at": "2026-07-07T19:33:24.322783Z",
+      "updated_at": "2026-07-07T19:33:24.322798Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/tasks/006-validate-and-document-public-security-posture.md",
+      "claim_path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/tasks/006-validate-and-document-public-security-posture.claim",
+      "description_preview": "Verify remote clients still work, unauthorized requests fail, scanner-style paths are dropped at the edge, the backen..."
+    },
+    {
+      "id": "007-fix-oauth-discovery-metadata-for-mounted-mcp-views",
+      "sequence": 7,
+      "name": "Fix OAuth discovery metadata for mounted MCP views",
+      "status": "complete",
+      "order": 6,
+      "created_at": "2026-08-14T05:32:02.999651Z",
+      "updated_at": "2026-08-14T05:32:06.347605Z",
+      "completed_at": "2026-08-14T05:32:06.347605Z",
+      "archived_at": "2026-08-14T05:32:06.347605Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/history/007-fix-oauth-discovery-metadata-for-mounted-mcp-views.done",
+      "description_preview": "Mounted FastMCP apps advertised bare /mcp in protected-resource metadata even when exposed publicly under /view/\u003cname..."
+    },
+    {
+      "id": "008-map-standard-public-mcp-endpoint-to-restricted-view",
+      "sequence": 8,
+      "name": "Map standard public MCP endpoint to restricted view",
+      "status": "complete",
+      "order": 7,
+      "created_at": "2026-08-14T05:38:21.175758Z",
+      "updated_at": "2026-08-14T05:38:30.528738Z",
+      "completed_at": "2026-08-14T05:38:30.528738Z",
+      "archived_at": "2026-08-14T05:38:30.528738Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/history/008-map-standard-public-mcp-endpoint-to-restricted-view.done",
+      "description_preview": "Remote clients including Claude and ChatMCP requested OAuth resource https://andrews-macbook-pro.taila74d4.ts.net/mcp..."
+    },
+    {
+      "id": "009-restore-default-mcp-endpoint-after-mistaken-remap",
+      "sequence": 9,
+      "name": "Restore default MCP endpoint after mistaken remap",
+      "status": "complete",
+      "order": 8,
+      "created_at": "2026-08-14T05:43:59.889218Z",
+      "updated_at": "2026-08-14T05:44:03.816049Z",
+      "completed_at": "2026-08-14T05:44:03.816049Z",
+      "archived_at": "2026-08-14T05:44:03.816049Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/history/009-restore-default-mcp-endpoint-after-mistaken-remap.done",
+      "description_preview": "Undo the temporary compatibility change that mapped /mcp to the restricted remote view. The design requires /view/rem..."
+    },
+    {
+      "id": "010-fix-per-view-oauth-resource-binding",
+      "sequence": 10,
+      "name": "Fix per-view OAuth resource binding",
+      "status": "complete",
+      "order": 9,
+      "created_at": "2026-08-14T05:54:27.016683Z",
+      "updated_at": "2026-08-14T05:54:43.668668Z",
+      "completed_at": "2026-08-14T05:54:43.668668Z",
+      "archived_at": "2026-08-14T05:54:43.668668Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/history/010-fix-per-view-oauth-resource-binding.done",
+      "description_preview": "The first mounted-view metadata fix still shared one mutable OAuth provider, so /authorize was bound to the last conf..."
+    },
+    {
+      "id": "011-advertise-refresh-token-oauth-capability",
+      "sequence": 11,
+      "name": "Advertise refresh-token OAuth capability",
+      "status": "complete",
+      "order": 10,
+      "created_at": "2026-08-14T06:09:46.398459Z",
+      "updated_at": "2026-08-14T06:09:51.00634Z",
+      "completed_at": "2026-08-14T06:09:51.00634Z",
+      "archived_at": "2026-08-14T06:09:51.00634Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/history/011-advertise-refresh-token-oauth-capability.done",
+      "description_preview": "ChatGPT stopped after OAuth discovery because the proxy only advertised mcp:tools. Allow optional OAuth scopes separa..."
+    },
+    {
+      "id": "012-restore-claude-compatible-shared-oauth-server",
+      "sequence": 12,
+      "name": "Restore Claude-compatible shared OAuth server",
+      "status": "complete",
+      "order": 11,
+      "created_at": "2026-08-14T06:15:00.192393Z",
+      "updated_at": "2026-08-14T06:19:38.133984Z",
+      "completed_at": "2026-08-14T06:19:38.133984Z",
+      "archived_at": "2026-08-14T06:19:38.133984Z",
+      "path": "/Users/andrew/src/easy-mcp-proxy/.agent-plan/plans/1ff53bcd/history/012-restore-claude-compatible-shared-oauth-server.done",
+      "description_preview": "Roll back the path-scoped per-view OAuth authorization server introduced during remote-view work. Keep /view/remote/m..."
+    }
+  ]
+}

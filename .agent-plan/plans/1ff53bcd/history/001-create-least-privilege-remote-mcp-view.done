@@ -1,0 +1,14 @@
+---
+id: 001-create-least-privilege-remote-mcp-view
+sequence: 1
+slug: create-least-privilege-remote-mcp-view
+name: Create least-privilege remote MCP view
+status: complete
+order: 0
+created_at: 2026-07-07T19:32:53.325486Z
+updated_at: 2026-08-14T05:13:48.591453Z
+completed_at: 2026-08-14T05:13:48.591453Z
+archived_at: 2026-08-14T05:13:48.591453Z
+---
+
+Define a dedicated remote tool view with only the MCP tools that should be reachable from outside the local machine. Keep the all-tools default view out of the public path.

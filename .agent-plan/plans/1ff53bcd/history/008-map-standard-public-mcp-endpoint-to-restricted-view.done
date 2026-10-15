@@ -1,0 +1,14 @@
+---
+id: 008-map-standard-public-mcp-endpoint-to-restricted-view
+sequence: 8
+slug: map-standard-public-mcp-endpoint-to-restricted-view
+name: Map standard public MCP endpoint to restricted view
+status: complete
+order: 7
+created_at: 2026-08-14T05:38:21.175758Z
+updated_at: 2026-08-14T05:38:30.528738Z
+completed_at: 2026-08-14T05:38:30.528738Z
+archived_at: 2026-08-14T05:38:30.528738Z
+---
+
+Remote clients including Claude and ChatMCP requested OAuth resource https://andrews-macbook-pro.taila74d4.ts.net/mcp even when trying the remote view path. Make the root /mcp default view restricted and preserve the old all-tools default as /view/local-default/mcp.
