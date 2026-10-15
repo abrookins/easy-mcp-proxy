@@ -464,6 +464,7 @@ async def test_identity_bootstrap_reports_verified_client_without_grant(gateway)
             "issuer": "issuer",
             "subject": "accidentally-admitted",
             "client_id": "app",
+            "email": None,
         }
         assert (await client.get("/config/api/config")).status_code == 403
         assert (await client.post("/mcp", json={})).status_code == 401
@@ -495,7 +496,12 @@ async def test_session_reports_own_grant(gateway):
         response = await client.get("/config/api/session")
     assert response.headers["cache-control"] == "no-store"
     assert response.json() == {
-        "identity": {"issuer": "issuer", "subject": "alice", "client_id": "app"},
+        "identity": {
+            "issuer": "issuer",
+            "subject": "alice",
+            "client_id": "app",
+            "email": None,
+        },
         "admin": True,
         "operator": True,
         "views": ["*"],
@@ -578,3 +584,74 @@ async def test_key_creation_rejects_invalid_requests(gateway):
             json={"name": "admin", "views": ["default", "admin"], "admin": True},
         )
         assert admin.status_code == 201
+
+
+def test_verified_email_is_best_effort(monkeypatch):
+    from mcp_proxy.identity import verified_email
+
+    assert verified_email({}) is None
+    assert verified_email({"email": " "}) is None
+    assert verified_email({"email": "a@x.test"}) is None
+    assert verified_email({"email": " a@x.test ", "email_verified": True}) == (
+        "a@x.test"
+    )
+    monkeypatch.setenv("MCP_PROXY_AUTH_REQUIRE_EMAIL_VERIFIED", "false")
+    assert verified_email({"email": "a@x.test"}) == "a@x.test"
+    token = SimpleNamespace(
+        client_id="app",
+        claims={"iss": "i", "sub": "s", "email": "a@x.test"},
+    )
+    identity = Identity.from_verified_token(token)
+    assert identity.email == "a@x.test"
+    assert identity == Identity("i", "s", "app")
+
+
+def test_admin_email_list_grants_admin_by_matching_email(tmp_path, monkeypatch):
+    from mcp_proxy.auth import get_admin_emails
+
+    monkeypatch.setenv("MCP_PROXY_ADMIN_EMAILS", "Admin@X.test; other@x.test")
+    assert get_admin_emails() == {"admin@x.test", "other@x.test"}
+    store = UserStore(tmp_path / "state", admin_emails=get_admin_emails())
+    uid = store.provision("issuer", "carol")
+    store.grant(uid, "mcp-proxy-browser", views=["default"])
+
+    without_email = store.resolve(Identity("issuer", "carol", "mcp-proxy-browser"))
+    with pytest.raises(AccessDenied):
+        store.authorize(without_email, admin=True)
+    with pytest.raises(AccessDenied):
+        store.create_session(without_email)
+    assert store.access(without_email)["admin"] is False
+
+    stranger = store.resolve(
+        Identity("issuer", "carol", "mcp-proxy-browser", "nobody@x.test")
+    )
+    with pytest.raises(AccessDenied):
+        store.authorize(stranger, admin=True)
+
+    admin = store.resolve(
+        Identity("issuer", "carol", "mcp-proxy-browser", "admin@x.test")
+    )
+    store.authorize(admin, admin=True)
+    assert store.access(admin)["admin"] is True
+    # Browser sessions remember the email, so they stay admin after sign-in.
+    session = store.create_session(admin)
+    restored = store.session_principal(session)
+    assert restored.identity.email == "admin@x.test"
+    store.authorize(restored, admin=True)
+    store.close()
+
+
+def test_existing_session_table_gains_email_column(tmp_path):
+    import sqlite3
+
+    UserStore(tmp_path / "state").close()
+    db = sqlite3.connect(tmp_path / "state" / "users.sqlite3")
+    db.executescript(
+        "DROP TABLE sessions; CREATE TABLE sessions (id TEXT PRIMARY KEY, "
+        "user_id TEXT NOT NULL, client TEXT NOT NULL, expires REAL NOT NULL);"
+    )
+    db.close()
+    store = UserStore(tmp_path / "state")
+    columns = {r[1] for r in store.db.execute("PRAGMA table_info(sessions)")}
+    assert "email" in columns
+    store.close()

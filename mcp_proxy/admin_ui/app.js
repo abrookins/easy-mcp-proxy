@@ -684,12 +684,13 @@
     return [
       pageHead('Settings'),
       s ? h('div', { class: 'panel' }, h('h3', { text: 'Account' }),
-        h('p', null, 'Signed in as ', h('code', { text: s.identity.subject }), ' (', h('code', { text: s.identity.issuer }), ')'),
+        h('p', null, 'Signed in as ', h('code', { text: s.identity.subject }), ' (', h('code', { text: s.identity.issuer }), ')',
+          s.identity.email ? [' · ', h('code', { text: s.identity.email })] : null),
         h('p', null, 'Application ', h('code', { text: s.identity.client_id }), ' · ',
           h('span', { class: 'badge', text: s.admin ? 'admin' : 'no admin' }),
           h('span', { class: 'badge', text: s.operator ? 'operator' : 'not operator' }),
           ' views: ' + s.views.join(', ')),
-        h('p', { class: 'hint', text: 'Grants are managed by the installation operator with "mcp-proxy users grant".' })) : null,
+        h('p', { class: 'hint', text: 'Grants are managed by the installation operator with "mcp-proxy users grant". Verified emails listed in MCP_PROXY_ADMIN_EMAILS are also admins.' })) : null,
       h('form', { onsubmit: submit },
         h('div', { class: 'panel' }, h('h3', { text: 'Output handling' }),
           h('label', { class: 'check' }, inputs.enabled, 'Cache large outputs and return a bounded preview'),
@@ -900,7 +901,7 @@
   async function start() {
     if (!embedded) {
       state.session = await request('GET', '/config/api/session');
-      $('identity').textContent = state.session.identity.subject;
+      $('identity').textContent = state.session.identity.email || state.session.identity.subject;
       $('role').textContent = state.session.admin ? (state.session.operator ? 'operator' : 'admin') : 'keys only';
       $('role').hidden = false;
       $('logout').addEventListener('click', function () {

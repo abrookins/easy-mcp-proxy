@@ -43,13 +43,17 @@ BROWSER_CLIENT = "mcp-proxy-browser"
 
 def configured_gateway():
     """HTTP serving never falls back to the legacy global configuration."""
-    from mcp_proxy.auth import create_auth_provider, is_oidc_auth_configured
+    from mcp_proxy.auth import (
+        create_auth_provider,
+        get_admin_emails,
+        is_oidc_auth_configured,
+    )
     from mcp_proxy.user_store import UserStore
 
     directory = os.environ.get("MCP_PROXY_STATE_DIR")
     if not directory or not is_oidc_auth_configured():
         raise ValueError("HTTP requires MCP_PROXY_STATE_DIR and complete OAuth setup")
-    store = UserStore(Path(directory))
+    store = UserStore(Path(directory), admin_emails=get_admin_emails())
     try:
         runtime = UserRuntime(
             store, base_url=os.environ["FASTMCP_SERVER_AUTH_AUTH0_BASE_URL"]
