@@ -552,7 +552,7 @@ class TestCheckAuthToken:
         """When auth_provider is None, access should be allowed."""
         from unittest.mock import MagicMock
 
-        from mcp_proxy.proxy.proxy import check_auth_token
+        from mcp_proxy.proxy.http_routes import check_auth_token
 
         mock_request = MagicMock()
         result = await check_auth_token(mock_request, None)
@@ -563,7 +563,7 @@ class TestCheckAuthToken:
         """Missing Authorization header should return 401."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from mcp_proxy.proxy.proxy import check_auth_token
+        from mcp_proxy.proxy.http_routes import check_auth_token
 
         mock_request = MagicMock()
         mock_request.headers = {}
@@ -586,7 +586,7 @@ class TestCheckAuthToken:
         """Non-Bearer Authorization header should return 401."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from mcp_proxy.proxy.proxy import check_auth_token
+        from mcp_proxy.proxy.http_routes import check_auth_token
 
         mock_request = MagicMock()
         mock_request.headers = {"Authorization": "Basic dXNlcjpwYXNz"}
@@ -603,7 +603,7 @@ class TestCheckAuthToken:
         """Empty Bearer token should return 401."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from mcp_proxy.proxy.proxy import check_auth_token
+        from mcp_proxy.proxy.http_routes import check_auth_token
 
         mock_request = MagicMock()
         mock_request.headers = {"Authorization": "Bearer "}
@@ -624,7 +624,7 @@ class TestCheckAuthToken:
         """Invalid token should return 401."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from mcp_proxy.proxy.proxy import check_auth_token
+        from mcp_proxy.proxy.http_routes import check_auth_token
 
         mock_request = MagicMock()
         mock_request.headers = {"Authorization": "Bearer invalid-token"}
@@ -642,7 +642,7 @@ class TestCheckAuthToken:
         """Valid token should allow access (return None)."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from mcp_proxy.proxy.proxy import check_auth_token
+        from mcp_proxy.proxy.http_routes import check_auth_token
 
         mock_request = MagicMock()
         mock_request.headers = {"Authorization": "Bearer valid-token"}
@@ -832,61 +832,38 @@ class TestHTTPWebUIRoutes:
         route_paths = [r.path for r in app.routes if hasattr(r, "path")]
         assert "/config" in route_paths
 
-    def test_config_route_uses_auth(self, tmp_path, monkeypatch):
-        """Config routes should use the same auth as other endpoints."""
-        from unittest.mock import AsyncMock, patch
-
-        from starlette.responses import JSONResponse
-
-        # Set up config file
-        config_path = tmp_path / "config.yaml"
+    def test_config_routes_use_proxy_auth_and_config_path(self, tmp_path, monkeypatch):
+        """Config routes use proxy auth and edit the file the proxy loaded."""
+        config_path = tmp_path / "proxy.yaml"
         config_path.write_text("mcp_servers: {}\ntool_views: {}\n")
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
+        monkeypatch.setenv("MCP_PROXY_CONFIG", str(tmp_path / "other.yaml"))
+        monkeypatch.setenv("MCP_PROXY_AUTH_TOKENS", "static-token")
 
-        config = ProxyConfig(
-            mcp_servers={},
-            tool_views={},
+        proxy = MCPProxy(ProxyConfig(), config_path=config_path)
+        client = TestClient(proxy.http_app())
+
+        assert client.get("/config/api/me").status_code == 401
+        static = {"Authorization": "Bearer static-token"}
+        me = client.get("/config/api/me", headers=static).json()
+        assert me["is_admin"] is False
+        assert client.get("/config/api", headers=static).status_code == 403
+
+    def test_managed_api_keys_authenticate_as_owner(self, tmp_path, monkeypatch):
+        """Keys created in the UI authenticate MCP and admin API requests."""
+        from mcp_proxy.api_keys import ApiKeyStore, get_api_keys_path
+
+        config_path = tmp_path / "proxy.yaml"
+        config_path.write_text("admins: [owner@example.com]\n")
+        monkeypatch.setenv("MCP_PROXY_AUTH_TOKENS", "static-token")
+        _, key = ApiKeyStore(get_api_keys_path(config_path)).create(
+            "owner@example.com", "laptop"
         )
-        proxy = MCPProxy(config)
 
-        # Create a mock auth error response
-        mock_auth_error = JSONResponse(
-            {"error": "invalid_token", "error_description": "Test error"},
-            status_code=401,
-        )
+        proxy = MCPProxy(ProxyConfig(), config_path=config_path)
+        client = TestClient(proxy.http_app())
+        headers = {"Authorization": f"Bearer {key}"}
 
-        with patch(
-            "mcp_proxy.proxy.proxy.check_auth_token",
-            new=AsyncMock(return_value=mock_auth_error),
-        ):
-            app = proxy.http_app()
-            client = TestClient(app)
-            response = client.get("/config")
-
-        assert response.status_code == 401
-        assert response.json()["error"] == "invalid_token"
-
-    def test_config_api_route_uses_auth(self, tmp_path, monkeypatch):
-        """Config API routes should use auth."""
-        from unittest.mock import AsyncMock, patch
-
-        from starlette.responses import JSONResponse
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text("mcp_servers: {}\ntool_views: {}\n")
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        config = ProxyConfig(mcp_servers={}, tool_views={})
-        proxy = MCPProxy(config)
-
-        mock_auth_error = JSONResponse({"error": "unauthorized"}, status_code=401)
-
-        with patch(
-            "mcp_proxy.proxy.proxy.check_auth_token",
-            new=AsyncMock(return_value=mock_auth_error),
-        ):
-            app = proxy.http_app()
-            client = TestClient(app)
-            response = client.get("/config/api")
-
-        assert response.status_code == 401
+        assert client.get("/views", headers=headers).status_code == 200
+        assert client.get("/config/api", headers=headers).status_code == 200
+        keys = client.get("/config/api/keys", headers=headers).json()["keys"]
+        assert [k["name"] for k in keys] == ["laptop"]

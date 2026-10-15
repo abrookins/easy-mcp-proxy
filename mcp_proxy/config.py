@@ -11,14 +11,37 @@ from mcp_proxy.utils import substitute_env_vars
 
 
 def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
-    """Deep merge overrides into base config."""
+    """Deep merge overrides into base config.
+
+    A None override value removes the key from the base config.
+    """
     result = base.copy()
     for key, value in overrides.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+        if value is None:
+            result.pop(key, None)
+        elif (
+            key in result and isinstance(result[key], dict) and isinstance(value, dict)
+        ):
             result[key] = _deep_merge(result[key], value)
         else:
             result[key] = value
     return result
+
+
+def compute_overrides(base: Any, target: Any) -> Any:
+    """Compute overrides that turn `base` into `target` when deep merged.
+
+    Keys missing from `target` become None tombstones so deletions persist.
+    """
+    if not isinstance(base, dict) or not isinstance(target, dict):
+        return target
+    overrides: dict[str, Any] = {key: None for key in base if key not in target}
+    for key, value in target.items():
+        if key not in base:
+            overrides[key] = value
+        elif base[key] != value:
+            overrides[key] = compute_overrides(base[key], value)
+    return overrides
 
 
 def get_overrides_path(config_path: Path) -> Path:

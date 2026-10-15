@@ -521,8 +521,9 @@ def serve(
         level = getattr(logging, level_name, logging.INFO)
         configure_file_logging(log_file, level=level)
 
-    cfg = load_config(str(get_config_path(config)))
-    proxy = MCPProxy(cfg)
+    config_path = get_config_path(config)
+    cfg = load_config(str(config_path))
+    proxy = MCPProxy(cfg, config_path=config_path)
 
     # Enable debug instrumentation if requested
     if debug:

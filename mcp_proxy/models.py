@@ -133,6 +133,9 @@ class ProxyConfig(BaseModel):
     mcp_servers: dict[str, UpstreamServerConfig] = {}
     tool_views: dict[str, ToolViewConfig] = {}
 
+    # Emails of authenticated users allowed to change configuration in the web UI
+    admins: list[str] = []
+
     # Output caching configuration
     output_cache: OutputCacheConfig | None = None  # Global default
     cache_secret: str | None = None  # HMAC signing secret for cache URLs

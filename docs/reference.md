@@ -17,6 +17,7 @@ Complete documentation for all Easy MCP Proxy features, configuration options, a
 - [Output Caching](#output-caching)
 - [Authentication](#authentication)
 - [HTTP Endpoints](#http-endpoints)
+- [Web UI](#web-ui)
 - [CLI Reference](#cli-reference)
 
 ---
@@ -59,6 +60,10 @@ output_cache:
 # Cache settings (recommended for stable signed URLs)
 cache_secret: "${CACHE_SECRET}"
 cache_base_url: "https://your-domain.com"
+
+# Emails of signed-in users who may change configuration in the web UI
+admins:
+  - you@example.com
 ```
 
 ---
@@ -711,6 +716,46 @@ curl http://localhost:8000/search/mcp
 
 This provides `{server}_search_tools`, `{server}_describe_tool`, and
 `{server}_call_tool` for each upstream server.
+
+---
+
+## Web UI
+
+When running with `--transport http`, open `/config` in a browser. Browsers
+sign in through the configured OIDC provider (add `{base_url}/config/login/callback`
+to the provider's allowed callback URLs). API clients can use the same routes with
+a Bearer token.
+
+- **Admins** (emails listed in `admins`) can edit servers, views, server
+  settings, and the raw YAML, and restart the proxy.
+- **Other signed-in users** can browse exposed tools and manage their own API keys.
+- **With no authentication configured**, every request is treated as an admin.
+
+Edits are validated and saved to `config.overrides.json` next to the YAML file the
+proxy was started with; the YAML file itself is not modified. Restart the proxy to
+apply changes.
+
+### API Keys
+
+Each signed-in user can create and revoke API keys for themselves. Keys are
+accepted anywhere a Bearer token is, and authenticate as the user who created
+them. They are stored as hashes in `config.api_keys.json` next to the config file.
+
+### Web UI API
+
+| Endpoint | Access | Description |
+|----------|--------|-------------|
+| `GET /config/api/me` | Signed in | Current user, admin status |
+| `GET`/`PUT /config/api` | Admin | Full configuration as JSON |
+| `GET`/`PUT /config/api/yaml` | Admin | Full configuration as YAML |
+| `GET /config/api/tools?view=` | Signed in | Exposed tool registry for a view |
+| `GET /config/api/upstream-tools` | Signed in | Tools reported by each upstream server |
+| `GET`/`POST /config/api/keys` | Signed in | List or create your API keys |
+| `DELETE /config/api/keys/{id}` | Signed in | Revoke one of your API keys |
+| `POST /config/restart` | Admin | Restart the proxy (expects a process manager) |
+
+Requests authenticated with the browser session cookie must send the
+`X-MCP-Proxy-UI: 1` header on `PUT`, `POST`, and `DELETE`.
 
 ---
 

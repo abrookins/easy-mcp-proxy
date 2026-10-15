@@ -1,1073 +1,591 @@
-"""Tests for web UI functionality."""
+"""Tests for the web UI routes and helpers."""
 
+import base64
+import json
 import time
+import urllib.parse
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 import yaml
+from pydantic import ValidationError
+from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
+from mcp_proxy import web_ui
+from mcp_proxy.api_keys import ApiKeyStore
+from mcp_proxy.auth import CompositeAuthProvider, RestrictedAuthProvider
+from mcp_proxy.models import ProxyConfig
+from mcp_proxy.proxy import MCPProxy
 from mcp_proxy.web_ui import (
+    CSRF_HEADER,
     SESSION_COOKIE_NAME,
-    _exchange_code_for_token,
-    _get_oauth_client_id,
+    STATE_COOKIE_NAME,
+    Identity,
+    _create_signed_cookie,
+    _decode_jwt_claims,
+    _exchange_code_for_claims,
+    _get_oauth_credentials,
     _get_oidc_provider,
+    _get_restricted_provider,
     _get_session_secret,
-    _get_token_url,
+    _safe_return_url,
     _sign_session_data,
     _verify_session_data,
+    _verify_signed_cookie,
+    build_error_html,
     create_session_cookie,
     create_web_ui_routes,
-    get_authorization_url,
     get_config_path,
     get_overrides_path,
     is_browser_request,
+    load_merged_config,
     load_overrides,
     load_raw_config,
-    merge_config,
+    save_config,
     save_overrides,
     verify_session_cookie,
 )
-from mcp_proxy.web_ui_templates import (
-    build_html_template,
-    build_restart_html,
-    render_servers_html,
-    render_views_html,
-)
+
+ADMIN = "admin@example.com"
+USER = "user@example.com"
+JSON = {"Accept": "application/json"}
+HTML = {"Accept": "text/html"}
 
 
-class TestHelperFunctions:
-    """Tests for helper functions."""
+@pytest.fixture(autouse=True)
+def session_secret(monkeypatch):
+    monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test-secret")
+    monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_ID", "client-123")
 
-    def test_get_config_path_default(self, monkeypatch):
-        """get_config_path should return default when env not set."""
+
+@pytest.fixture
+def config_path(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        yaml.dump(
+            {
+                "mcp_servers": {
+                    "fetch": {"command": "uvx", "args": ["mcp-server-fetch", "--x"]}
+                },
+                "tool_views": {"default": {"description": "Default"}},
+                "admins": [ADMIN],
+            }
+        )
+    )
+    return path
+
+
+def _oidc(userinfo="https://idp.example.com/userinfo"):
+    return SimpleNamespace(
+        oidc_config=SimpleNamespace(
+            authorization_endpoint="https://idp.example.com/authorize",
+            token_endpoint="https://idp.example.com/oauth/token",
+            userinfo_endpoint=userinfo,
+        )
+    )
+
+
+def _auth_provider(tokens=None):
+    """Fake auth provider: maps bearer tokens to claims."""
+    tokens = tokens or {}
+
+    async def verify_token(token):
+        if token not in tokens:
+            return None
+        return SimpleNamespace(claims=tokens[token])
+
+    provider = _oidc()
+    provider.verify_token = verify_token
+    return provider
+
+
+def _client(config_path, auth_provider=None, proxy=None, api_key_store=None):
+    app = Starlette(
+        routes=create_web_ui_routes(
+            path_prefix="/config",
+            auth_provider=auth_provider,
+            proxy=proxy,
+            config_path=config_path,
+            api_key_store=api_key_store,
+        )
+    )
+    return TestClient(app, follow_redirects=False)
+
+
+def _bearer(token):
+    return {**JSON, "Authorization": f"Bearer {token}"}
+
+
+def _jwt(claims):
+    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=")
+    return f"header.{payload.decode()}.signature"
+
+
+class TestConfigFiles:
+    def test_get_config_path(self, monkeypatch):
         monkeypatch.delenv("MCP_PROXY_CONFIG", raising=False)
-        path = get_config_path()
-        assert path == Path("config.yaml")
+        assert get_config_path() == Path("config.yaml")
+        monkeypatch.setenv("MCP_PROXY_CONFIG", "/etc/proxy.yaml")
+        assert get_config_path() == Path("/etc/proxy.yaml")
 
-    def test_get_config_path_from_env(self, monkeypatch):
-        """get_config_path should use MCP_PROXY_CONFIG env var."""
-        monkeypatch.setenv("MCP_PROXY_CONFIG", "/custom/path.yaml")
-        path = get_config_path()
-        assert path == Path("/custom/path.yaml")
+    def test_overrides_path(self):
+        assert get_overrides_path(Path("/a/c.yaml")) == Path("/a/c.overrides.json")
 
-    def test_get_overrides_path(self, tmp_path):
-        """get_overrides_path should return .overrides.json suffix."""
-        config_path = tmp_path / "config.yaml"
-        result = get_overrides_path(config_path)
-        assert result == tmp_path / "config.overrides.json"
+    def test_load_raw_config(self, tmp_path):
+        missing = tmp_path / "missing.yaml"
+        assert load_raw_config(missing) == {"mcp_servers": {}, "tool_views": {}}
+        empty = tmp_path / "empty.yaml"
+        empty.write_text("")
+        assert load_raw_config(empty) == {}
 
-    def test_load_raw_config_nonexistent(self, tmp_path):
-        """load_raw_config should return empty config when file missing."""
-        config_path = tmp_path / "nonexistent.yaml"
-        result = load_raw_config(config_path)
-        assert result == {"mcp_servers": {}, "tool_views": {}}
+    def test_overrides_round_trip(self, config_path):
+        assert load_overrides(config_path) == {}
+        save_overrides(config_path, {"admins": ["x@example.com"]})
+        assert load_overrides(config_path) == {"admins": ["x@example.com"]}
 
-    def test_load_raw_config_existing(self, tmp_path):
-        """load_raw_config should load YAML content."""
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {"s1": {}}}))
-        result = load_raw_config(config_path)
-        assert "s1" in result["mcp_servers"]
+    def test_save_config_persists_deletions_and_keeps_yaml(self, config_path):
+        original_yaml = config_path.read_text()
+        config = load_merged_config(config_path)
+        del config["mcp_servers"]["fetch"]
+        config["mcp_servers"]["git"] = {"command": "uvx", "args": ["mcp-git"]}
 
-    def test_load_overrides_nonexistent(self, tmp_path):
-        """load_overrides should return empty dict when file missing."""
-        config_path = tmp_path / "config.yaml"
-        result = load_overrides(config_path)
-        assert result == {}
+        save_config(config_path, config)
 
-    def test_save_and_load_overrides(self, tmp_path):
-        """save_overrides and load_overrides should roundtrip."""
-        config_path = tmp_path / "config.yaml"
-        data = {"key": "value", "nested": {"a": 1}}
-        save_overrides(config_path, data)
-        result = load_overrides(config_path)
-        assert result == data
+        assert config_path.read_text() == original_yaml
+        assert load_merged_config(config_path) == config
 
-    def test_merge_config_simple(self):
-        """merge_config should combine base and overrides."""
-        base = {"a": 1, "b": 2}
-        overrides = {"b": 3, "c": 4}
-        result = merge_config(base, overrides)
-        assert result == {"a": 1, "b": 3, "c": 4}
-
-    def test_merge_config_nested(self):
-        """merge_config should recursively merge dicts."""
-        base = {"nested": {"x": 1, "y": 2}}
-        overrides = {"nested": {"y": 10}}
-        result = merge_config(base, overrides)
-        assert result == {"nested": {"x": 1, "y": 10}}
+    def test_save_config_validates(self, config_path):
+        with pytest.raises(ValidationError):
+            save_config(config_path, {"unknown_key": True})
+        assert load_overrides(config_path) == {}
 
 
-class TestSessionManagement:
-    """Tests for session cookie management."""
+class TestSignedCookies:
+    def test_session_secret(self, monkeypatch):
+        assert _get_session_secret() == "test-secret"
+        monkeypatch.delenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET")
+        assert _get_session_secret() == _get_session_secret()
+        assert _get_session_secret() == web_ui._FALLBACK_SESSION_SECRET
 
-    def test_get_session_secret_with_env(self, monkeypatch):
-        """_get_session_secret should use AUTH0_CLIENT_SECRET_VAR if available."""
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test-secret")
-        secret = _get_session_secret()
-        assert secret == "test-secret"
-
-    def test_get_session_secret_generates_fallback(self, monkeypatch):
-        """_get_session_secret should generate secret when env not set."""
-        monkeypatch.delenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", raising=False)
-        secret = _get_session_secret()
-        assert len(secret) == 64  # 32 bytes = 64 hex chars
-
-    def test_sign_and_verify_session_data(self, monkeypatch):
-        """_sign_session_data and _verify_session_data should roundtrip."""
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test")
-        data = '{"user": "test"}'
-        signed = _sign_session_data(data)
-        assert "." in signed
-        verified = _verify_session_data(signed)
-        assert verified == data
-
-    def test_verify_session_data_invalid(self, monkeypatch):
-        """_verify_session_data should reject invalid signatures."""
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test")
-        result = _verify_session_data("no-dot-here")
-        assert result is None
-
-    def test_verify_session_data_tampered(self, monkeypatch):
-        """_verify_session_data should reject tampered data."""
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test")
-        signed = _sign_session_data('{"user": "test"}')
-        tampered = "tampered" + signed[8:]
-        result = _verify_session_data(tampered)
-        assert result is None
-
-    def test_create_session_cookie(self, monkeypatch):
-        """create_session_cookie should create a signed cookie value."""
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test")
-        cookie = create_session_cookie("user123")
-        assert "." in cookie
-        # Verify the cookie can be validated
+    def test_round_trip(self):
+        cookie = create_session_cookie("sub-1", USER)
         session = verify_session_cookie(cookie)
-        assert session is not None
-        assert session["user_id"] == "user123"
+        assert session["user_id"] == "sub-1"
+        assert session["email"] == USER
 
-    def test_verify_session_cookie_expired(self, monkeypatch):
-        """verify_session_cookie should reject expired sessions."""
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test")
-        # Manually create an expired session
-        import json
+    def test_rejects_tampering(self):
+        assert _verify_session_data("no-signature") is None
+        signed = _sign_session_data("data")
+        assert _verify_session_data(signed) == "data"
+        assert _verify_session_data(signed[:-1] + "0") is None
+        assert verify_session_cookie("garbage") is None
 
-        expires = int(time.time()) - 100  # 100 seconds ago
-        data = json.dumps({"user_id": "test", "expires": expires})
-        signed = _sign_session_data(data)
-        result = verify_session_cookie(signed)
-        assert result is None
+    def test_rejects_bad_payloads(self):
+        def signed(text):
+            return _sign_session_data(base64.urlsafe_b64encode(text.encode()).decode())
 
-    def test_verify_session_cookie_invalid_json(self, monkeypatch):
-        """verify_session_cookie should reject invalid JSON."""
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test")
-        signed = _sign_session_data("not-json")
-        result = verify_session_cookie(signed)
-        assert result is None
-
-    def test_verify_session_cookie_invalid_signature(self, monkeypatch):
-        """verify_session_cookie should reject invalid signature."""
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test")
-        # Call verify_session_cookie with bad signature to hit line 305
-        result = verify_session_cookie("no-dot-here")
-        assert result is None
-
-    def test_is_browser_request_with_html_accept(self):
-        """is_browser_request should return True for text/html Accept."""
-        request = MagicMock()
-        request.headers.get.return_value = "text/html,application/xhtml+xml"
-        assert is_browser_request(request) is True
-
-    def test_is_browser_request_with_json_accept(self):
-        """is_browser_request should return False for JSON Accept."""
-        request = MagicMock()
-        request.headers.get.return_value = "application/json"
-        assert is_browser_request(request) is False
-
-    def test_is_browser_request_no_accept(self):
-        """is_browser_request should return False when no Accept header."""
-        request = MagicMock()
-        request.headers.get.return_value = ""
-        assert is_browser_request(request) is False
+        assert _verify_signed_cookie(_sign_session_data("!!")) is None
+        assert _verify_signed_cookie(signed("not json")) is None
+        assert _verify_signed_cookie(signed("[1]")) is None
+        expired = signed(json.dumps({"expires": time.time() - 1}))
+        assert _verify_signed_cookie(expired) is None
+        assert _verify_signed_cookie(_create_signed_cookie({"a": 1}, 60))["a"] == 1
 
 
-class TestOAuthHelpers:
-    """Tests for OAuth helper functions."""
+class TestHelpers:
+    def test_error_html_is_escaped(self):
+        page = build_error_html("<b>", "<script>")
+        assert "<script>" not in page
+        assert "&lt;script&gt;" in page
 
-    def test_get_authorization_url_none_provider(self):
-        """get_authorization_url should return None for None provider."""
-        result = get_authorization_url(None)
-        assert result is None
+    def test_is_browser_request(self):
+        assert is_browser_request(SimpleNamespace(headers=HTML))
+        assert not is_browser_request(SimpleNamespace(headers=JSON))
 
-    def test_get_authorization_url_with_base_url(self):
-        """get_authorization_url should construct URL from base_url."""
-        # Use spec=[] so oidc_provider attr check returns False (hasattr)
-        provider = MagicMock(spec=["base_url"])
-        provider.base_url = "https://auth.example.com"
-        result = get_authorization_url(provider)
-        assert result == "https://auth.example.com/authorize"
+    def test_safe_return_url(self):
+        assert _safe_return_url("/config#/views", "/config") == "/config#/views"
+        for bad in ["https://evil.example", "//evil.example", "/\\evil", "x"]:
+            assert _safe_return_url(bad, "/config") == "/config"
 
-    def test_get_authorization_url_composite_provider(self):
-        """get_authorization_url should extract OIDC provider from composite."""
-        oidc = MagicMock()
-        oidc.base_url = "https://oidc.example.com"
-        composite = MagicMock()
-        composite.oidc_provider = oidc
-        result = get_authorization_url(composite)
-        assert result == "https://oidc.example.com/authorize"
-
-    def test_get_authorization_url_composite_no_oidc(self):
-        """get_authorization_url should return None if OIDC is None."""
-        composite = MagicMock()
-        composite.oidc_provider = None
-        result = get_authorization_url(composite)
-        assert result is None
-
-    def test_get_authorization_url_no_base_url(self):
-        """get_authorization_url should return None if no base_url."""
-        provider = MagicMock(spec=[])  # No base_url attribute
-        result = get_authorization_url(provider)
-        assert result is None
-
-    def test_get_oidc_provider_none(self):
-        """_get_oidc_provider should return None for None provider."""
-        result = _get_oidc_provider(None)
-        assert result is None
-
-    def test_get_oidc_provider_direct(self):
-        """_get_oidc_provider should return provider if no oidc_provider attr."""
-        provider = MagicMock(spec=[])
-        result = _get_oidc_provider(provider)
-        assert result is provider
-
-    def test_get_oidc_provider_composite(self):
-        """_get_oidc_provider should return oidc_provider from composite."""
-        oidc = MagicMock()
-        composite = MagicMock()
-        composite.oidc_provider = oidc
-        result = _get_oidc_provider(composite)
-        assert result is oidc
-
-    def test_get_oauth_client_id_from_provider(self):
-        """_get_oauth_client_id should get client_id from provider."""
-        # Use spec to control which attrs exist
-        provider = MagicMock(spec=["client_id"])
-        provider.client_id = "provider-client-id"
-        result = _get_oauth_client_id(provider)
-        assert result == "provider-client-id"
-
-    def test_get_oauth_client_id_from_env(self, monkeypatch):
-        """_get_oauth_client_id should fall back to env var."""
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_ID", "env-client-id")
-        provider = MagicMock(spec=[])  # No client_id attr
-        result = _get_oauth_client_id(provider)
-        assert result == "env-client-id"
-
-    def test_get_oauth_client_id_none_provider(self, monkeypatch):
-        """_get_oauth_client_id should use env var when provider is None."""
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_ID", "env-client")
-        result = _get_oauth_client_id(None)
-        assert result == "env-client"
-
-    def test_get_token_url_none_provider(self):
-        """_get_token_url should return None for None provider."""
-        result = _get_token_url(None)
-        assert result is None
-
-    def test_get_token_url_from_upstream_endpoint(self):
-        """_get_token_url should use upstream_token_endpoint if available."""
-        # Use spec to control which attrs exist
-        provider = MagicMock(spec=["upstream_token_endpoint"])
-        provider.upstream_token_endpoint = "https://auth.example.com/token"
-        result = _get_token_url(provider)
-        assert result == "https://auth.example.com/token"
-
-    def test_get_token_url_from_base_url(self):
-        """_get_token_url should construct from base_url as fallback."""
-        provider = MagicMock(spec=["base_url"])
-        provider.base_url = "https://auth.example.com"
-        result = _get_token_url(provider)
-        assert result == "https://auth.example.com/oauth/token"
-
-    def test_get_token_url_no_urls(self):
-        """_get_token_url should return None when no URLs available."""
-        provider = MagicMock(spec=[])
-        result = _get_token_url(provider)
-        assert result is None
-
-
-class TestTokenExchange:
-    """Tests for OAuth token exchange."""
-
-    @pytest.mark.asyncio
-    async def test_exchange_code_for_token_no_provider(self):
-        """_exchange_code_for_token returns None without provider."""
-        result = await _exchange_code_for_token(None, "code", "uri")
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_exchange_code_for_token_success(self, monkeypatch):
-        """_exchange_code_for_token should exchange code for token."""
-        provider = MagicMock()
-        provider.upstream_token_endpoint = "https://auth.example.com/token"
-        provider.client_id = "test-client"
-        provider.client_secret = "test-secret"
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"access_token": "token123", "sub": "user1"}
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
-            result = await _exchange_code_for_token(
-                provider, "auth-code", "https://callback"
-            )
-        assert result == {"access_token": "token123", "sub": "user1"}
-
-    @pytest.mark.asyncio
-    async def test_exchange_code_for_token_failure(self, monkeypatch):
-        """_exchange_code_for_token should return None on failure."""
-        provider = MagicMock()
-        provider.upstream_token_endpoint = "https://auth.example.com/token"
-        provider.client_id = "test-client"
-        provider.client_secret = "test-secret"
-
-        mock_response = MagicMock()
-        mock_response.status_code = 400
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
-            result = await _exchange_code_for_token(
-                provider, "bad-code", "https://callback"
-            )
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_exchange_code_for_token_exception(self, monkeypatch):
-        """_exchange_code_for_token should return None on exception."""
-        provider = MagicMock()
-        provider.upstream_token_endpoint = "https://auth.example.com/token"
-        provider.client_id = "test-client"
-        provider.client_secret = "test-secret"
-
-        mock_client = AsyncMock()
-        mock_client.post.side_effect = Exception("Network error")
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
-            result = await _exchange_code_for_token(
-                provider, "code", "https://callback"
-            )
-        assert result is None
-
-
-class TestRenderFunctions:
-    """Tests for HTML rendering functions."""
-
-    def test_render_servers_html_empty(self):
-        """render_servers_html should handle empty servers."""
-        result = render_servers_html({})
-        assert "No servers configured" in result
-
-    def test_render_servers_html_stdio(self):
-        """render_servers_html should render stdio servers."""
-        servers = {"my-server": {"command": "python", "args": ["-m", "server"]}}
-        result = render_servers_html(servers)
-        assert "my-server" in result
-        assert "stdio" in result
-        assert "python" in result
-
-    def test_render_servers_html_http(self):
-        """render_servers_html should render HTTP servers."""
-        servers = {"api": {"url": "https://api.example.com"}}
-        result = render_servers_html(servers)
-        assert "api" in result
-        assert "HTTP" in result
-        assert "https://api.example.com" in result
-
-    def test_render_views_html_empty(self):
-        """render_views_html should handle empty views."""
-        result = render_views_html({})
-        assert "No views configured" in result
-
-    def test_render_views_html_with_views(self):
-        """render_views_html should render view details."""
-        views = {"my-view": {"description": "Test view", "exposure_mode": "search"}}
-        result = render_views_html(views)
-        assert "my-view" in result
-        assert "Test view" in result
-        assert "search" in result
-
-
-class TestHtmlTemplates:
-    """Tests for HTML template building."""
-
-    def test_build_html_template(self):
-        """build_html_template should produce valid HTML."""
-        html = build_html_template(
-            alert="",
-            servers_html="<p>Servers</p>",
-            views_html="<p>Views</p>",
-            config_yaml="key: value",
-            save_url="/save",
-            restart_url="/restart",
+    def test_get_oidc_provider(self):
+        oidc = _oidc()
+        restricted = RestrictedAuthProvider(oidc, allowed_emails={USER})
+        composite = CompositeAuthProvider(
+            static_provider=SimpleNamespace(), oidc_provider=restricted
         )
-        assert "<!DOCTYPE html>" in html
-        assert "MCP Proxy Configuration" in html
-        assert "<p>Servers</p>" in html
-        assert "key: value" in html
+        assert _get_oidc_provider(None) is None
+        assert _get_oidc_provider(oidc) is oidc
+        assert _get_oidc_provider(composite) is oidc
+        assert _get_oidc_provider(CompositeAuthProvider()) is None
 
-    def test_build_restart_html(self):
-        """build_restart_html should produce restart page."""
-        html = build_restart_html("/config")
-        assert "Restarting" in html
-        assert "/config" in html
+    def test_get_restricted_provider(self):
+        oidc = _oidc()
+        restricted = RestrictedAuthProvider(oidc, allowed_emails={USER})
+        assert _get_restricted_provider(None) is None
+        assert _get_restricted_provider(restricted) is restricted
+        assert (
+            _get_restricted_provider(CompositeAuthProvider(oidc_provider=restricted))
+            is restricted
+        )
+        assert _get_restricted_provider(CompositeAuthProvider(oidc_provider=oidc)) is (
+            None
+        )
+
+    def test_oauth_credentials(self):
+        assert _get_oauth_credentials() == ("client-123", "test-secret")
+
+    def test_decode_jwt_claims(self):
+        assert _decode_jwt_claims(_jwt({"email": USER})) == {"email": USER}
+        assert _decode_jwt_claims("") == {}
+        assert _decode_jwt_claims("a.!!!.c") == {}
+        assert _decode_jwt_claims(_jwt([1])) == {}
+
+    def test_identity_is_admin(self):
+        assert Identity(email=None, auth_enabled=False).is_admin([])
+        assert not Identity(email=None).is_admin([ADMIN])
+        assert Identity(email="Admin@Example.com").is_admin([ADMIN])
+        assert not Identity(email=USER).is_admin([ADMIN])
 
 
-class TestWebUIRoutes:
-    """Tests for web UI routes."""
+def _mock_httpx(token_response, userinfo_response=None, error=None):
+    client = MagicMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    client.post = AsyncMock(return_value=token_response, side_effect=error)
+    client.get = AsyncMock(return_value=userinfo_response)
+    return patch("httpx.AsyncClient", return_value=client), client
 
+
+def _response(status, payload):
+    return SimpleNamespace(status_code=status, json=lambda: payload)
+
+
+class TestExchangeCode:
+    async def test_merges_id_token_and_userinfo(self):
+        tokens = {"access_token": "at", "id_token": _jwt({"sub": "s1"})}
+        patcher, client = _mock_httpx(
+            _response(200, tokens), _response(200, {"email": USER})
+        )
+        with patcher:
+            claims = await _exchange_code_for_claims(_oidc().oidc_config, "c", "/cb")
+        assert claims == {"sub": "s1", "email": USER}
+        assert client.post.call_args.kwargs["data"]["client_id"] == "client-123"
+        assert client.get.call_args.kwargs["headers"] == {"Authorization": "Bearer at"}
+
+    async def test_without_userinfo_endpoint_or_failed_userinfo(self):
+        tokens = {"access_token": "at", "id_token": _jwt({"email": USER})}
+        patcher, client = _mock_httpx(_response(200, tokens))
+        with patcher:
+            claims = await _exchange_code_for_claims(
+                _oidc(userinfo=None).oidc_config, "c", "/cb"
+            )
+        assert claims == {"email": USER}
+        client.get.assert_not_called()
+
+        patcher, _ = _mock_httpx(_response(200, tokens), _response(500, {}))
+        with patcher:
+            claims = await _exchange_code_for_claims(_oidc().oidc_config, "c", "/cb")
+        assert claims == {"email": USER}
+
+    async def test_failures_return_none(self):
+        patcher, _ = _mock_httpx(_response(400, {}))
+        with patcher:
+            assert await _exchange_code_for_claims(_oidc().oidc_config, "c", "/cb") is (
+                None
+            )
+        patcher, _ = _mock_httpx(None, error=httpx.ConnectError("down"))
+        with patcher:
+            assert await _exchange_code_for_claims(_oidc().oidc_config, "c", "/cb") is (
+                None
+            )
+
+
+class TestAuthentication:
+    def test_auth_disabled_everyone_is_admin(self, config_path):
+        client = _client(config_path)
+        assert client.get("/config", headers=HTML).status_code == 200
+        me = client.get("/config/api/me").json()
+        assert me == {
+            "email": None,
+            "is_admin": True,
+            "auth_enabled": False,
+            "api_keys_enabled": False,
+        }
+        assert client.get("/config/api").status_code == 200
+
+    def test_unauthenticated_browser_redirects_api_gets_401(self, config_path):
+        client = _client(config_path, _auth_provider())
+        browser = client.get("/config", headers=HTML)
+        assert browser.status_code == 302
+        assert browser.headers["location"] == "/config/login?return_url=/config"
+        api = client.get("/config/api/me", headers=JSON)
+        assert api.status_code == 401
+        assert api.headers["www-authenticate"] == "Bearer"
+        empty = client.get("/config/api/me", headers={"Authorization": "Bearer "})
+        assert empty.status_code == 401
+        bad = client.get("/config/api/me", headers=_bearer("nope"))
+        assert bad.status_code == 401
+
+    def test_bearer_identity(self, config_path):
+        client = _client(
+            config_path,
+            _auth_provider({"admin": {"email": ADMIN}, "static": {"email": 5}}),
+        )
+        assert client.get("/config/api/me", headers=_bearer("admin")).json()["is_admin"]
+        static = client.get("/config/api/me", headers=_bearer("static")).json()
+        assert static["email"] is None
+        assert static["is_admin"] is False
+
+    def test_session_identity_and_invalid_cookie(self, config_path):
+        client = _client(config_path, _auth_provider())
+        client.cookies.set(SESSION_COOKIE_NAME, "forged")
+        assert client.get("/config/api/me").status_code == 401
+        client.cookies.set(SESSION_COOKIE_NAME, create_session_cookie("s", USER))
+        me = client.get("/config/api/me").json()
+        assert me["email"] == USER
+        assert me["is_admin"] is False
+
+    def test_session_mutations_require_csrf_header(self, config_path):
+        client = _client(config_path, _auth_provider())
+        client.cookies.set(SESSION_COOKIE_NAME, create_session_cookie("s", ADMIN))
+        config = client.get("/config/api").json()
+        blocked = client.put("/config/api", json=config)
+        assert blocked.status_code == 403
+        allowed = client.put("/config/api", json=config, headers={CSRF_HEADER: "1"})
+        assert allowed.status_code == 200
+
+    def test_non_admins_cannot_read_or_change_config(self, config_path):
+        client = _client(config_path, _auth_provider({"user": {"email": USER}}))
+        for method, path in [
+            ("GET", "/config/api"),
+            ("PUT", "/config/api"),
+            ("GET", "/config/api/yaml"),
+            ("PUT", "/config/api/yaml"),
+            ("POST", "/config/restart"),
+        ]:
+            response = client.request(method, path, headers=_bearer("user"))
+            assert response.status_code == 403, path
+            assert response.json()["error"] == "forbidden"
+
+
+class TestStaticAndIndex:
+    def test_index_and_assets(self, config_path):
+        client = _client(config_path)
+        page = client.get("/config").text
+        assert 'data-prefix="/config"' in page
+        assert '<script src="/config/static/app.js">' in page
+        js = client.get("/config/static/app.js")
+        assert js.headers["content-type"].startswith("text/javascript")
+        assert "X-MCP-Proxy-UI" in js.text
+        css = client.get("/config/static/app.css")
+        assert css.headers["content-type"].startswith("text/css")
+        assert client.get("/config/static/secret.py").status_code == 404
+
+
+class TestConfigApi:
+    def test_get_and_put_json(self, config_path):
+        client = _client(config_path)
+        config = client.get("/config/api").json()
+        assert config["mcp_servers"]["fetch"]["args"] == ["mcp-server-fetch", "--x"]
+        config["tool_views"]["docs"] = {"exposure_mode": "search"}
+        del config["tool_views"]["default"]
+        assert client.put("/config/api", json=config).json() == {"status": "saved"}
+        assert client.get("/config/api").json() == config
+
+    def test_put_json_errors(self, config_path):
+        client = _client(config_path)
+        not_object = client.put("/config/api", json=[1])
+        assert not_object.status_code == 400
+        assert not_object.json()["details"] == ["Configuration must be an object"]
+        bad_json = client.put("/config/api", content=b"{", headers=JSON)
+        assert bad_json.status_code == 400
+        invalid = client.put("/config/api", json={"mcp_servers": {"a": {"args": 1}}})
+        assert invalid.status_code == 400
+        assert invalid.json()["details"][0].startswith("mcp_servers.a.args")
+
+    def test_yaml_round_trip_and_errors(self, config_path):
+        client = _client(config_path)
+        text = client.get("/config/api/yaml").text
+        assert "mcp-server-fetch" in text
+        updated = text.replace("Default", "Updated")
+        assert client.put("/config/api/yaml", content=updated).status_code == 200
+        assert (
+            client.get("/config/api").json()["tool_views"]["default"]["description"]
+            == "Updated"
+        )
+        assert client.put("/config/api/yaml", content="- a").status_code == 400
+        assert client.put("/config/api/yaml", content="a: [").status_code == 400
+
+    def test_upstream_tools(self, config_path):
+        assert _client(config_path).get("/config/api/upstream-tools").json() == {}
+        proxy = MCPProxy(ProxyConfig())
+        tool = SimpleNamespace(name="fetch", description=None)
+        proxy._upstream_tools["fetch"] = [tool]
+        response = _client(config_path, proxy=proxy).get("/config/api/upstream-tools")
+        assert response.json() == {"fetch": [{"name": "fetch", "description": ""}]}
+
+
+class TestApiKeys:
     @pytest.fixture
-    def app_with_routes(self, tmp_path, monkeypatch):
-        """Create a Starlette app with web UI routes."""
-        from starlette.applications import Starlette
+    def store(self, tmp_path):
+        return ApiKeyStore(tmp_path / "keys.json")
 
-        # Set up config file
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(
-            yaml.dump(
-                {
-                    "mcp_servers": {"test": {"command": "echo"}},
-                    "tool_views": {"default": {"description": "Test"}},
-                }
+    def test_users_manage_only_their_own_keys(self, config_path, store):
+        auth = _auth_provider({"u": {"email": USER}, "a": {"email": ADMIN}})
+        client = _client(config_path, auth, api_key_store=store)
+        assert client.get("/config/api/me", headers=_bearer("u")).json()[
+            "api_keys_enabled"
+        ]
+
+        created = client.post(
+            "/config/api/keys", json={"name": " laptop "}, headers=_bearer("u")
+        )
+        assert created.status_code == 201
+        key = created.json()
+        assert key["name"] == "laptop"
+        assert key["owner"] == USER
+        assert key["key"].startswith(key["prefix"])
+
+        mine = client.get("/config/api/keys", headers=_bearer("u")).json()["keys"]
+        assert [k["id"] for k in mine] == [key["id"]]
+        assert "hash" not in mine[0] and "key" not in mine[0]
+        assert client.get("/config/api/keys", headers=_bearer("a")).json() == {
+            "keys": []
+        }
+
+        other = client.delete(f"/config/api/keys/{key['id']}", headers=_bearer("a"))
+        assert other.status_code == 404
+        revoked = client.delete(f"/config/api/keys/{key['id']}", headers=_bearer("u"))
+        assert revoked.json() == {"status": "revoked"}
+        assert store.list_for(USER) == []
+
+    def test_create_requires_name(self, config_path, store):
+        client = _client(
+            config_path,
+            api_key_store=store,
+            auth_provider=_auth_provider({"u": {"email": USER}}),
+        )
+        for body in [{"name": "  "}, {"name": 1}, [1]]:
+            response = client.post("/config/api/keys", json=body, headers=_bearer("u"))
+            assert response.status_code == 400
+        bad_json = client.post("/config/api/keys", content=b"{", headers=_bearer("u"))
+        assert bad_json.status_code == 400
+
+    def test_unavailable_without_store_or_email(self, config_path, store):
+        no_store = _client(config_path)
+        no_email = _client(config_path, api_key_store=store)
+        for client in [no_store, no_email]:
+            assert client.get("/config/api/keys").status_code == 400
+            assert client.post("/config/api/keys", json={"name": "x"}).status_code == (
+                400
             )
+            assert client.delete("/config/api/keys/abc").status_code == 400
+
+
+class TestRestart:
+    def test_restart_signals_process(self, config_path):
+        with patch("mcp_proxy.web_ui.os.kill") as kill:
+            response = _client(config_path).post("/config/restart")
+        assert response.json() == {"status": "restart_initiated"}
+        kill.assert_called_once()
+        assert (config_path.parent / ".mcp-proxy-restart").exists()
+
+    def test_restart_tolerates_marker_failure_and_reports_kill_failure(self, tmp_path):
+        missing_dir_config = tmp_path / "missing" / "config.yaml"
+        with patch("mcp_proxy.web_ui.os.kill", side_effect=OSError("denied")):
+            response = _client(missing_dir_config).post("/config/restart")
+        assert response.status_code == 500
+        assert response.json() == {"error": "denied"}
+
+
+class TestLogin:
+    def test_login_requires_oidc(self, config_path):
+        response = _client(config_path, SimpleNamespace()).get("/config/login")
+        assert response.status_code == 500
+        assert "Sign-in Not Configured" in response.text
+
+    def test_login_redirects_to_provider_with_state(self, config_path):
+        client = _client(config_path, _auth_provider())
+        response = client.get("/config/login?return_url=https://evil.example")
+        location = urllib.parse.urlparse(response.headers["location"])
+        params = urllib.parse.parse_qs(location.query)
+        assert location.netloc == "idp.example.com"
+        assert params["client_id"] == ["client-123"]
+        assert params["scope"] == ["openid email profile"]
+        assert params["redirect_uri"] == ["http://testserver/config/login/callback"]
+        saved = _verify_signed_cookie(client.cookies[STATE_COOKIE_NAME])
+        assert saved["state"] == params["state"][0]
+        assert saved["return_url"] == "/config"
+
+    def _callback(self, client, state="s1"):
+        client.cookies.set(
+            STATE_COOKIE_NAME,
+            _create_signed_cookie({"state": "s1", "return_url": "/config#/keys"}, 60),
         )
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        routes = create_web_ui_routes(path_prefix="/config", check_auth=None)
-        return Starlette(routes=routes)
-
-    def test_config_ui_get(self, app_with_routes):
-        """GET /config should return HTML page."""
-        client = TestClient(app_with_routes)
-        response = client.get("/config")
-        assert response.status_code == 200
-        assert "text/html" in response.headers["content-type"]
-        assert "MCP Proxy Configuration" in response.text
-
-    def test_config_ui_shows_servers(self, app_with_routes):
-        """Config UI should show configured servers."""
-        client = TestClient(app_with_routes)
-        response = client.get("/config")
-        assert "test" in response.text
-        assert "echo" in response.text
-
-    def test_config_api_get(self, app_with_routes):
-        """GET /config/api should return JSON config."""
-        client = TestClient(app_with_routes)
-        response = client.get("/config/api")
-        assert response.status_code == 200
-        data = response.json()
-        assert "mcp_servers" in data
-        assert "test" in data["mcp_servers"]
-
-    def test_config_api_put(self, app_with_routes, tmp_path, monkeypatch):
-        """PUT /config/api should save config as overrides."""
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        client = TestClient(app_with_routes)
-        new_config = {"mcp_servers": {"new": {"url": "https://new.com"}}}
-        response = client.put("/config/api", json=new_config)
-        assert response.status_code == 200
-        assert response.json()["status"] == "saved"
-
-        # Verify overrides were saved
-        overrides = load_overrides(config_path)
-        assert "new" in overrides["mcp_servers"]
-
-    def test_config_save_post(self, tmp_path, monkeypatch):
-        """POST /config/save should save YAML and redirect."""
-        from starlette.applications import Starlette
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        routes = create_web_ui_routes(path_prefix="/config", check_auth=None)
-        app = Starlette(routes=routes)
-        client = TestClient(app, follow_redirects=False)
-
-        new_yaml = yaml.dump({"mcp_servers": {"s1": {"command": "test"}}})
-        response = client.post(
-            "/config/save",
-            data={"config_yaml": new_yaml},
-        )
-        assert response.status_code == 303
-        assert "saved=1" in response.headers["location"]
-
-    def test_config_save_invalid_yaml(self, tmp_path, monkeypatch):
-        """POST /config/save with invalid YAML should show error."""
-        from starlette.applications import Starlette
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        routes = create_web_ui_routes(path_prefix="/config", check_auth=None)
-        app = Starlette(routes=routes)
-        client = TestClient(app, follow_redirects=False)
-
-        response = client.post(
-            "/config/save",
-            data={"config_yaml": "not a dict"},
-        )
-        assert response.status_code == 303
-        assert "error=" in response.headers["location"]
-
-    def test_config_ui_with_auth(self, tmp_path, monkeypatch):
-        """Config UI should check auth when auth function provided."""
-        from starlette.applications import Starlette
-        from starlette.responses import JSONResponse
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        async def deny_all(request):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-
-        routes = create_web_ui_routes(path_prefix="/config", check_auth=deny_all)
-        app = Starlette(routes=routes)
-        client = TestClient(app)
-
-        response = client.get("/config")
-        assert response.status_code == 401
-
-    def test_config_ui_saved_alert(self, app_with_routes):
-        """Config UI should show success alert after save."""
-        client = TestClient(app_with_routes)
-        response = client.get("/config?saved=1")
-        assert "success" in response.text
-        assert "saved successfully" in response.text.lower()
-
-    def test_config_ui_error_alert(self, app_with_routes):
-        """Config UI should show error alert."""
-        client = TestClient(app_with_routes)
-        response = client.get("/config?error=Test+error")
-        assert "error" in response.text.lower()
-        assert "Test error" in response.text
-
-
-class TestRestartEndpoint:
-    """Tests for restart endpoint."""
-
-    def test_restart_api_json(self, tmp_path, monkeypatch):
-        """Restart with Accept: application/json should return JSON."""
-        from starlette.applications import Starlette
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        routes = create_web_ui_routes(path_prefix="/config", check_auth=None)
-        app = Starlette(routes=routes)
-        client = TestClient(app, raise_server_exceptions=False)
-
-        with patch("os.kill") as mock_kill:
-            response = client.get(
-                "/config/restart",
-                headers={"Accept": "application/json"},
-            )
-            # Signal will be sent
-            assert mock_kill.called
-            assert response.status_code == 200
-            assert response.json()["status"] == "restart_initiated"
-
-    def test_restart_browser(self, tmp_path, monkeypatch):
-        """Restart from browser should return HTML page."""
-        from starlette.applications import Starlette
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        routes = create_web_ui_routes(path_prefix="/config", check_auth=None)
-        app = Starlette(routes=routes)
-        client = TestClient(app, raise_server_exceptions=False)
-
-        with patch("os.kill") as mock_kill:
-            response = client.get("/config/restart")
-            assert mock_kill.called
-            assert response.status_code == 200
-            assert "Restarting" in response.text
-
-    def test_restart_writes_marker(self, tmp_path, monkeypatch):
-        """Restart should write marker file."""
-        from starlette.applications import Starlette
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        routes = create_web_ui_routes(path_prefix="/config", check_auth=None)
-        app = Starlette(routes=routes)
-        client = TestClient(app, raise_server_exceptions=False)
-
-        with patch("os.kill"):
-            client.get("/config/restart")
-
-        marker_path = tmp_path / ".mcp-proxy-restart"
-        assert marker_path.exists()
-        assert marker_path.read_text() == "restart"
-
-    def test_restart_with_auth_denied(self, tmp_path, monkeypatch):
-        """Restart should check auth and deny if needed."""
-        from starlette.applications import Starlette
-        from starlette.responses import JSONResponse
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        async def deny_all(request):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-
-        routes = create_web_ui_routes(path_prefix="/config", check_auth=deny_all)
-        app = Starlette(routes=routes)
-        client = TestClient(app)
-
-        response = client.get("/config/restart")
-        assert response.status_code == 401
-
-    def test_restart_signal_error_api(self, tmp_path, monkeypatch):
-        """Restart should handle signal error for API calls."""
-        from starlette.applications import Starlette
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        routes = create_web_ui_routes(path_prefix="/config", check_auth=None)
-        app = Starlette(routes=routes)
-        client = TestClient(app, raise_server_exceptions=False)
-
-        with patch("os.kill", side_effect=OSError("signal failed")):
-            response = client.get(
-                "/config/restart",
-                headers={"Accept": "application/json"},
-            )
-            assert response.status_code == 500
-            assert "error" in response.json()
-
-    def test_restart_signal_error_browser(self, tmp_path, monkeypatch):
-        """Restart should handle signal error for browser calls."""
-        from starlette.applications import Starlette
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        routes = create_web_ui_routes(path_prefix="/config", check_auth=None)
-        app = Starlette(routes=routes)
-        client = TestClient(app, raise_server_exceptions=False, follow_redirects=False)
-
-        with patch("os.kill", side_effect=OSError("signal failed")):
-            response = client.get("/config/restart")
-            assert response.status_code == 303
-            assert "error=" in response.headers["location"]
-
-
-class TestAuthOnEndpoints:
-    """Tests for auth checks on all endpoints."""
-
-    @pytest.fixture
-    def app_with_auth(self, tmp_path, monkeypatch):
-        """Create app with auth that denies all requests."""
-        from starlette.applications import Starlette
-        from starlette.responses import JSONResponse
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        async def deny_all(request):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-
-        routes = create_web_ui_routes(path_prefix="/config", check_auth=deny_all)
-        return Starlette(routes=routes)
-
-    def test_save_config_auth_denied(self, app_with_auth):
-        """POST /config/save should check auth."""
-        client = TestClient(app_with_auth)
-        response = client.post(
-            "/config/save",
-            data={"config_yaml": "key: value"},
-        )
-        assert response.status_code == 401
-
-    def test_get_config_json_auth_denied(self, app_with_auth):
-        """GET /config/api should check auth."""
-        client = TestClient(app_with_auth)
-        response = client.get("/config/api")
-        assert response.status_code == 401
-
-    def test_update_config_json_auth_denied(self, app_with_auth):
-        """PUT /config/api should check auth."""
-        client = TestClient(app_with_auth)
-        response = client.put("/config/api", json={"key": "value"})
-        assert response.status_code == 401
-
-    def test_update_config_json_invalid_body(self, tmp_path, monkeypatch):
-        """PUT /config/api with invalid JSON should return 400."""
-        from starlette.applications import Starlette
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        routes = create_web_ui_routes(path_prefix="/config", check_auth=None)
-        app = Starlette(routes=routes)
-        client = TestClient(app)
-
-        response = client.put(
-            "/config/api",
-            content="not valid json",
-            headers={"Content-Type": "application/json"},
-        )
-        assert response.status_code == 400
-        assert "error" in response.json()
-
-
-class TestRestartMarkerWrite:
-    """Tests for restart marker file writing."""
-
-    def test_restart_marker_write_error_ignored(self, tmp_path, monkeypatch):
-        """Restart should continue even if marker file write fails."""
-        from starlette.applications import Starlette
-
-        # Create config in a read-only directory to cause write failure
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        routes = create_web_ui_routes(path_prefix="/config", check_auth=None)
-        app = Starlette(routes=routes)
-        client = TestClient(app, raise_server_exceptions=False)
-
-        # Mock the marker write to fail
-        with patch("os.kill") as mock_kill:
-            with patch.object(
-                Path, "write_text", side_effect=PermissionError("denied")
-            ):
-                response = client.get(
-                    "/config/restart",
-                    headers={"Accept": "application/json"},
-                )
-                # Should still succeed despite marker write failure
-                assert mock_kill.called
-                assert response.status_code == 200
-                assert response.json()["status"] == "restart_initiated"
-
-
-class TestAuthAllowsAccess:
-    """Tests for auth allowing access (returning None)."""
-
-    @pytest.fixture
-    def app_with_auth_allows(self, tmp_path, monkeypatch):
-        """Create app with auth that allows all requests."""
-        from starlette.applications import Starlette
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        async def allow_all(request):
-            return None  # No error means allowed
-
-        routes = create_web_ui_routes(path_prefix="/config", check_auth=allow_all)
-        return Starlette(routes=routes)
-
-    def test_config_ui_auth_allows(self, app_with_auth_allows):
-        """Config UI should work when auth allows."""
-        client = TestClient(app_with_auth_allows)
-        response = client.get("/config")
-        assert response.status_code == 200
-
-    def test_save_config_auth_allows(self, app_with_auth_allows):
-        """Save should work when auth allows."""
-        client = TestClient(app_with_auth_allows, follow_redirects=False)
-        response = client.post(
-            "/config/save",
-            data={"config_yaml": yaml.dump({"mcp_servers": {}})},
-        )
-        assert response.status_code == 303
-
-    def test_restart_auth_allows(self, app_with_auth_allows):
-        """Restart should work when auth allows."""
-        client = TestClient(app_with_auth_allows, raise_server_exceptions=False)
-        with patch("os.kill"):
-            response = client.get(
-                "/config/restart",
-                headers={"Accept": "application/json"},
-            )
-            assert response.status_code == 200
-
-    def test_get_config_json_auth_allows(self, app_with_auth_allows):
-        """GET /config/api should work when auth allows."""
-        client = TestClient(app_with_auth_allows)
-        response = client.get("/config/api")
-        assert response.status_code == 200
-
-    def test_update_config_json_auth_allows(self, app_with_auth_allows):
-        """PUT /config/api should work when auth allows."""
-        client = TestClient(app_with_auth_allows)
-        response = client.put("/config/api", json={"mcp_servers": {}})
-        assert response.status_code == 200
-
-
-class TestOAuthRoutes:
-    """Tests for OAuth login/callback/logout routes."""
-
-    @pytest.fixture
-    def app_with_oauth(self, tmp_path, monkeypatch):
-        """Create app with OAuth configured."""
-        from starlette.applications import Starlette
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test-secret")
-
-        # Mock auth provider - use spec to control which attrs exist
-        auth_provider = MagicMock(
-            spec=[
-                "base_url",
-                "client_id",
-                "client_secret",
-                "upstream_token_endpoint",
-            ]
-        )
-        auth_provider.base_url = "https://auth.example.com"
-        auth_provider.client_id = "test-client"
-        auth_provider.client_secret = "test-secret"
-        auth_provider.upstream_token_endpoint = "https://auth.example.com/token"
-
-        routes = create_web_ui_routes(
-            path_prefix="/config",
-            check_auth=None,
-            auth_provider=auth_provider,
-        )
-        return Starlette(routes=routes)
-
-    @pytest.fixture
-    def app_no_oauth(self, tmp_path, monkeypatch):
-        """Create app without OAuth configured."""
-        from starlette.applications import Starlette
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test-secret")
-
-        routes = create_web_ui_routes(
-            path_prefix="/config",
-            check_auth=None,
-            auth_provider=None,
-        )
-        return Starlette(routes=routes)
-
-    def test_login_page_redirects_to_oauth(self, app_with_oauth):
-        """GET /config/login should redirect to OAuth provider."""
-        client = TestClient(app_with_oauth, follow_redirects=False)
-        response = client.get("/config/login")
+        return client.get(f"/config/login/callback?code=abc&state={state}")
+
+    def test_callback_errors(self, config_path):
+        client = _client(config_path, _auth_provider())
+        missing_code = client.get("/config/login/callback?error=denied")
+        assert missing_code.status_code == 400
+        assert "denied" in missing_code.text
+        assert self._callback(client, state="other").status_code == 400
+
+        no_oidc = _client(config_path, SimpleNamespace())
+        assert self._callback(no_oidc).status_code == 500
+
+        with patch(
+            "mcp_proxy.web_ui._exchange_code_for_claims",
+            AsyncMock(return_value=None),
+        ):
+            failed = self._callback(client)
+        assert "Token Exchange Failed" in failed.text
+
+    def test_callback_enforces_allowed_emails(self, config_path):
+        restricted = RestrictedAuthProvider(_oidc(), allowed_emails={ADMIN})
+        client = _client(config_path, restricted)
+        with patch(
+            "mcp_proxy.web_ui._exchange_code_for_claims",
+            AsyncMock(return_value={"email": USER, "email_verified": True}),
+        ):
+            response = self._callback(client)
+        assert response.status_code == 403
+
+    def test_callback_sets_session_with_email(self, config_path):
+        client = _client(config_path, _auth_provider())
+        claims = {"sub": "auth0|1", "email": ADMIN}
+        with patch(
+            "mcp_proxy.web_ui._exchange_code_for_claims",
+            AsyncMock(return_value=claims),
+        ):
+            response = self._callback(client)
         assert response.status_code == 302
-        location = response.headers["location"]
-        assert "auth.example.com/authorize" in location
-        assert "client_id=test-client" in location
+        assert response.headers["location"] == "/config#/keys"
+        session = verify_session_cookie(client.cookies[SESSION_COOKIE_NAME])
+        assert session["user_id"] == "auth0|1"
+        assert session["email"] == ADMIN
+        assert client.get("/config/api/me").json()["is_admin"] is True
 
-    def test_login_page_no_oauth_configured(self, app_no_oauth):
-        """GET /config/login should return error when OAuth not configured."""
-        client = TestClient(app_no_oauth)
-        response = client.get("/config/login")
-        assert response.status_code == 500
-        assert "OAuth Not Configured" in response.text
+    def test_callback_without_email(self, config_path):
+        client = _client(config_path, _auth_provider())
+        with patch(
+            "mcp_proxy.web_ui._exchange_code_for_claims",
+            AsyncMock(return_value={"email": ["x"]}),
+        ):
+            self._callback(client)
+        session = verify_session_cookie(client.cookies[SESSION_COOKIE_NAME])
+        assert session["email"] is None
+        assert session["user_id"] == "user"
 
-    def test_login_callback_no_code(self, app_with_oauth):
-        """GET /config/login/callback without code should return error."""
-        client = TestClient(app_with_oauth)
-        response = client.get("/config/login/callback?error=access_denied")
-        assert response.status_code == 400
-        assert "Login Failed" in response.text
-
-    def test_login_callback_no_token_url(self, tmp_path, monkeypatch):
-        """GET /config/login/callback should fail when token_url unavailable."""
-        from starlette.applications import Starlette
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test")
-
-        # Provider with no token URL attributes (empty spec = no attrs exist)
-        # This hits line 632 when _get_token_url returns None
-        auth_provider = MagicMock(spec=[])
-
-        routes = create_web_ui_routes(
-            path_prefix="/config",
-            check_auth=None,
-            auth_provider=auth_provider,
-        )
-        app = Starlette(routes=routes)
-        client = TestClient(app)
-        response = client.get("/config/login/callback?code=test-code")
-        assert response.status_code == 500
-        assert "OAuth Not Configured" in response.text
-
-    def test_login_callback_with_code_success(self, app_with_oauth, monkeypatch):
-        """GET /config/login/callback with valid code should set cookie."""
-        mock_exchange = AsyncMock(
-            return_value={"access_token": "tok", "sub": "user123"}
-        )
-        monkeypatch.setattr("mcp_proxy.web_ui._exchange_code_for_token", mock_exchange)
-
-        client = TestClient(app_with_oauth, follow_redirects=False)
-        response = client.get("/config/login/callback?code=auth-code&state=/config")
-        assert response.status_code == 302
-        assert SESSION_COOKIE_NAME in response.cookies
-
-    def test_login_callback_token_exchange_fails(self, app_with_oauth, monkeypatch):
-        """GET /config/login/callback should handle token exchange failure."""
-        mock_exchange = AsyncMock(return_value=None)
-        monkeypatch.setattr("mcp_proxy.web_ui._exchange_code_for_token", mock_exchange)
-
-        client = TestClient(app_with_oauth)
-        response = client.get("/config/login/callback?code=bad-code")
-        assert response.status_code == 500
-        assert "Token Exchange Failed" in response.text
-
-    def test_logout_clears_cookie(self, app_with_oauth, monkeypatch):
-        """GET /config/logout should clear session cookie."""
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "secret")
-        client = TestClient(app_with_oauth, follow_redirects=False)
-
-        # First, set a cookie
-        client.cookies.set(SESSION_COOKIE_NAME, create_session_cookie("user"))
-
+    def test_logout(self, config_path):
+        client = _client(config_path, _auth_provider())
+        client.cookies.set(SESSION_COOKIE_NAME, create_session_cookie("s", USER))
         response = client.get("/config/logout")
-        assert response.status_code == 302
-        # Cookie should be deleted (max-age=0 or expires in past)
-        assert response.headers["location"] == "/config"
-
-
-class TestBrowserAuthFlow:
-    """Tests for browser authentication flow."""
-
-    @pytest.fixture
-    def app_with_auth_check(self, tmp_path, monkeypatch):
-        """Create app with auth check that rejects requests."""
-        from starlette.applications import Starlette
-        from starlette.responses import JSONResponse
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test-secret")
-
-        async def reject_auth(request):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-
-        auth_provider = MagicMock(spec=["base_url", "client_id"])
-        auth_provider.base_url = "https://auth.example.com"
-        auth_provider.client_id = "test-client"
-
-        routes = create_web_ui_routes(
-            path_prefix="/config",
-            check_auth=reject_auth,
-            auth_provider=auth_provider,
-        )
-        return Starlette(routes=routes)
-
-    def test_browser_request_redirects_to_login(self, app_with_auth_check):
-        """Browser request without session should redirect to login."""
-        client = TestClient(app_with_auth_check, follow_redirects=False)
-        response = client.get("/config", headers={"Accept": "text/html"})
-        assert response.status_code == 302
-        assert "/config/login" in response.headers["location"]
-
-    def test_api_request_gets_401(self, app_with_auth_check):
-        """API request without token should get 401."""
-        client = TestClient(app_with_auth_check)
-        response = client.get("/config", headers={"Accept": "application/json"})
-        assert response.status_code == 401
-
-    def test_valid_session_cookie_allows_access(self, app_with_auth_check, monkeypatch):
-        """Request with valid session cookie should be allowed."""
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test-secret")
-        cookie = create_session_cookie("user123")
-
-        client = TestClient(app_with_auth_check)
-        client.cookies.set(SESSION_COOKIE_NAME, cookie)
-        response = client.get("/config", headers={"Accept": "text/html"})
-        assert response.status_code == 200
-        assert "MCP Proxy Configuration" in response.text
-
-    def test_expired_session_redirects(self, app_with_auth_check, monkeypatch):
-        """Request with expired session should redirect to login."""
-        import json
-
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_AUTH0_CLIENT_SECRET", "test-secret")
-        # Create an expired session
-        expires = int(time.time()) - 100
-        data = json.dumps({"user_id": "test", "expires": expires})
-        cookie = _sign_session_data(data)
-
-        client = TestClient(app_with_auth_check, follow_redirects=False)
-        client.cookies.set(SESSION_COOKIE_NAME, cookie)
-        response = client.get("/config", headers={"Accept": "text/html"})
-        assert response.status_code == 302
-        assert "/config/login" in response.headers["location"]
-
-
-class TestBrowserNoAuthProvider:
-    """Tests for browser flow when no auth provider is configured."""
-
-    @pytest.fixture
-    def app_no_auth_provider(self, tmp_path, monkeypatch):
-        """Create app without auth provider but with auth check."""
-        from starlette.applications import Starlette
-        from starlette.responses import JSONResponse
-
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(yaml.dump({"mcp_servers": {}, "tool_views": {}}))
-        monkeypatch.setenv("MCP_PROXY_CONFIG", str(config_path))
-
-        async def reject_auth(request):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-
-        routes = create_web_ui_routes(
-            path_prefix="/config",
-            check_auth=reject_auth,
-            auth_provider=None,  # No OAuth configured
-        )
-        return Starlette(routes=routes)
-
-    def test_browser_shows_error_without_oauth(self, app_no_auth_provider):
-        """Browser request without OAuth should show error message."""
-        client = TestClient(app_no_auth_provider)
-        response = client.get("/config", headers={"Accept": "text/html"})
-        assert response.status_code == 401
-        assert "Authentication Required" in response.text
-        assert "OAuth is not configured" in response.text
+        assert response.headers["location"] == "/config/signed-out"
+        assert f'{SESSION_COOKIE_NAME}=""' in response.headers["set-cookie"]
+        assert "Max-Age=0" in response.headers["set-cookie"]
+        assert "Sign in again" in client.get("/config/signed-out").text

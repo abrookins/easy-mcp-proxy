@@ -4,13 +4,12 @@ import hashlib
 import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 from fastmcp import Client, FastMCP
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
-from starlette.requests import Request
-from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 from mcp_proxy.hooks import ToolCallContext, execute_post_call, execute_pre_call
@@ -27,7 +26,6 @@ from .caching import (
 )
 from .client import ClientManager
 from .http_routes import (
-    check_auth_token,
     create_health_check_handler,
     create_list_views_handler,
     create_view_info_handler,
@@ -63,13 +61,16 @@ class NormalizeMcpTrailingSlashMiddleware:
 class MCPProxy:
     """MCP Proxy that aggregates and filters tools from upstream servers."""
 
-    def __init__(self, config: ProxyConfig):
+    def __init__(self, config: ProxyConfig, config_path: Path | None = None):
         """Initialize the MCP Proxy with the given configuration.
 
         Args:
             config: Proxy configuration containing server and view definitions.
+            config_path: The YAML file the config was loaded from. The web UI
+                edits this file's overrides and stores API keys next to it.
         """
         self.config = config
+        self.config_path = config_path
         self.views: dict[str, ToolView] = {}
         self._client_manager = ClientManager(config)
         self._initialized = False
@@ -1012,8 +1013,14 @@ class MCPProxy:
 
         from mcp_proxy.auth import create_auth_provider
 
+        api_key_store = None
+        if self.config_path is not None:
+            from mcp_proxy.api_keys import ApiKeyStore, get_api_keys_path
+
+            api_key_store = ApiKeyStore(get_api_keys_path(self.config_path))
+
         # Create auth provider from environment variables (if configured)
-        auth_provider = create_auth_provider()
+        auth_provider = create_auth_provider(api_key_store=api_key_store)
 
         # Create FastMCP instances - tools will be registered in the lifespan
         # Pass auth to each instance so FastMCP handles OAuth endpoints and validation
@@ -1159,14 +1166,12 @@ class MCPProxy:
         # Add web UI routes for config editing (with same auth as other endpoints)
         from mcp_proxy.web_ui import create_web_ui_routes
 
-        async def web_ui_auth_check(request: Request) -> JSONResponse | None:
-            return await check_auth_token(request, auth_provider)
-
         web_ui_routes = create_web_ui_routes(
             path_prefix=f"{path}/config",
-            check_auth=web_ui_auth_check,
             auth_provider=auth_provider,
             proxy=self,
+            config_path=self.config_path,
+            api_key_store=api_key_store,
         )
         routes.extend(web_ui_routes)
 
