@@ -23,13 +23,22 @@ Complete documentation for all Easy MCP Proxy features, configuration options, a
 
 ## Configuration File
 
-Default location: `~/.config/mcp-proxy/config.yaml`
+The managed service reads encrypted revisions from `MCP_PROXY_STATE_DIR`.
+The [administration guide](user-owned-configuration.md) covers bootstrap,
+remote preview/apply, migration, and recovery.
 
-Override with `--config` flag:
+YAML remains the input for offline import and local file commands. Those commands
+use `~/.config/mcp-proxy/config.yaml` by default, or a command-level `--config`:
 
 ```bash
-mcp-proxy serve --config /path/to/config.yaml
+uv run mcp-proxy validate --config /path/to/config.yaml
 ```
+
+`serve --config` is rejected. Editing YAML, `.overrides.json`, or using the local
+`server`/`view` commands does not update a running managed service. Import with
+`users import` while stopped, or use `/config` or `manage` while running.
+YAML examples below describe the same fields as the managed JSON editor;
+`${VAR}` substitutions apply only to the local file loader.
 
 ### Top-Level Structure
 
@@ -55,15 +64,16 @@ output_cache:
   retrieval_default_line_count: 100
   retrieval_max_line_count: 500
   retrieval_max_chars: 12000
-
-# Cache settings (recommended for stable signed URLs)
-cache_secret: "${CACHE_SECRET}"
-cache_base_url: "https://your-domain.com"
 ```
 
 ---
 
 ## Upstream Servers
+
+Changing server commands, arguments, environment, working directories, HTTP
+destinations, hooks, or custom Python requires a locally provisioned operator.
+New HTTP destinations must use HTTP(S) and have no userinfo, query, or fragment;
+put credentials in headers. Operator code runs with the service's OS privileges.
 
 ### Stdio Server (Local Process)
 
@@ -84,7 +94,7 @@ mcp_servers:
 ```yaml
 mcp_servers:
   remote:
-    url: "https://api.example.com/mcp/sse"  # Required: SSE endpoint
+    url: "https://api.example.com/mcp/sse"  # Required: upstream MCP endpoint
     headers:                                 # Optional: HTTP headers
       Authorization: "Bearer ${TOKEN}"
     tools:
@@ -93,19 +103,23 @@ mcp_servers:
 
 ### Environment Variable Expansion
 
-Use `${VAR_NAME}` syntax. Variables are expanded at runtime:
+The local YAML loader expands `${VAR_NAME}` from the operator's environment when
+inspecting or importing a file:
 
 ```yaml
 env:
-  API_KEY: ${MY_API_KEY}        # From environment
-  DEBUG: "true"                  # Literal value
+  API_KEY: ${MY_API_KEY}
+  DEBUG: "true"
 ```
 
-Load from `.env` file:
+Set those variables before running `users import`. The imported values are stored
+encrypted. Remote preview/apply rejects `${...}` interpolation; use browser
+credential entry or preserve the opaque `{"$secret":"id"}` objects returned by
+the service. MCP admin tools reject inline secrets.
 
-```bash
-mcp-proxy serve --env-file .env
-```
+`serve --env-file .env` loads **service bootstrap** settings (OAuth, state path,
+listener, or stdio owner), not live upstream configuration. The default file is
+`.env`; importing a YAML file does not implicitly load that file.
 
 ---
 
@@ -194,7 +208,10 @@ tools:
 
 ## Tool Views
 
-Named configurations exposing tool subsets:
+Named configurations exposing tool subsets within one owner. A client must also
+have an explicit grant for the selected view. `admin`, `search`, and `_search`
+are reserved names; use a name such as `full` for a full-access upstream view.
+`/view/admin/mcp` is reserved for proxy administration.
 
 ```yaml
 tool_views:
@@ -561,15 +578,18 @@ output_cache:
   retrieval_max_chars: 12000
   preview_chars: 500     # Compatibility cap for older configs
   min_size: 10000        # Optional extra cache threshold
-
-cache_secret: "${CACHE_SECRET}"              # HMAC signing key
-cache_base_url: "https://proxy.example.com"  # Base URL for retrieval
 ```
 
 If `output_cache` is omitted, the proxy uses the safe defaults above. Set
-`enabled: false` only to opt out explicitly. If `cache_secret` is omitted, the
-proxy generates one stable secret per process; configure it when signed URLs
-must remain valid across restarts or instances.
+`enabled: false` only to opt out explicitly. The managed runtime derives signing
+keys per user and view from persistent state and generates retrieval URLs at
+`/view/VIEW/cache/TOKEN`. It rejects user-supplied `cache_secret` and
+`cache_base_url`. Offline import strips those legacy settings; old cache links
+do not migrate.
+
+The low-level `MCPProxy(config)` library still accepts those two settings and
+uses a process-local key when none is provided. That library behavior does not
+define authentication or ownership for the managed service.
 
 ### Per-Server Override
 
@@ -609,7 +629,7 @@ When output exceeds any active limit:
   "token": "abc123def456",
   "truncated": true,
   "truncation_reasons": ["estimated_tokens", "max_line_chars"],
-  "retrieve_url": "https://proxy.example.com/cache/abc123def456?expires=1736797800&sig=...",
+  "retrieve_url": "https://proxy.example.com/view/default/cache/abc123def456?expires=1736797800&sig=...",
   "expires_at": "2026-07-31T19:30:00Z",
   "preview": "Bounded preview...",
   "size_bytes": 248000,
@@ -652,7 +672,8 @@ When output exceeds any active limit:
    char_offset=1200, char_count=12000)` for minified or single-line content.
 4. **JSON query**: Call `query_cached_output(token="abc123def456",
    jmespath_expression="items[].title")`
-5. **HTTP bounded retrieval**: GET the signed `retrieve_url` directly.
+5. **HTTP bounded retrieval**: GET the signed `retrieve_url` with OAuth for the
+   same owner and a grant for that view, or an authorized browser session.
 6. **HTTP filters**: Append `line_offset`, `line_count`, `char_offset`,
    `char_count`, or `jmespath` query parameters.
 7. **Explicit full download**: Append `download=1` or `full=1` to the signed
@@ -680,65 +701,158 @@ export FASTMCP_SERVER_AUTH_AUTH0_REQUIRED_SCOPES="read,write"
 export MCP_PROXY_AUTH_ENABLE_CIMD="false"
 ```
 
-When these variables are set, the proxy automatically enables OAuth 2.1 with PKCE support.
-Client ID Metadata Document support is enabled by default. Set
-`MCP_PROXY_AUTH_ENABLE_CIMD=false` when clients must register dynamically instead.
+The managed HTTP service requires all five provider variables and
+`MCP_PROXY_STATE_DIR`. OAuth admission alone does not provision an owner or grant
+access. The verified issuer/subject must be provisioned locally, and each
+**downstream MCP client ID** must receive explicit view grants. Admin access is
+an additional grant; changing host capabilities also requires operator status.
+
+Supply the client secret through a private environment or secret manager. The
+example above shows variable names with placeholders, not real credentials.
+Client ID Metadata Document support is enabled by default; set
+`MCP_PROXY_AUTH_ENABLE_CIMD=false` to require Dynamic Client Registration.
+Optional admission controls are `MCP_PROXY_AUTH_ALLOWED_EMAILS` (comma-separated)
+and `MCP_PROXY_AUTH_REQUIRE_EMAIL_VERIFIED`; neither replaces ownership/grants.
+Static API tokens and unauthenticated HTTP are not supported by this gateway.
+
+Keys and encrypted OAuth state persist in the state directory. Existing
+installations must [import compatible OAuth state](user-owned-configuration.md#migrate-an-existing-installation)
+to preserve registrations and tokens. Creating a fresh directory does not migrate
+sessions. Browser administrators log in once after the upgrade; managed browser
+sessions survive later restarts.
 
 ---
 
 ## HTTP Endpoints
 
-When running with `--transport http`:
+When running with `--transport http`, the main routes are:
 
-| Endpoint | Description |
-|----------|-------------|
-| `/mcp` | Default MCP endpoint (all server tools) |
-| `/view/{name}/mcp` | View-specific MCP endpoint |
-| `/search/mcp` | Built-in search-per-server view |
-| `/views` | List all available views |
-| `/views/{name}` | Get view details |
-| `/health` | Health check |
-| `/cache/{token}` | Retrieve bounded cached-output metadata; add `download=1` or `full=1` for explicit full content |
+| Endpoint | Description / access |
+|----------|----------------------|
+| `/mcp` | Authenticated owner's default view; explicit view grant |
+| `/view/{name}/mcp` | That owner's named view; explicit view grant |
+| `/search/mcp` | That owner's upstream tools through search helpers; `search` grant |
+| `/view/admin/mcp` | Proxy admin tools and MCP App resource; admin and `admin` view grants |
+| `/views` | Names granted to the authenticated OAuth client |
+| `/health` | Public process health check |
+| `/config` | Browser administration; browser login and admin grant |
+| `/config/login`, `/config/login/callback` | Browser OAuth flow |
+| `/config/logout` | POST-only browser logout; same-origin check |
+| `/config/api/identity` | Verified OAuth identity; no provisioning or grant side effect |
+| `/config/api/{action}` | Management operations listed below; admin grant |
+| `/view/{view}/cache/{token}` | Signed cache retrieval plus same-owner/view authorization |
+
+Management GET actions are `config`, `history`, and `status`. POST actions are
+`preview`, `probe`, `apply`, and `rollback`. See the
+[request/response contract](user-owned-configuration.md#browser-api-cli-and-mcp).
+The legacy `/config/api/tools`, restart/PUT APIs, `/views/{name}`, and unscoped
+`/cache/{token}` routes are not exposed by the managed gateway.
+
+HTTP cache retrieval returns bounded metadata by default. `download=1` or `full=1`
+requests full content. A signed link alone is insufficient: OAuth or a browser
+session must also identify the same owner with access to that view. Do not put
+OAuth tokens in query strings.
 
 ### Built-in Search Endpoint
 
-`/search/mcp` is a virtual view that exposes all tools using `search_per_server` mode without configuration:
+Connect an OAuth MCP client to `/search/mcp` after granting it `search`. This
+virtual view exposes that owner's upstream tools using `search_per_server` mode,
+with `{server}_search_tools`, `{server}_describe_tool`, and `{server}_call_tool`.
+A narrow default view does not restrict this separate search view; grant it only
+when the client should discover all of that owner's upstream tools.
 
-```bash
-# Connect to search endpoint
-curl http://localhost:8000/search/mcp
-```
+### Administration UI and client refresh
 
-This provides `{server}_search_tools`, `{server}_describe_tool`, and
-`{server}_call_tool` for each upstream server.
+`/view/admin/mcp` exposes typed configuration tools and the proxy-owned MCP App.
+Hosts without embedded UI support can use those tools or the `/config` browser
+link. Forwarding third-party upstream Apps is deferred. Actual Claude/ChatGPT
+account and native-device behavior remains [unverified](specs/remote-configuration-acceptance.md#host-compatibility-and-remaining-external-checks).
+
+An MCP apply sends a tool-list notification on its active request stream. Browser
+edits cannot broadcast to idle stateless clients; refresh the client's tool list
+if needed. Live updates do not restart the process. Calls using replaced
+connections may fail if they exceed the 10-second drain deadline.
 
 ---
 
 ## CLI Reference
 
-### Global Options
+### Command Options
 
-```bash
-mcp-proxy [OPTIONS] COMMAND
-
-Options:
-  --config, -c PATH    Configuration file (default: ~/.config/mcp-proxy/config.yaml)
-  --env-file PATH      Load environment from file
-  --help               Show help
-```
+`mcp-proxy --help` lists commands. Options belong to the command that accepts
+them: `--config` is for local file commands, `--env-file` is for `serve`,
+`--state-dir` is for `users`, and `--url` is for `manage`.
 
 ### serve
 
-Start the proxy server.
+Start one managed runtime against a provisioned state directory:
 
 ```bash
-mcp-proxy serve [OPTIONS]
+uv run mcp-proxy serve [OPTIONS]
 
 Options:
-  --transport TEXT     Transport type: stdio|http (default: stdio)
-  --port INTEGER       HTTP port (default: 8000)
-  --host TEXT          HTTP host (default: 0.0.0.0)
+  --transport, -t TEXT   stdio|http (default: stdio)
+  --port, -p INTEGER     HTTP port (default: 8000)
+  --env-file, -e PATH    Bootstrap environment file (default: .env)
+  --access-log / --no-access-log   HTTP access logging (default: enabled)
 ```
+
+Set `MCP_PROXY_HOST` to change the HTTP listener (default: `127.0.0.1`); there is
+no `--host` flag. HTTP needs OAuth and `MCP_PROXY_STATE_DIR`. Stdio also needs
+`MCP_PROXY_OWNER_ISSUER`, `MCP_PROXY_OWNER_SUBJECT`, and a `mcp-proxy-local`
+grant. It serves the owner's default view. Only one runtime per state directory
+is supported, including across HTTP and stdio.
+
+The retained `--config` option raises migration guidance when supplied.
+`--debug` remains accepted for compatibility but the managed serve path does not
+use it. For file logging, set `MCP_PROXY_LOG_FILE` and `MCP_PROXY_LOG_LEVEL`.
+
+### users
+
+Local operator commands for ownership, grants, and offline imports:
+
+```bash
+uv run mcp-proxy users --state-dir /PRIVATE/STATE provision \
+  --issuer 'https://YOUR-ISSUER/' --subject 'VERIFIED-SUBJECT' --operator
+uv run mcp-proxy users --state-dir /PRIVATE/STATE grant USER_ID \
+  --client CLIENT_ID --view default
+uv run mcp-proxy users --state-dir /PRIVATE/STATE revoke USER_ID --client CLIENT_ID
+```
+
+`MCP_PROXY_STATE_DIR` can supply `--state-dir`. `grant` accepts repeated `--view`
+and optional `--admin`; omitting `--view` grants `default`. Re-granting replaces
+that client's grant, so include all views it should retain. `'*'` grants all
+views, but the dedicated admin endpoint still needs `--admin`.
+
+`users import --issuer ... --subject ... --config FILE` imports YAML for a
+provisioned owner with a local admin grant. `users import-oauth --source DIR`
+migrates compatible legacy OAuth storage. Both are dry runs unless `--apply` is
+provided; stop the runtime first. See the [migration sequence](user-owned-configuration.md#migrate-an-existing-installation).
+
+### manage
+
+Use OAuth to manage the logged-in user's remote configuration:
+
+```bash
+uv run mcp-proxy manage --url https://proxy.example.org identity
+uv run mcp-proxy manage --url https://proxy.example.org config
+uv run mcp-proxy manage --url https://proxy.example.org preview --input candidate.json
+uv run mcp-proxy manage --url https://proxy.example.org apply --input apply.json
+```
+
+Actions: `identity`, `config`, `history`, `status`, `preview`, `probe`, `apply`,
+and `rollback`. Mutations require a JSON `--input FILE` or `--input -`; read-only
+actions reject it. `MCP_PROXY_URL` can supply `--url`. OAuth credentials are
+stored encrypted in `~/.local/state/mcp-proxy-client`; override with
+`--credential-dir`. Automation may set `MCP_PROXY_ACCESS_TOKEN` to a current
+OAuth access token. There is no secret/token command-line option.
+
+### Local file commands
+
+The commands below inspect or edit YAML, not the managed store. They use
+`~/.config/mcp-proxy/config.yaml` unless given `--config PATH`. Inspection may
+start configured subprocesses or connect to upstreams. Use only trusted files;
+local tool calls bypass the managed gateway's user grants.
 
 ### validate
 
@@ -770,7 +884,19 @@ Options:
 `SERVER.TOOL` without `--view` shows raw upstream metadata. With `--view`, the
 tool name is the final exposed name and output reflects renames, hidden
 parameters, defaults, and description overrides. See [Tool Discovery,
-Inspection, and Safe Calls](tool-discovery.md) for CLI and web examples.
+Inspection, and Safe Calls](tool-discovery.md) for local and live examples.
+
+### tools and servers
+
+```bash
+uv run mcp-proxy servers --config config.yaml
+uv run mcp-proxy tools --config config.yaml --view default --verbose --json
+```
+
+`servers` lists names in the file. `tools` without a view/verbose/JSON option
+lists configured names without connecting. The richer forms discover upstream
+tools and return canonical metadata after view transformations. `--server NAME`
+filters the inventory.
 
 ### call
 

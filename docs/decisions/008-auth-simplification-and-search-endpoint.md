@@ -1,5 +1,10 @@
 # ADR-008: Authentication Simplification and Search Endpoint
 
+> Historical design record. Managed serving, ownership, authentication, and cache
+> access now follow [ADR-010](010-user-owned-configuration.md) and the
+> [administration guide](../user-owned-configuration.md). Examples below describe
+> the implementation at the time of this decision, not current setup instructions.
+
 ## Status
 
 Accepted

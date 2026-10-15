@@ -23,6 +23,18 @@ Easy MCP Proxy solves these by sitting between your MCP clients and upstream ser
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
+## User-owned Configuration
+
+`serve` reads an encrypted store selected by `MCP_PROXY_STATE_DIR`. Every HTTP
+request uses the verified OAuth user's configuration and explicit client grants.
+Local stdio selects a provisioned owner through environment variables. Neither
+transport falls back to a global YAML file.
+
+Use the [administration guide](user-owned-configuration.md) for provisioning,
+migration, remote preview/apply, backups, and rollback. The
+[acceptance record](specs/remote-configuration-acceptance.md) lists tested behavior
+and pending production/client checks.
+
 ## Core Concepts
 
 ### Upstream Servers
@@ -66,12 +78,14 @@ Large tool outputs can consume valuable LLM context window space. Output caching
 - Stores outputs exceeding a size threshold
 - Returns a preview plus a retrieval token
 - Provides both tool-based and HTTP retrieval methods
-- Uses HMAC-signed expiring URLs for security
+- Requires user/view authorization as well as HMAC-signed expiring URLs
 
 ## Documentation Structure
 
 | Document | Description |
 |----------|-------------|
+| **[Administration](user-owned-configuration.md)** | Ownership, migration, live updates, and recovery |
+| **[Acceptance record](specs/remote-configuration-acceptance.md)** | Test evidence, client limitations, and release gates |
 | **[Tutorial](tutorial.md)** | Step-by-step guide from installation to advanced features |
 | **[Use Cases](use-cases.md)** | Problem-driven exploration—find features by what you want to accomplish |
 | **[Reference](reference.md)** | Complete feature documentation organized by capability |
@@ -86,11 +100,8 @@ Large tool outputs can consume valuable LLM context window space. Output caching
 ## Installation
 
 ```bash
-# Install from source
-uv pip install -e .
-
-# With dev dependencies
-uv pip install -e ".[dev]"
+# Install from the repository checkout, including development dependencies
+uv sync --frozen
 ```
 
 ## Minimal Example
@@ -111,10 +122,12 @@ tool_views:
 ```
 
 ```bash
-mcp-proxy serve --config config.yaml
+uv run mcp-proxy validate --config config.yaml
 ```
 
-This exposes `read_file` and `list_directory` from the filesystem server. Other tools from that server are filtered out.
+This validates the import file. Follow the [tutorial](tutorial.md#step-4-provision-import-and-run)
+to provision its owner, import it, and start the service. The resulting default
+view exposes only `read_file` and `list_directory` from this upstream.
 
 ## Next Steps
 

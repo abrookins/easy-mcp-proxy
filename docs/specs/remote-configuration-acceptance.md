@@ -116,3 +116,25 @@ implementation/QA tasks are cancelled according to the plan's default-defer rule
 
 Real-account/native-device and production Auth0 checks above remain pending;
 they are not included in these passing counts.
+
+## Documentation audit: 2026-10-15
+
+Plan task 044 aligned the README, tutorial, reference, examples, discovery guide,
+operator guide, and agent guide with managed serving. Historical ADRs and baseline
+specs now point readers to the current implementation and acceptance evidence.
+The audit corrected file-based startup instructions, grant semantics, reserved
+view names, cache authorization, removed HTTP routes, and rollback procedures.
+
+Verification for this documentation update:
+
+- README and tutorial YAML/bootstrap sequences passed against disposable state:
+  validation, provisioning, grants, dry-run import, apply, and idempotent reimport.
+  These checks did not start upstreams or exercise an actual desktop client.
+- 105 relative Markdown links and their heading targets resolved across 21 files.
+- CLI options and managed routes were checked against the local implementation.
+- `make check` passed; `make test` passed with **1308 tests** and **100% line and
+  branch coverage** in 12.72 seconds. No application code or tests were changed.
+- The earlier browser/UI results above were not rerun for this prose-only update.
+
+The five real-environment checks/release gates remain pending. This audit did not
+migrate production, verify physical phones, or establish native MCP Apps support.

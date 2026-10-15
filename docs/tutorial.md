@@ -6,7 +6,10 @@ This tutorial walks you through Easy MCP Proxy from installation to advanced fea
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) package manager
-- An MCP client (Claude Desktop, or any MCP-compatible client)
+- An MCP client with local stdio or OAuth HTTP support
+- Node.js and `npx` for the filesystem examples
+- The owner's verified OAuth issuer and subject; HTTP also needs the provider
+  settings in the [authentication reference](reference.md#authentication)
 
 ## Step 1: Installation
 
@@ -16,18 +19,21 @@ git clone https://github.com/abrookins/easy-mcp-proxy.git
 cd easy-mcp-proxy
 
 # Install
-uv pip install -e .
+uv sync --frozen
 ```
 
 Verify the installation:
 
 ```bash
-mcp-proxy --help
+uv run mcp-proxy --help
 ```
 
 ## Step 2: Your First Configuration
 
-Create a file called `config.yaml`:
+Create a file called `config.yaml`. This is an import/inspection input, not the
+running service's configuration. If upgrading an existing service, follow the
+[migration guide](user-owned-configuration.md#migrate-an-existing-installation)
+first to preserve its OAuth state.
 
 ```yaml
 mcp_servers:
@@ -61,56 +67,109 @@ echo "Hello from MCP!" > /tmp/mcp-demo/hello.txt
 Validate your config:
 
 ```bash
-mcp-proxy validate --config config.yaml
+uv run mcp-proxy validate --config config.yaml
 ```
 
 See what tools will be exposed:
 
 ```bash
-mcp-proxy schema --config config.yaml
+uv run mcp-proxy schema --config config.yaml
 ```
 
 Call a tool directly to test:
 
 ```bash
-mcp-proxy call filesystem.read_file --config config.yaml --arg path=hello.txt
+uv run mcp-proxy call filesystem.read_file --config config.yaml --arg path=/tmp/mcp-demo/hello.txt
 ```
 
-Note: Paths are relative to the directory passed to the filesystem server (`/tmp/mcp-demo`).
+Use an absolute path inside the directory allowed by the filesystem server.
 
-## Step 4: Run the Proxy
+## Step 4: Provision, Import, and Run
 
-### Option A: Stdio (for Claude Desktop)
+Use a new private state directory for this tutorial. Substitute the owner's
+verified issuer and subject; an email address is not the ownership key.
 
 ```bash
-mcp-proxy serve --config config.yaml
+export MCP_PROXY_STATE_DIR="$HOME/.local/state/easy-mcp-proxy-demo"
+export MCP_PROXY_OWNER_ISSUER='https://YOUR-ISSUER/'
+export MCP_PROXY_OWNER_SUBJECT='VERIFIED-SUBJECT'
+proxy_user_id=$(uv run mcp-proxy users provision \
+  --issuer "$MCP_PROXY_OWNER_ISSUER" --subject "$MCP_PROXY_OWNER_SUBJECT" --operator)
+uv run mcp-proxy users grant "$proxy_user_id" \
+  --client mcp-proxy-local --admin --view '*'
+uv run mcp-proxy users import --issuer "$MCP_PROXY_OWNER_ISSUER" \
+  --subject "$MCP_PROXY_OWNER_SUBJECT" --config config.yaml
+uv run mcp-proxy users import --issuer "$MCP_PROXY_OWNER_ISSUER" \
+  --subject "$MCP_PROXY_OWNER_SUBJECT" --config config.yaml --apply
 ```
 
-Add to Claude Desktop's `claude_desktop_config.json`:
+The first import is a dry run. Operator status permits the process and destination
+changes in this tutorial. Use narrower grants for normal runtime applications.
+
+### Option A: Stdio (for a local client)
+
+With those environment variables set:
+
+```bash
+uv run mcp-proxy serve
+```
+
+Alternatively, have your desktop client launch the process. For a client that
+uses an `mcpServers` configuration, supply absolute paths and the same identity:
 
 ```json
 {
   "mcpServers": {
     "proxy": {
-      "command": "uv",
-      "args": ["run", "mcp-proxy", "serve", "--config", "/path/to/config.yaml"]
+      "command": "/ABSOLUTE/PATH/TO/uv",
+      "args": ["run", "--project", "/ABSOLUTE/PATH/TO/easy-mcp-proxy", "mcp-proxy", "serve"],
+      "env": {
+        "MCP_PROXY_STATE_DIR": "/ABSOLUTE/PATH/TO/easy-mcp-proxy-demo",
+        "MCP_PROXY_OWNER_ISSUER": "https://YOUR-ISSUER/",
+        "MCP_PROXY_OWNER_SUBJECT": "VERIFIED-SUBJECT"
+      }
     }
   }
 }
 ```
 
-### Option B: HTTP (for web clients)
+Run either the terminal process or the client-launched process. A second process
+cannot open the same state directory while the first is serving. Stdio exposes
+the owner's default view and uses the explicit `mcp-proxy-local` grant.
+
+### Option B: HTTP (for remote clients)
+
+Stop the stdio process before using its state directory for HTTP. Configure
+[OAuth](reference.md#authentication), grant browser administration, and start:
 
 ```bash
-mcp-proxy serve --config config.yaml --transport http --port 8000
+uv run mcp-proxy users grant "$proxy_user_id" \
+  --client mcp-proxy-browser --admin --view '*'
+uv run mcp-proxy serve --transport http --port 8000
 ```
 
-Test the endpoints:
+`MCP_PROXY_HOST` defaults to `127.0.0.1`. Put the remote service behind HTTPS at
+its configured public origin. `/health` is public; `/views` and MCP endpoints
+require OAuth and explicit client grants. Register each remote client and grant
+its downstream client ID the views it needs, as described in the
+[bootstrap guide](user-owned-configuration.md#bootstrap-and-grants).
 
-```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/views
-```
+Open `/config` to edit configuration. Connect the MCP client to `/mcp` for its
+owner's default view or `/view/NAME/mcp` for a granted named view.
+
+### Apply the remaining examples
+
+The following YAML examples describe fields to add or change. For an HTTP
+service, edit their JSON equivalent in `/config`, preview, optionally probe an
+upstream, then apply. New views also require a matching client grant. For local
+stdio, stop the process, update the YAML, repeat the dry-run/import commands,
+and restart it. File inspection commands continue to read YAML; they do not
+inspect or modify the running managed service.
+
+HTTP updates reuse unchanged connections and drain replaced connections for up
+to 10 seconds. Refresh the client's tool list if its discovery cache is stale.
+See [live-change behavior](user-owned-configuration.md#live-change-behavior) for
+limits and settings that still require a restart.
 
 ## Step 5: Add Tool Filtering
 
@@ -371,7 +430,9 @@ mcp_servers:
       Authorization: "Bearer ${ZAPIER_API_KEY}"
 ```
 
-Environment variables are expanded at runtime.
+These environment references are expanded by local inspection/import. A running
+service reads the imported values. Remote edits must use actual values or
+existing secret references; `${...}` is rejected.
 
 ## Step 14: Multiple Views
 
@@ -427,14 +488,15 @@ output_cache:
   retrieval_default_line_count: 100
   retrieval_max_chars: 12000
 
-cache_secret: "${CACHE_SECRET}"  # Recommended for stable signed URLs
-cache_base_url: "https://your-proxy.example.com"  # Base URL for retrieval (HTTP mode)
-
 mcp_servers:
   filesystem:
     command: npx
     args: [-y, "@modelcontextprotocol/server-filesystem", /data]
 ```
+
+The service manages cache keys and retrieval URLs per owner/view. HTTP retrieval
+requires the signed URL plus OAuth or an authorized browser session for the same
+owner/view. Do not set `cache_secret` or `cache_base_url` in managed config.
 
 When a tool returns output larger than the inline limits, the proxy returns:
 
@@ -446,7 +508,7 @@ When a tool returns output larger than the inline limits, the proxy returns:
   "truncated": true,
   "truncation_reasons": ["estimated_tokens", "max_line_chars"],
   "preview": "Bounded preview...",
-  "retrieve_url": "https://your-proxy.example.com/cache/abc123?expires=...",
+  "retrieve_url": "https://your-proxy.example.com/view/default/cache/abc123?expires=...&sig=...",
   "expires_at": "2026-07-31T20:00:00Z",
   "size_bytes": 248000,
   "original": {"bytes": 248000, "estimated_tokens": 62000},

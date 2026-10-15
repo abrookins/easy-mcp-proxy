@@ -55,7 +55,11 @@ uv run mcp-proxy users grant USER_ID --client ADMIN_CLIENT_ID --admin --view adm
 uv run mcp-proxy users revoke USER_ID --client REGISTERED_CLIENT_ID
 ```
 
-An admin grant does not grant a view automatically; specify both. Grant changes
+An admin grant does not grant the `admin` endpoint automatically; specify
+`--admin --view admin` for that connector. Omitting `--view` grants `default`.
+Re-granting replaces that client's grant, so include all views it should retain.
+`search` grants access to all of that owner's upstream tools through the virtual
+search view, even when their default view is narrower. Grant changes
 are checked on every discovery/execution/management request. Revoke also deletes
 that application's browser sessions. Existing calls may finish. Operator status
 is an additional, locally provisioned privilege: changing commands, environments,
@@ -171,12 +175,27 @@ normal credential source; automation may provide a current OAuth bearer through
 `MCP_PROXY_ACCESS_TOKEN`. No token or secret command-line flags are provided.
 Only HTTPS or loopback HTTP is accepted. Read-only operations reject `--input`.
 
+`admin`, `search`, and `_search` are reserved configuration view names. Use a
+name such as `full` for an ordinary view exposing all upstream tools.
+
 Runtime endpoints remain `/mcp`, `/view/NAME/mcp`, and `/search/mcp`. `/views`
 returns only granted views. Root OAuth discovery and registration are preserved,
 and named endpoints challenge using the root `/mcp` resource metadata. Each
 stateless HTTP request resolves its authenticated owner; there is no shared
 transport session that can carry another user's identity. Clients must keep sending
 OAuth credentials. A lost TCP/MCP request is separate from a lost OAuth login.
+
+For live schema inspection, use MCP `tools/list` or the advertised search and
+describe helpers on the granted view. The managed browser has no legacy Tools
+tab and does not expose `/config/api/tools`, `/views/{name}`, or restart/PUT APIs.
+The file-based `schema`/`tools` CLI commands inspect local YAML only.
+
+Cache HTTP URLs use `/view/VIEW/cache/TOKEN` and require both the signature and
+same-owner/view authorization through OAuth or a browser session. Old unscoped
+`/cache/TOKEN` links do not migrate. MCP cache tools/resources enforce the same
+owner/view boundary. Passing a signed link alone to another agent is insufficient;
+use an authorized retrieval client. User config cannot set `cache_secret` or
+`cache_base_url`; the runtime owns signing and routing.
 
 The dedicated `/view/admin/mcp` connector exposes `proxy_config`, `proxy_status`,
 `proxy_history`, `proxy_preview`, `proxy_probe`, `proxy_apply`, and `proxy_rollback`.
@@ -188,8 +207,9 @@ browser. All ownership derives from verified context, never a tool argument.
 `proxy_status` advertises `ui://mcp-proxy/admin-v1.html`, MIME
 `text/html;profile=mcp-app`, using `_meta.ui.resourceUri`. The bundled standard
 MCP Apps SDK communicates through the host bridge. No vendor-only API is required.
-Resource access rechecks the admin endpoint and grant. The resource requests no
-external connect/resource domains or extra permissions. Without UI support, text
+Resource access rechecks the admin endpoint and grant. This serves the proxy's
+own administration UI; forwarding third-party upstream MCP Apps is deferred.
+The resource requests no external connect/resource domains or extra permissions. Without UI support, text
 tools and the returned `browser_url` remain usable. The embedded and browser
 screens share components and invoke the same config/runtime service.
 

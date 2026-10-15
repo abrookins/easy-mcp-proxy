@@ -1,6 +1,8 @@
 # 010: User-owned configuration and live activation
 
-Status: accepted for implementation on `feat/user-owned-live-configuration`.
+Status: implemented on `feat/user-owned-live-configuration`; production and
+real-client acceptance remain pending. See the
+[acceptance record](../specs/remote-configuration-acceptance.md).
 
 ## Decision
 
@@ -49,8 +51,8 @@ commit the new durable active revision and immediately publish the generation
 without an intervening await. Retire old generation references after publication.
 
 A crash before commit retains the old revision. A crash after commit starts from
-the newly committed revision. Startup marks interrupted preparation as failed and
-rebuilds the committed generation. A durable revision is authoritative on restart;
+the newly committed revision. Startup marks interrupted preparation as
+`interrupted` and rebuilds the committed generation. A durable revision is authoritative on restart;
 runtime availability and preparation failure are reported separately. Database
 transactions do not cover external resources, so orphan cleanup and startup
 reconciliation are required. Repeated apply of the same operation returns its
@@ -71,13 +73,21 @@ Use stable encrypted OAuth persistence and an independent browser session key.
 The browser login requires nonce/state binding and verified identity; it cannot
 derive ownership from unverified token-response fields. Browser writes require
 same-origin CSRF protection. All management mutations require config-admin grants.
-Host commands, hooks, environment references and privileged network destinations
-additionally require locally provisioned operator privilege.
+Host commands, hooks, and all new HTTP destinations additionally require locally
+provisioned operator privilege. Remote config rejects host environment
+interpolation; offline import resolves it before storing encrypted values.
 
 The private configuration migration specifies the owner's issuer and subject.
 No first-login claim, global operational fallback, or shared credential defaults
-are permitted. Trusted local stdio and static credentials require explicit owner
-mapping. Service-wide settings contain only transport, store and identity bootstrap.
+are permitted. Trusted local stdio requires an explicitly provisioned
+issuer/subject and a `mcp-proxy-local` grant. Static API tokens are not supported
+by the managed gateway. Service-wide settings contain only transport, store and
+identity bootstrap.
+
+Managed cache URLs use `/view/VIEW/cache/TOKEN` with per-owner/view signatures
+and require the same owner's OAuth or browser authorization. Signed URLs are not
+standalone access grants. Reserved `admin`, `search`, and `_search` view names
+cannot be supplied in user config.
 
 ## Compatibility and limitations
 

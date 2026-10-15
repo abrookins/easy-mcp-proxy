@@ -2,6 +2,13 @@
 
 Agent-plan: `c2f83bf9`
 
+This is the original delivery brief. Implementation is recorded in
+[ADR-010](../decisions/010-user-owned-configuration.md); current commands and
+operational limits are in the [administration guide](../user-owned-configuration.md).
+The [acceptance record](remote-configuration-acceptance.md) distinguishes completed
+local work from pending production/client checks. Requirements below are not a
+claim that every release gate has passed.
+
 ## Required outcome
 
 All proxy configuration and views belong to the current logged-in OAuth user.
@@ -11,8 +18,8 @@ no global operational configuration or fallback to another user's configuration.
 Andrew can edit a view from his phone, preview and apply the change while a tool
 call runs, and continue using connected clients without logging in again.
 
-Creating this plan does not start implementation or authorize production rollout.
-Agent-plan contains executable tasks; this brief defines their requirements.
+The user subsequently authorized branch implementation. Production rollout remains
+separate. Agent-plan contains task state; this brief defines the requirements.
 
 ## Identity is the configuration boundary
 
@@ -67,7 +74,7 @@ forge Andrew's verified identity.
 | M5: Embedded administration | Portable MCP Apps management screens work on verified hosts with browser fallback. |
 | Optional extension | Forward upstream MCP Apps only after a separate scope decision. |
 
-## Current evidence and compatibility constraints
+## Pre-implementation evidence and compatibility constraints
 
 - `mcp_proxy/web_ui.py` already provides `/config`, JSON GET/PUT operations,
   override-file persistence, and a restart operation that sends `SIGHUP`.

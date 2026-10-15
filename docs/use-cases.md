@@ -1,5 +1,11 @@
 # Use Cases
 
+Examples below describe fields in one owner's configuration. Use
+[provisioning and import](user-owned-configuration.md) for YAML, or edit the
+corresponding JSON through browser preview/apply. Creating upstreams, hooks,
+or custom Python tools requires operator privilege. Environment references in
+YAML are expanded locally during import; they are not allowed in remote edits.
+
 This guide explores Easy MCP Proxy features through the problems they solve. Find your challenge, see the solution.
 
 ## Table of Contents
@@ -218,7 +224,10 @@ You want to give some users read-only access, others full access, and specialize
 
 ### The Solution: Multiple Views
 
-Create different views for different access levels:
+Each provisioned user owns a separate configuration, including views and
+credentials. Define views within an owner, then grant each OAuth application
+only the views it needs. A view name or description is not an access rule.
+For example, within one owner's configuration:
 
 ```yaml
 tool_views:
@@ -236,7 +245,7 @@ tool_views:
         get_file_contents: {}
 
   # Full access for trusted operations
-  admin:
+  full:
     description: "Full access to all tools"
     include_all: true
 
@@ -256,74 +265,33 @@ tool_views:
 
 **Result**: Access different views via HTTP endpoints:
 - `/view/readonly/mcp` — Safe for exploration
-- `/view/admin/mcp` — Full access
-- `/view/deployment/mcp` — Deployment team only
+- `/view/full/mcp` — Full access to that owner's upstream tools
+- `/view/deployment/mcp` — Deployment tools for explicitly granted applications
 
-Or configure different Claude Desktop instances to use different views.
+The same URL selects a different configuration for a different authenticated
+owner. `admin`, `search`, and `_search` are reserved view names;
+`/view/admin/mcp` serves proxy administration. Local stdio serves the explicitly
+selected owner's default view.
 
-### Variation: Runtime Permission Checks
+### Grant access explicitly
 
-Views control which tools are *available*, but sometimes you need to check permissions at runtime—for example, verifying OAuth scopes before allowing a write operation.
+An operator grants the registered downstream OAuth application's client ID:
 
-Use a pre-call hook to inspect the request and enforce permissions:
-
-```python
-# myhooks/permissions.py
-import jwt
-from mcp_proxy.hooks import HookResult, ToolCallContext
-from fastmcp.server.dependencies import get_http_request
-
-# Tools that require the "write" scope
-WRITE_TOOLS = {"write_file", "delete_file", "create_deployment", "scale_deployment"}
-
-async def check_permissions(args: dict, context: ToolCallContext) -> HookResult:
-    """Verify OAuth scopes before allowing tool execution."""
-    if context.tool_name not in WRITE_TOOLS:
-        return HookResult()  # Read operations allowed
-
-    # Get the HTTP request from FastMCP's context
-    try:
-        request = get_http_request()
-    except RuntimeError:
-        # No HTTP request (stdio mode) - allow or deny based on policy
-        return HookResult()
-
-    # Extract and decode the JWT
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return HookResult(abort=True, abort_reason="Missing authorization")
-
-    token = auth_header[7:]
-    try:
-        # In production, verify signature with your OAuth provider's public key
-        claims = jwt.decode(token, options={"verify_signature": False})
-        scopes = claims.get("scope", "").split()
-    except jwt.InvalidTokenError:
-        return HookResult(abort=True, abort_reason="Invalid token")
-
-    # Check for required scope
-    if "write" not in scopes:
-        return HookResult(
-            abort=True,
-            abort_reason=f"Scope 'write' required for {context.tool_name}"
-        )
-
-    return HookResult()
+```bash
+uv run mcp-proxy users grant USER_ID --client READONLY_CLIENT_ID --view readonly
+uv run mcp-proxy users grant USER_ID --client DEPLOY_CLIENT_ID --view deployment
+uv run mcp-proxy users revoke USER_ID --client DEPLOY_CLIENT_ID
 ```
 
-Configure the hook in your view:
+Set `MCP_PROXY_STATE_DIR` on the host before these commands. Revocation affects
+subsequent requests; already-running calls may finish. Grants belong to a user
+and application, so another provisioned user does not inherit them. Granting a
+view does not grant configuration administration.
 
-```yaml
-tool_views:
-  production:
-    hooks:
-      pre_call: myhooks.permissions.check_permissions
-    include_all: true
-```
-
-**Result**: All tools are exposed, but write operations require the `write` scope in the OAuth token. Users without the scope can still read, but writes are blocked at runtime with a clear error message.
-
-**Note**: This example decodes the JWT without signature verification for brevity. In production, verify the signature using your OAuth provider's JWKS endpoint and the `pyjwt` library with `algorithms` and `audience` parameters.
+Use [trusted operator hooks](reference.md#hooks) for additional application
+policy. The managed gateway verifies identity and grants before execution; hooks
+must not derive permissions from an unverified JWT or a caller-supplied user ID.
+OAuth provider scopes and local user/view grants are separate controls.
 
 ---
 
@@ -541,9 +509,6 @@ output_cache:
   retrieval_default_line_count: 100
   retrieval_max_chars: 12000
 
-cache_secret: "${CACHE_SECRET}"  # Recommended for stable signed URLs
-cache_base_url: "https://your-proxy.example.com"
-
 mcp_servers:
   filesystem:
     command: npx
@@ -552,6 +517,10 @@ mcp_servers:
       enabled: true
       max_line_chars: 800
 ```
+
+The service manages cache keys and retrieval URLs per owner/view. HTTP retrieval
+requires the signed URL plus OAuth or an authorized browser session for that
+owner/view. Do not set `cache_secret` or `cache_base_url` in managed config.
 
 **Result**: Large outputs return as:
 
@@ -563,7 +532,7 @@ mcp_servers:
   "truncated": true,
   "truncation_reasons": ["estimated_tokens", "max_line_chars"],
   "preview": "Bounded preview...",
-  "retrieve_url": "https://your-proxy.example.com/cache/abc123?expires=...",
+  "retrieve_url": "https://your-proxy.example.com/view/default/cache/abc123?expires=...&sig=...",
   "expires_at": "2026-07-31T20:00:00Z",
   "size_bytes": 248000,
   "original": {"bytes": 248000, "estimated_tokens": 62000},
@@ -610,14 +579,14 @@ Agent calls read_file("application.log")
   → Agent spawns a sub-agent with instructions:
 
     "You have access to a cached file via this URL:
-     https://proxy.local:8000/cache/abc123?expires=...&sig=...&download=1
+     https://proxy.example.com/view/default/cache/abc123?expires=...&sig=...&download=1
 
      Task: Extract all ERROR entries, group by message pattern,
      and return a summary with counts and timestamps.
      Use jq or Python to process the file."
 
   → Sub-agent (fresh context window):
-    - Fetches the URL with curl
+    - Fetches the URL through an authorized client or receives a local copy
     - Processes with jq: select(.level == "ERROR") | group_by(.message)
     - Returns structured summary (~200 tokens)
 
@@ -626,21 +595,25 @@ Agent calls read_file("application.log")
 
 The parent agent never loaded the raw data. The sub-agent processed it in isolation using shell tools, returning only what was needed.
 
-**Why the signed URL is essential**:
+**Authorize retrieval as well as the signed URL**:
 
-The URL is a **capability token**—possession grants access to exactly one file, for a limited time:
+The managed service signs cache references per owner and view. A request also
+needs OAuth or an authorized browser session for that same owner/view; possession
+of the URL alone does not grant access. Signatures prevent forgery, expiration
+limits the retrieval window, and grants restrict the requesting application.
 
-- **HMAC signature** prevents forging access to other files
-- **Expiration timestamp** limits the access window
-- **Random token** is unguessable
-
-This makes it safe to pass the URL to sub-agents or LLM-generated code. The sub-agent can fetch the data, but can't access anything else.
+For delegated processing, fetch through an already authorized client and pass
+the data to the worker, or provision the worker with its own appropriate OAuth
+flow and explicit grant. Do not put credentials in the URL or model prompt.
 
 **Example sub-agent workflow**:
 
 ```bash
-# Sub-agent executes this to process the cached file
-curl -s "https://proxy.local:8000/cache/abc123?expires=1706303600&sig=...&download=1" \
+# Run in an authorized environment. CURL_AUTH_CONFIG is a private curl config
+# containing the current OAuth Authorization header, supplied outside the model.
+# RETRIEVE_URL is the exact signed URL returned by the service.
+curl --fail --silent --show-error --config "$CURL_AUTH_CONFIG" \
+  "${RETRIEVE_URL}&download=1" \
   | jq '[.[] | select(.level == "ERROR" or .level == "FATAL")]' \
   | jq 'group_by(.message | split(":")[0]) | map({
       pattern: .[0].message | split(":")[0],
@@ -678,7 +651,7 @@ The parent agent receives ~200 tokens instead of ~40,000. It has plenty of conte
 | Generic names | Tool renaming | `name: new_name` |
 | Implementation details | Parameter binding | `hidden: true`, `default: value` |
 | Sequential searches | Concurrent composition | `composite_tools.parallel` |
-| Access control | Multiple views | `tool_views` with different tools |
+| Access control | User ownership and client grants | `users grant` plus `tool_views` |
 | Audit/logging | Hooks | `hooks.pre_call`, `hooks.post_call` |
 | Custom logic | Python tools | `custom_tools` |
 | Large outputs | Safe output handling | Enabled by default; tune with `output_cache` |

@@ -1,5 +1,11 @@
 # Safe Default Output Handling
 
+> This spec describes the output-bounding design, including the original library
+> cache routes. Managed HTTP serving now uses `/view/VIEW/cache/TOKEN`, per-user
+> and per-view signing, and OAuth/browser authorization in addition to the signed
+> link. See [current cache behavior](../reference.md#output-caching) and
+> [ADR-010](../decisions/010-user-owned-configuration.md).
+
 ## Status
 
 Draft

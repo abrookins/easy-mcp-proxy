@@ -3,6 +3,13 @@
 This document contains practical examples of using Easy MCP Proxy to create
 powerful, customized tool configurations.
 
+These YAML examples are import inputs. Provision an explicit owner and import
+while stopped, or edit the equivalent JSON through browser preview/apply; see
+[managed configuration](docs/user-owned-configuration.md). Server commands,
+destinations, hooks, and custom Python tools require operator privilege.
+`${VAR}` examples are expanded by the local YAML loader during import. Live
+remote edits use values or existing opaque secret references instead.
+
 ## Table of Contents
 
 - [Portable Skills Library](#portable-skills-library)
@@ -390,14 +397,18 @@ tool_views:
 
 ### Accessing Views
 
+First complete [provisioning and import](docs/tutorial.md#step-4-provision-import-and-run).
+Stdio requires the owner environment variables; HTTP requires OAuth and grants
+for each named view. Run only one process per state directory.
+
 **Via stdio** (default view):
 ```bash
-mcp-proxy serve --config config.yaml
+uv run mcp-proxy serve
 ```
 
 **Via HTTP** (view-specific endpoints):
 ```bash
-mcp-proxy serve --config config.yaml --transport http --port 8000
+uv run mcp-proxy serve --transport http --port 8000
 
 # Each view gets its own endpoint:
 # http://localhost:8000/view/developer/mcp
@@ -408,7 +419,7 @@ mcp-proxy serve --config config.yaml --transport http --port 8000
 
 ### Exposure Modes
 
-Views support two exposure modes:
+Views support three exposure modes:
 
 **Direct mode** (default): Tools are exposed with their names directly
 ```yaml
@@ -420,8 +431,8 @@ tool_views:
         search_code: {}  # Exposed as "search_code"
 ```
 
-**Search mode**: Exposes `search_tools` and `call_tool` meta-tools for dynamic
-tool discovery
+**Search mode**: Exposes view-prefixed `search_tools`, `describe_tool`, and
+`call_tool` meta-tools for dynamic discovery and execution
 ```yaml
 tool_views:
   dynamic-view:
@@ -429,6 +440,9 @@ tool_views:
     include_all: true
     # AI can search for tools and call them dynamically
 ```
+
+**Search per server** (`exposure_mode: search_per_server`) exposes the same
+search/describe/call trio for each upstream server.
 
 ### Key Points
 
@@ -623,6 +637,9 @@ async def smart_analysis(path: str, ctx: ProxyContext) -> dict:
 
     return {"analysis": result.stdout, "saved_to_memory": True}
 ```
+
+**Search per server** (`exposure_mode: search_per_server`) exposes the same
+search/describe/call trio for each upstream server.
 
 ### Key Points
 

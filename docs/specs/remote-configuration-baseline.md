@@ -1,6 +1,9 @@
 # Configuration baseline and compatibility evidence
 
-Recorded 2026-10-13 on `feat/user-owned-live-configuration`.
+Recorded 2026-10-13 on `feat/user-owned-live-configuration`, before implementation.
+This is historical baseline evidence, not the current managed-service behavior
+or test status. See the [acceptance record](remote-configuration-acceptance.md)
+for implementation results and remaining checks.
 
 ## Verified baseline
 

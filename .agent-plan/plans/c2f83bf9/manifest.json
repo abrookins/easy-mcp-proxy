@@ -2,8 +2,8 @@
   "version": 2,
   "plan_id": "c2f83bf9",
   "created_at": "2026-10-13T14:54:42.199429Z",
-  "updated_at": "2026-10-13T16:41:08.090753Z",
-  "next_sequence": 44,
+  "updated_at": "2026-10-15T16:32:38.753892Z",
+  "next_sequence": 45,
   "tasks": [
     {
       "id": "001-define-delivery-plan-and-acceptance-criteria",
@@ -814,6 +814,21 @@
       "claim_path": "tasks/043-optional-verify-upstream-apps-compatibility-and-isolation.claim",
       "description_preview": "Execute only for selected forwarding scope. Test resource collisions, aliases, app-only tools, search helpers, struct...",
       "record_hash": "450220a7ca2b008d60ba3f6ef3ac56cbc98c7c4f773e2d727be0d732e534418c"
+    },
+    {
+      "id": "044-align-all-documentation-with-managed-user-configuration",
+      "sequence": 44,
+      "name": "Align all documentation with managed user configuration",
+      "status": "complete",
+      "order": 43,
+      "assignee": "codex",
+      "created_at": "2026-10-15T16:22:08.121334Z",
+      "updated_at": "2026-10-15T16:32:38.753892Z",
+      "completed_at": "2026-10-15T16:32:38.753891Z",
+      "archived_at": "2026-10-15T16:32:38.753891Z",
+      "path": "history/044-align-all-documentation-with-managed-user-configuration.done",
+      "description_preview": "Updated all 21 repository Markdown documents for managed serving, explicit ownership and grants, import/live-edit bou...",
+      "record_hash": "70845111049129891bc089d92780abbe3b556a415aaef0900b0f65f5931c0bee"
     }
   ]
 }

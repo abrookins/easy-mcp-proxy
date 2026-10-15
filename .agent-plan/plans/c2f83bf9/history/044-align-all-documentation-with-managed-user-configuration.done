@@ -1,0 +1,15 @@
+---
+id: 044-align-all-documentation-with-managed-user-configuration
+sequence: 44
+slug: align-all-documentation-with-managed-user-configuration
+name: Align all documentation with managed user configuration
+status: complete
+order: 43
+assignee: codex
+created_at: 2026-10-15T16:22:08.121334Z
+updated_at: 2026-10-15T16:32:38.753892Z
+completed_at: 2026-10-15T16:32:38.753891Z
+archived_at: 2026-10-15T16:32:38.753891Z
+---
+
+Updated all 21 repository Markdown documents for managed serving, explicit ownership and grants, import/live-edit boundaries, reserved views, cache authorization, discovery routes, and migration/rollback. Historical records are labeled. Verified 105 relative links/anchors and both bootstrap sequences in disposable state. make check passed; make test: 1308 passed, 100% line/branch coverage. Evidence: docs/specs/remote-configuration-acceptance.md, documentation audit dated 2026-10-15. Five external acceptance gates remain pending; production unchanged.
