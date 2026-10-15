@@ -1,9 +1,9 @@
 # Acceptance record: user-owned live configuration
 
 Plan: `c2f83bf9`. Branch: `feat/user-owned-live-configuration`.
-Evidence date: 2026-10-13. This record distinguishes automated local verification
-from deployment/device acceptance. The production checkout and service have not
-been modified.
+Initial evidence date: 2026-10-13; deployment evidence added 2026-10-15. This
+record distinguishes automated local verification from deployment/device
+acceptance. The running service now uses this branch; see the deployment section.
 
 ## Architecture and implementation evidence
 
@@ -73,7 +73,7 @@ browser UI requires no Node process or separate frontend deployment.
 | Claude native iOS/Android | Official docs describe interactive connectors; this private connector on actual devices pending |
 | ChatGPT custom MCP app on web | Official developer docs describe standard MCP UI; actual account feature/plan access and refresh pending |
 | ChatGPT native iOS/Android custom app | Not established for this account; do not claim native parity |
-| Existing production Auth0/deployment restart | Not executed; local tests use real SDK persistence with a mocked identity provider |
+| Existing production Auth0/deployment restart | Migrated and verified 2026-10-15 with real Auth0-backed credentials; interactive client and refresh-token checks remain pending |
 
 Primary references checked 2026-10-13:
 [standard overview](https://modelcontextprotocol.io/extensions/apps/overview),
@@ -138,3 +138,61 @@ Verification for this documentation update:
 
 The five real-environment checks/release gates remain pending. This audit did not
 migrate production, verify physical phones, or establish native MCP Apps support.
+
+
+## Deployment verification: 2026-10-15
+
+The user authorized stopping the existing service and starting this branch.
+The launchd service now runs from the feature checkout with managed state; its
+port and public origin are unchanged. The old deployment checkout remains intact
+for rollback. The private migration directory contains the original launchd plist,
+bootstrap environment, YAML/overrides, encrypted OAuth store, and verification
+reports. Credential files and identity details are not committed here.
+
+Preflight identified an activation bug: tools sharing a name across different
+upstreams were rejected even in `search_per_server` mode. Commit `904a61b` scopes
+that collision check by server while still rejecting duplicates within a server.
+Regression tests call both same-named tools and reject duplicate aliases in all
+three exposure modes. `make check` passed; `make test` passed with **1311 tests**
+and **100% line and branch coverage**. The real configuration then initialized
+all eight upstreams in an isolated rehearsal.
+
+Deployment evidence:
+
+- Verified the existing owner against Auth0 and provisioned that issuer/subject.
+- Imported compatible FastMCP 3.4.3 OAuth state with the existing signing key;
+  checked all 135 backed-up files byte-for-byte before import.
+- Preserved four currently authenticated Claude application registrations with
+  runtime view grants. Browser/local administration grants are separate.
+- Imported effective YAML/overrides into encrypted state. The original files
+  remain unchanged and are no longer the serving configuration.
+- MCP discovery retained every previous exposed tool. `range_cached_output` was
+  added: default view 4 → 5 tools, coding-agent 28 → 29, remote 19 → 20.
+- Issued a short-lived operator probe credential **before** switching, referencing
+  an existing verified Auth0 session. The same credential passed authenticated
+  discovery after migration and again after a second process restart. This is
+  server-side verification, not an interactive Claude/ChatGPT acceptance run.
+- Loopback and public HTTPS health, root resource metadata, and verified identity
+  requests passed. Unauthenticated MCP and the old static bearer returned 401.
+- Existing stored Auth0 sessions had no refresh tokens. Refresh exchange and
+  expiry/re-login behavior therefore remain unverified on the real installation.
+
+The first stop attempt did not release the listener within its deadline, so the
+previous launchd configuration was restored before retrying. The successful
+attempt verified listener shutdown before copying OAuth state. The final service
+passed another restart and authenticated discovery check.
+
+### Agent connection changes
+
+Keep existing MCP URLs. For the current Codex connection, keep
+`http://127.0.0.1:8000/view/coding-agent/mcp`, remove its static `Authorization`
+header, and run `codex mcp login proxy`. A newly registered OAuth application's
+client ID needs an explicit local grant for `coding-agent` before tool access;
+then restart/reconnect the agent. Login does not provision or grant access.
+The agent configuration was not edited as part of this service switch.
+
+Existing granted Claude registrations can keep their endpoints and OAuth state;
+a new registration or an expired upstream session may still require login and
+a new explicit grant. Browser administration is at `/config`. For embedded
+administration, use a separate `/view/admin/mcp` connector with both admin and
+`admin` view grants. Physical-device and actual-host UI checks remain pending.

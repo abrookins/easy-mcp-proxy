@@ -1,7 +1,8 @@
 # 010: User-owned configuration and live activation
 
-Status: implemented on `feat/user-owned-live-configuration`; production and
-real-client acceptance remain pending. See the
+Status: implemented and deployed from `feat/user-owned-live-configuration` on
+2026-10-15. Auth0-backed restart checks passed; actual client/device acceptance
+remains pending. See the
 [acceptance record](../specs/remote-configuration-acceptance.md).
 
 ## Decision

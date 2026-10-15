@@ -18,8 +18,9 @@ no global operational configuration or fallback to another user's configuration.
 Andrew can edit a view from his phone, preview and apply the change while a tool
 call runs, and continue using connected clients without logging in again.
 
-The user subsequently authorized branch implementation. Production rollout remains
-separate. Agent-plan contains task state; this brief defines the requirements.
+The user subsequently authorized branch implementation and, on 2026-10-15,
+switching the running installation to this branch. See the acceptance record for
+that deployment. Agent-plan contains task state; this brief defines requirements.
 
 ## Identity is the configuration boundary
 

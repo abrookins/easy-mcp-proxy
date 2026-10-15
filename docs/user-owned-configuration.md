@@ -70,8 +70,10 @@ Trusted operator code runs with the service OS account and is **not sandboxed**.
 
 ## Migrate an existing installation
 
-Rehearse on isolated state first. No production service has been changed by this
-branch. Record the old executable/commit, FastMCP version, public origin, service
+Rehearse on isolated state first. The first installation was migrated on
+2026-10-15; see the [deployment evidence](specs/remote-configuration-acceptance.md#deployment-verification-2026-10-15).
+Other installations still require the explicit steps below. Record the old
+executable/commit, FastMCP version, public origin, service
 manager configuration, YAML and `.overrides.json`, OAuth storage location, and
 provider settings. Stop the old service before copying its mutable OAuth state.
 Make a private backup of all those files and verify the backup can be read.
@@ -209,8 +211,8 @@ browser. All ownership derives from verified context, never a tool argument.
 MCP Apps SDK communicates through the host bridge. No vendor-only API is required.
 Resource access rechecks the admin endpoint and grant. This serves the proxy's
 own administration UI; forwarding third-party upstream MCP Apps is deferred.
-The resource requests no external connect/resource domains or extra permissions. Without UI support, text
-tools and the returned `browser_url` remain usable. The embedded and browser
+The resource requests no external connect/resource domains or extra permissions.
+Without UI support, text tools and the returned `browser_url` remain usable. The embedded and browser
 screens share components and invoke the same config/runtime service.
 
 ## Live-change behavior

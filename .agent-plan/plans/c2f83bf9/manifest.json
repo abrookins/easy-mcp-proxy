@@ -2,8 +2,8 @@
   "version": 2,
   "plan_id": "c2f83bf9",
   "created_at": "2026-10-13T14:54:42.199429Z",
-  "updated_at": "2026-10-15T16:32:38.753892Z",
-  "next_sequence": 45,
+  "updated_at": "2026-10-15T16:54:20.205421Z",
+  "next_sequence": 47,
   "tasks": [
     {
       "id": "001-define-delivery-plan-and-acceptance-criteria",
@@ -612,11 +612,11 @@
         "003-m0-establish-client-and-mobile-compatibility-matrix"
       ],
       "created_at": "2026-10-13T15:04:00.134721Z",
-      "updated_at": "2026-10-13T16:41:07.705117Z",
+      "updated_at": "2026-10-15T16:53:30.483656Z",
       "path": "tasks/032-m4-verify-phone-browser-and-real-client-workflow.md",
       "claim_path": "tasks/032-m4-verify-phone-browser-and-real-client-workflow.claim",
       "description_preview": "Execute first-release scenario: edit/preview/apply a view from a phone browser during a long tool call, keep unchange...",
-      "record_hash": "151e834db533fa7a2994013663fa81d4e602697a03efc7986d321b1d93ac7620"
+      "record_hash": "7c90456887f09d8eb108f68876dad54d37e238c9a31a6d2da90af01904c7dad3"
     },
     {
       "id": "033-m4-write-migration-backup-and-recovery-runbooks",
@@ -670,11 +670,11 @@
         "019-m2-prove-end-to-end-oauth-user-isolation"
       ],
       "created_at": "2026-10-13T15:04:00.269413Z",
-      "updated_at": "2026-10-13T16:41:07.814168Z",
+      "updated_at": "2026-10-15T16:53:30.52283Z",
       "path": "tasks/035-m4-pass-core-release-quality-and-acceptance-gate.md",
       "claim_path": "tasks/035-m4-pass-core-release-quality-and-acceptance-gate.claim",
       "description_preview": "Run make check and make test with existing 100% branch-aware coverage, review endpoint/auth compatibility and all bri...",
-      "record_hash": "1cf94fa1a69f57281a45d529481cf690fe6b739dc7990bb9d91d2a2d1da8e6fb"
+      "record_hash": "744b1e3f1ce11395b41c1c1a2489ae56d5b40d4b3e74d3312485f53c888507b5"
     },
     {
       "id": "036-m5-expose-scoped-mcp-administration-tools",
@@ -706,11 +706,11 @@
       ],
       "assignee": "codex",
       "created_at": "2026-10-13T15:04:00.354485Z",
-      "updated_at": "2026-10-13T16:41:07.882398Z",
+      "updated_at": "2026-10-15T16:53:30.55973Z",
       "path": "tasks/037-m5-validate-private-mcp-apps-compatibility.md",
       "claim_path": "tasks/037-m5-validate-private-mcp-apps-compatibility.claim",
       "description_preview": "Refresh primary docs and build a minimal non-mutating UI resource against actual Claude and ChatGPT accounts. Verify ...",
-      "record_hash": "27d46ce75fe6600f4cafe91dc2e47921ea696613d0d709c6d18c84867577a8ff"
+      "record_hash": "08c7794bc11a99713619dfc4518bcf44db28ab750a714aa49ba875684869c363"
     },
     {
       "id": "038-m5-add-portable-embedded-administration-screens",
@@ -742,11 +742,11 @@
       ],
       "assignee": "codex",
       "created_at": "2026-10-13T15:04:00.442834Z",
-      "updated_at": "2026-10-13T16:41:07.952629Z",
+      "updated_at": "2026-10-15T16:53:30.594019Z",
       "path": "tasks/039-m5-validate-embedded-ui-isolation-and-host-behavior.md",
       "claim_path": "tasks/039-m5-validate-embedded-ui-isolation-and-host-behavior.claim",
       "description_preview": "Test sandbox/CSP, resource auth, app tool visibility, concurrent/stale component instances, credential redaction, una...",
-      "record_hash": "3d27a7cf1379146bb93cc8248ceb8f337d4f24a73c3d75c6b9edfc7ba142d901"
+      "record_hash": "b7ea54aaeb3e461bed517936f8ebfb6884b84dd4267acf2c95b4e0872750d8cc"
     },
     {
       "id": "040-m5-complete-embedded-administration-release-gate",
@@ -759,11 +759,11 @@
       ],
       "assignee": "codex",
       "created_at": "2026-10-13T15:04:00.488723Z",
-      "updated_at": "2026-10-13T16:41:07.98601Z",
+      "updated_at": "2026-10-15T16:53:30.634392Z",
       "path": "tasks/040-m5-complete-embedded-administration-release-gate.md",
       "claim_path": "tasks/040-m5-complete-embedded-administration-release-gate.claim",
       "description_preview": "Update user/operator docs with installation and host capability matrix; run make check, make test and UI build/checks...",
-      "record_hash": "589fce2f679d793c3952cd10887f75c8ff51c1a5bb6151e353cdec6da59e887d"
+      "record_hash": "122056aa8d5a37013d6fe4cd5a54e115225d74ec1ae65f4e601080a0dc1a0c41"
     },
     {
       "id": "041-optional-decide-upstream-mcp-apps-forwarding-scope",
@@ -829,6 +829,36 @@
       "path": "history/044-align-all-documentation-with-managed-user-configuration.done",
       "description_preview": "Updated all 21 repository Markdown documents for managed serving, explicit ownership and grants, import/live-edit bou...",
       "record_hash": "70845111049129891bc089d92780abbe3b556a415aaef0900b0f65f5931c0bee"
+    },
+    {
+      "id": "045-migrate-and-switch-the-running-service-to-the-feature-branch",
+      "sequence": 45,
+      "name": "Migrate and switch the running service to the feature branch",
+      "status": "complete",
+      "order": 44,
+      "assignee": "codex",
+      "created_at": "2026-10-15T16:41:14.827676Z",
+      "updated_at": "2026-10-15T16:54:20.205421Z",
+      "completed_at": "2026-10-15T16:54:20.205421Z",
+      "archived_at": "2026-10-15T16:54:20.205421Z",
+      "path": "history/045-migrate-and-switch-the-running-service-to-the-feature-branch.done",
+      "description_preview": "Switched launchd from detached main deployment 73c6449 to feature checkout commit 904a61b. Verified private backups o...",
+      "record_hash": "10f86cd16a429829107df2bf9a6d065fa3e2e6c462e942bdea5953272877ce1e"
+    },
+    {
+      "id": "046-respect-per-server-tool-namespaces-during-activation",
+      "sequence": 46,
+      "name": "Respect per-server tool namespaces during activation",
+      "status": "complete",
+      "order": 45,
+      "assignee": "codex",
+      "created_at": "2026-10-15T16:45:59.630164Z",
+      "updated_at": "2026-10-15T16:48:01.566725Z",
+      "completed_at": "2026-10-15T16:48:01.566725Z",
+      "archived_at": "2026-10-15T16:48:01.566725Z",
+      "path": "history/046-respect-per-server-tool-namespaces-during-activation.done",
+      "description_preview": "Activation now validates tool-name collisions within each server namespace for search_per_server, while retaining glo...",
+      "record_hash": "d3158f1624ea702c2c2aaabd8505182f776f7a778e558cab3e784c4edf41a981"
     }
   ]
 }
