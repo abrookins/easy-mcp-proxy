@@ -33,9 +33,15 @@ class Identity:
 
 
 def verified_email(claims: dict) -> str | None:
-    """Return the token's email if present and verified (when required)."""
+    """Return the token's email if present and verified (when required).
+
+    Falls back to userinfo claims the proxy embedded at sign-in.
+    """
     from mcp_proxy.auth import require_verified_email
 
+    upstream = claims.get("upstream_claims")
+    if "email" not in claims and isinstance(upstream, dict):
+        claims = upstream
     email = claims.get("email")
     if not isinstance(email, str) or not email.strip():
         return None

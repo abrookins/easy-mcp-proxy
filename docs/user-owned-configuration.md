@@ -61,8 +61,10 @@ Optionally set `MCP_PROXY_ADMIN_EMAILS` (comma-separated) in the service
 environment. A provisioned, granted user whose OAuth token carries a matching
 email is treated as an admin of their own configuration, even if their grant
 lacks `--admin`. Matching is best effort: the email must be verified unless
-`MCP_PROXY_AUTH_REQUIRE_EMAIL_VERIFIED=false`, and tokens without an email (for
-example, Auth0 access tokens without an email claim) or API keys fall back to
+`MCP_PROXY_AUTH_REQUIRE_EMAIL_VERIFIED=false`. When the access token has no
+email claim, the proxy asks the provider's OIDC userinfo endpoint at sign-in and
+token refresh, and records the result in the tokens it issues; sign in again after
+upgrading to pick it up. Users with no available email, and API keys, fall back to
 their grants. The email never identifies the account and never grants operator
 status, provisioning, or extra views.
 

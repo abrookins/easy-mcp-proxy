@@ -143,3 +143,70 @@ def test_audience_migration_preserves_all_token_checks():
         issuer.verify_token(issuer.issue_access_token("client", [], "new"))["aud"]
         == "https://proxy.test/"
     )
+
+
+class FakeUserinfo:
+    def __init__(self, response=None, error=None):
+        self.response, self.error, self.calls = response, error, []
+
+    def __call__(self, **kwargs):
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def get(self, url, headers):
+        self.calls.append((url, headers))
+        if self.error:
+            raise self.error
+        return self.response
+
+
+async def test_userinfo_email_is_embedded_best_effort(monkeypatch):
+    from types import SimpleNamespace
+
+    from mcp_proxy import managed_auth
+    from mcp_proxy.managed_auth import UserinfoEmailClaims
+
+    def response(status, payload):
+        request = httpx.Request("GET", "https://idp.test/userinfo")
+        return httpx.Response(status, json=payload, request=request)
+
+    provider = UserinfoEmailClaims()
+    provider.oidc_config = SimpleNamespace(userinfo_endpoint=None)
+    assert await provider._extract_upstream_claims({"access_token": "t"}) is None
+    provider.oidc_config.userinfo_endpoint = "https://idp.test/userinfo"
+    assert await provider._extract_upstream_claims({}) is None
+
+    for fake, expected in (
+        (
+            FakeUserinfo(response(200, {"email": "a@x.test", "email_verified": True})),
+            {"email": "a@x.test", "email_verified": True},
+        ),
+        (FakeUserinfo(response(200, {"sub": "s"})), None),
+        (FakeUserinfo(response(200, ["not", "a", "dict"])), None),
+        (FakeUserinfo(response(401, {})), None),
+        (FakeUserinfo(error=httpx.ConnectError("down")), None),
+    ):
+        monkeypatch.setattr(managed_auth.httpx, "AsyncClient", fake)
+        result = await provider._extract_upstream_claims({"access_token": "t"})
+        assert result == expected
+    assert fake.calls == [("https://idp.test/userinfo", {"Authorization": "Bearer t"})]
+
+
+def test_verified_email_falls_back_to_embedded_userinfo():
+    from mcp_proxy.identity import verified_email
+
+    upstream = {"email": "a@x.test", "email_verified": True}
+    assert verified_email({"upstream_claims": upstream}) == "a@x.test"
+    assert verified_email({"upstream_claims": "junk"}) is None
+    # A top-level email claim wins over embedded userinfo.
+    assert (
+        verified_email(
+            {"email": "b@x.test", "email_verified": True, "upstream_claims": upstream}
+        )
+        == "b@x.test"
+    )
