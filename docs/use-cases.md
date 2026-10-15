@@ -519,7 +519,7 @@ mcp_servers:
 ```
 
 The service manages cache keys and retrieval URLs per owner/view. HTTP retrieval
-requires the signed URL plus OAuth or an authorized browser session for that
+requires the signed URL plus OAuth, a bound API key, or an authorized browser session for that
 owner/view. Do not set `cache_secret` or `cache_base_url` in managed config.
 
 **Result**: Large outputs return as:
@@ -598,7 +598,7 @@ The parent agent never loaded the raw data. The sub-agent processed it in isolat
 **Authorize retrieval as well as the signed URL**:
 
 The managed service signs cache references per owner and view. A request also
-needs OAuth or an authorized browser session for that same owner/view; possession
+needs OAuth, a bound API key, or an authorized browser session for that same owner/view; possession
 of the URL alone does not grant access. Signatures prevent forgery, expiration
 limits the retrieval window, and grants restrict the requesting application.
 

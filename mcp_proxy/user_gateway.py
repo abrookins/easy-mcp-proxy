@@ -24,6 +24,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.routing import Mount, Route
 
+from mcp_proxy.api_keys import APIKeys, KeyAuthProvider
 from mcp_proxy.identity import (
     AccessDenied,
     Identity,
@@ -150,13 +151,14 @@ class UserGateway:
         self.store = runtime.store
         self.service = ConfigService(self.store)
         self.auth = auth
+        self.keys = APIKeys(self.store)
         self.cipher = encryption_key(self.store.directory, "browser")
         from mcp_proxy.user_admin import APP_URI, Administration
 
         self.administration = Administration(runtime)
         self.mcp = FastMCP(
             "User MCP Proxy",
-            auth=auth,
+            auth=KeyAuthProvider(auth, self.keys),
             providers=[UserProvider(runtime, self.administration)],
             mask_error_details=True,
         )
@@ -227,15 +229,23 @@ class UserGateway:
             authorization = request.headers.get("authorization", "")
             if not authorization.startswith("Bearer "):
                 raise AccessDenied("OAuth required")
-            identity = await verified_identity(self.auth, authorization[7:])
+            identity = await self.bearer_identity(authorization[7:])
             return JSONResponse(asdict(identity), headers={"Cache-Control": "no-store"})
         except AccessDenied:
             return self.denied(request)
 
+    async def bearer_identity(self, token):
+        identity = self.keys.identity(token)
+        return (
+            identity
+            if identity is not None
+            else await verified_identity(self.auth, token)
+        )
+
     async def principal(self, request: Request, view="default", *, browser=False):
         authorization = request.headers.get("authorization", "")
         if authorization.startswith("Bearer "):
-            identity = await verified_identity(self.auth, authorization[7:])
+            identity = await self.bearer_identity(authorization[7:])
             return self.store.resolve(identity, view)
         if browser and (cookie := request.cookies.get(COOKIE)):
             try:

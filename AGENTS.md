@@ -18,7 +18,8 @@ An MCP proxy server that aggregates tools from multiple upstream MCP servers and
 **Key dependencies**: `fastmcp>=3.4.3,<4`, `pydantic>=2.12.0`, `click>=8.0.0`.
 See `pyproject.toml` and `uv.lock` for the complete dependency set.
 
-`serve` uses the encrypted, user-owned managed store. HTTP requires OAuth and
+`serve` uses the encrypted, user-owned managed store. HTTP accepts OAuth or
+locally issued/imported user-bound API keys, always with
 explicit client/view grants; stdio requires a provisioned owner and local grant.
 There is no YAML fallback. The low-level `MCPProxy(config)` library and file CLI
 remain for local tooling. See [administration](docs/user-owned-configuration.md)
@@ -41,6 +42,7 @@ mcp_proxy/
 │   ├── schema.py        # JSON schema transformations
 │   └── tool_info.py     # ToolInfo data class
 ├── identity.py          # Verified owner and request context
+├── api_keys.py          # Hashed owner-bound keys and bearer middleware
 ├── user_store.py        # Encrypted revisions, secrets, grants, browser sessions
 ├── state.py             # Persistent keys and OAuth state migration
 ├── managed_config.py    # Validation, secret references, preview/rollback
@@ -135,4 +137,3 @@ See `docs/decisions/` for architectural context:
 6. Keep setup, reference, and administration docs consistent. Local YAML inspection
    commands and live managed configuration are separate workflows.
 7. Keep external acceptance gates pending until supported by real-client evidence.
-

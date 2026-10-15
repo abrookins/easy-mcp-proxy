@@ -26,7 +26,8 @@ Easy MCP Proxy solves these by sitting between your MCP clients and upstream ser
 ## User-owned Configuration
 
 `serve` reads an encrypted store selected by `MCP_PROXY_STATE_DIR`. Every HTTP
-request uses the verified OAuth user's configuration and explicit client grants.
+request uses its verified owner's configuration and explicit client grants,
+via OAuth or a locally bound API key.
 Local stdio selects a provisioned owner through environment variables. Neither
 transport falls back to a global YAML file.
 

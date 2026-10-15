@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 import click
 import httpx
 
+from mcp_proxy.cli.keys import keys
 from mcp_proxy.config import load_config
 from mcp_proxy.identity import Identity
 from mcp_proxy.managed_config import ConfigService
@@ -27,6 +28,9 @@ from mcp_proxy.user_store import UserStore
 def users(ctx, state_dir):
     """Provision identities locally. These commands require host access."""
     ctx.obj = state_dir
+
+
+users.add_command(keys)
 
 
 @users.command()

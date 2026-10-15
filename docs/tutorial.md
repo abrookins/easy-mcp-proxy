@@ -6,7 +6,7 @@ This tutorial walks you through Easy MCP Proxy from installation to advanced fea
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) package manager
-- An MCP client with local stdio or OAuth HTTP support
+- An MCP client with local stdio, OAuth HTTP, or bearer API key support
 - Node.js and `npx` for the filesystem examples
 - The owner's verified OAuth issuer and subject; HTTP also needs the provider
   settings in the [authentication reference](reference.md#authentication)
@@ -150,7 +150,8 @@ uv run mcp-proxy serve --transport http --port 8000
 
 `MCP_PROXY_HOST` defaults to `127.0.0.1`. Put the remote service behind HTTPS at
 its configured public origin. `/health` is public; `/views` and MCP endpoints
-require OAuth and explicit client grants. Register each remote client and grant
+require OAuth or a user-bound API key and explicit client grants. For OAuth,
+register each remote client and grant
 its downstream client ID the views it needs, as described in the
 [bootstrap guide](user-owned-configuration.md#bootstrap-and-grants).
 
@@ -495,7 +496,7 @@ mcp_servers:
 ```
 
 The service manages cache keys and retrieval URLs per owner/view. HTTP retrieval
-requires the signed URL plus OAuth or an authorized browser session for the same
+requires the signed URL plus OAuth, a bound API key, or an authorized browser session for the same
 owner/view. Do not set `cache_secret` or `cache_base_url` in managed config.
 
 When a tool returns output larger than the inline limits, the proxy returns:

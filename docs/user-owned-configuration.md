@@ -9,8 +9,8 @@ tools, configuration, credentials, or administration access.
 This is an upgrade of the **serve command**, including stdio. The low-level
 `MCPProxy(config)` library and legacy file-editing commands remain available for
 local tooling; they are not the managed HTTP service. Existing unauthenticated
-HTTP and static API tokens are not supported by the managed gateway. Remote
-clients must use OAuth. Do not point an old global HTTP deployment at the new
+HTTP is not supported. Remote clients use OAuth or explicitly user-bound API
+keys; unbound legacy environment tokens are rejected. Do not point an old global HTTP deployment at the new
 branch without completing the migration below.
 
 ## Bootstrap and grants
@@ -67,6 +67,53 @@ working directories, HTTP destinations, hooks, or Python custom tools requires
 it. Nonoperators cannot register even a public HTTP destination. This conservative
 policy prevents local-network and metadata-server access through administration.
 Trusted operator code runs with the service OS account and is **not sandboxed**.
+
+## User-bound API keys
+
+API keys are an alternative to OAuth sign-in for agents. A local operator binds
+each key to an existing owner and explicit views. Keys have independent client
+IDs and grants; their names do not confer permissions. A key named `admin` has
+no administration permission unless `--admin` is specified. Browser sign-in
+continues to use OAuth, and HTTP startup still requires the provider settings.
+
+Generate a key into a **new** private file (mode 0600). The command prints its
+ID and client ID, never the secret. Omit `--expires-in` for no automatic expiry:
+
+```sh
+uv run mcp-proxy users keys create USER_ID --name claude-desktop \
+  --view remote --expires-in 2592000 --output /PRIVATE/NEW-KEY-FILE
+uv run mcp-proxy users keys list USER_ID
+uv run mcp-proxy users keys revoke USER_ID KEY_ID
+```
+
+To retain an existing strong random key, explicitly import it from a private
+file or stdin. Do not put its value in shell arguments or chat:
+
+```sh
+uv run mcp-proxy users keys create USER_ID --name existing-agent \
+  --view remote --view coding-agent --input /PRIVATE/EXISTING-KEY-FILE
+```
+
+Imports require 32–4096 non-whitespace characters. Generated keys contain 256
+random bits. The database stores only a SHA-256 digest, owner binding and key
+metadata. It cannot recover a key's value or rebind the same key to another
+owner, including after revocation. Keep the client-side secret protected.
+
+Send `Authorization: Bearer KEY` on the granted MCP endpoint. No OAuth browser
+sign-in or dynamic registration is needed for a valid key. With `mcp-remote`,
+retain `--header` and `Authorization: Bearer ${AUTH_TOKEN}` in its arguments and
+supply `AUTH_TOKEN` through the agent's private environment configuration.
+The old `MCP_PROXY_AUTH_TOKENS` setting alone does not authorize a key.
+
+Keys and grants survive restart and live configuration changes. Creation,
+revocation and grant changes take effect without restarting. Revocation is
+permanent; an ordinary grant cannot reactivate a revoked key. Account disabling,
+expiry, and key revocation also invalidate already-resolved principals on their
+next authorization check. Running calls may finish. Use `users grant USER_ID
+--client api-key:KEY_ID ...` to change an active key's grants; include all views
+it should retain. Administrative keys require both `--admin` and `--view admin`
+to use the admin MCP endpoint. Host-capability changes still require an operator
+owner. Key issuance and binding are host-local operations, not remote MCP tools.
 
 ## Migrate an existing installation
 
@@ -173,7 +220,7 @@ uv run mcp-proxy manage --url https://proxy.example.org apply --input apply.json
 `candidate.json` contains `{ "base": "CURRENT_REVISION", "config": {...} }`;
 use `null` for an empty account. `apply.json` contains only
 `{ "revision": "REVIEWED_CANDIDATE" }`. `--input -` reads stdin. OAuth is the
-normal credential source; automation may provide a current OAuth bearer through
+normal credential source; automation may provide an OAuth bearer or bound API key through
 `MCP_PROXY_ACCESS_TOKEN`. No token or secret command-line flags are provided.
 Only HTTPS or loopback HTTP is accepted. Read-only operations reject `--input`.
 
@@ -192,12 +239,13 @@ signature, issuer, expiry, token type, stored session, and owner/client/view gra
 New authorization requests using the former `/mcp` resource are also accepted.
 Each stateless HTTP request resolves its authenticated owner; there is no shared
 transport session that can carry another user's identity. Clients must keep sending
-OAuth credentials. A lost TCP/MCP request is separate from a lost OAuth login.
+OAuth credentials or a bound API key. A lost TCP/MCP request is separate from a lost OAuth login.
 
 ### Claude Desktop through mcp-remote
 
-Use the existing view URL and let `mcp-remote` perform OAuth. Remove static
-`Authorization` headers and their `AUTH_TOKEN` environment variable:
+Use the existing view URL. With a [user-bound API key](#user-bound-api-keys),
+keep the existing `Authorization` header and `AUTH_TOKEN` configuration.
+For OAuth instead, remove those settings and use:
 
 ```json
 {
@@ -232,7 +280,7 @@ tab and does not expose `/config/api/tools`, `/views/{name}`, or restart/PUT API
 The file-based `schema`/`tools` CLI commands inspect local YAML only.
 
 Cache HTTP URLs use `/view/VIEW/cache/TOKEN` and require both the signature and
-same-owner/view authorization through OAuth or a browser session. Old unscoped
+same-owner/view authorization through OAuth, a bound API key, or a browser session. Old unscoped
 `/cache/TOKEN` links do not migrate. MCP cache tools/resources enforce the same
 owner/view boundary. Passing a signed link alone to another agent is insufficient;
 use an authorized retrieval client. User config cannot set `cache_secret` or

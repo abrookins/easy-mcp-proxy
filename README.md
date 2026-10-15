@@ -75,6 +75,8 @@ uv run mcp-proxy serve --transport http --port 8000
 
 Connect an OAuth-capable MCP client to `https://YOUR-PROXY/mcp` or a granted
 `/view/NAME/mcp` endpoint. Open `https://YOUR-PROXY/config` for browser administration.
+Agents can also use [user-bound API keys](docs/user-owned-configuration.md#user-bound-api-keys)
+with explicit view grants and no browser sign-in.
 The [acceptance record](docs/specs/remote-configuration-acceptance.md) distinguishes
 local verification from pending Claude/ChatGPT and physical-device checks.
 
@@ -176,7 +178,7 @@ The LLM gets a preview plus a retrieval token. It can request line windows with
 slices with `query_cached_output`. `retrieve_cached_output` and `/view/{view}/cache/{token}`
 return bounded content by default; append `download=1` or `full=1` to the signed
 HTTP URL for explicit full-content processing outside the model context.
-HTTP retrieval also requires OAuth or a browser session for the same owner and
+HTTP retrieval also requires OAuth, a bound API key, or a browser session for the same owner and
 view. The service manages cache keys and URLs.
 This enables **Recursive Language Model (RLM)** patterns where agents pass file
 references instead of file contents, dramatically reducing context usage while

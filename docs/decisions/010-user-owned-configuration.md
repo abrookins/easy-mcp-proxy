@@ -81,8 +81,12 @@ interpolation; offline import resolves it before storing encrypted values.
 The private configuration migration specifies the owner's issuer and subject.
 No first-login claim, global operational fallback, or shared credential defaults
 are permitted. Trusted local stdio requires an explicitly provisioned
-issuer/subject and a `mcp-proxy-local` grant. Static API tokens are not supported
-by the managed gateway. Service-wide settings contain only transport, store and
+issuer/subject and a `mcp-proxy-local` grant. API keys require explicit local
+binding to a provisioned owner and independent client/view grants. Only their
+digests are stored; expiry, revocation and account disabling are checked on each
+request. No global environment token automatically acquires an owner or grant.
+This replaces the initial OAuth-only restriction at the user's request.
+Service-wide settings contain only transport, store and
 identity bootstrap.
 
 Managed cache URLs use `/view/VIEW/cache/TOKEN` with per-owner/view signatures

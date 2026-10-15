@@ -52,6 +52,11 @@ CREATE TABLE IF NOT EXISTS audit (
 CREATE TABLE IF NOT EXISTS browser_logins (
  state TEXT PRIMARY KEY, verifier BLOB NOT NULL, expires REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS api_keys (
+ id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id),
+ client TEXT NOT NULL UNIQUE, name TEXT NOT NULL, digest TEXT NOT NULL UNIQUE,
+ created REAL NOT NULL, expires REAL, revoked INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -150,6 +155,14 @@ class UserStore:
 
     def authorize(self, principal: Principal, *, admin=False, operator=False):
         with self._lock:
+            if principal.identity.client_id.startswith("api-key:"):
+                key = self.db.execute(
+                    "SELECT id FROM api_keys WHERE user_id=? AND client=? "
+                    "AND revoked=0 AND (expires IS NULL OR expires>?)",
+                    (principal.user_id, principal.identity.client_id, time.time()),
+                ).fetchone()
+                if key is None:
+                    raise AccessDenied("API key expired or revoked")
             row = self.db.execute(
                 "SELECT g.admin,g.views,u.operator FROM users u JOIN grants g "
                 "ON u.id=g.user_id WHERE u.id=? AND u.issuer=? AND u.subject=? "

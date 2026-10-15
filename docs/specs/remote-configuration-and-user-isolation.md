@@ -48,7 +48,10 @@ Do not add a shared workspace abstraction that weakens this direct user ownershi
 The initial installation admits one person; no signup or team-management UI is
 needed. Use two synthetic OAuth users in tests to prove the architecture.
 
-Static credentials, local CLI, and stdio require an explicit compatibility policy.
+API keys are explicitly bound by a local operator to a provisioned OAuth owner,
+with separate client/view grants, hashed storage, optional expiry and permanent
+revocation. They never infer ownership from the first login or legacy environment.
+Local CLI and stdio require explicit owner/grant provisioning as well.
 If retained, bind each to a provisioned user and grant. No implicit default-owner
 mapping for remote requests. Existing global YAML requires an explicit owner at
 migration; an arbitrary first login must not claim its credentials.

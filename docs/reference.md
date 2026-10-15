@@ -713,7 +713,9 @@ Client ID Metadata Document support is enabled by default; set
 `MCP_PROXY_AUTH_ENABLE_CIMD=false` to require Dynamic Client Registration.
 Optional admission controls are `MCP_PROXY_AUTH_ALLOWED_EMAILS` (comma-separated)
 and `MCP_PROXY_AUTH_REQUIRE_EMAIL_VERIFIED`; neither replaces ownership/grants.
-Static API tokens and unauthenticated HTTP are not supported by this gateway.
+User-bound API keys are also supported through explicit local issuance/import;
+unbound environment tokens and unauthenticated HTTP are rejected. See
+[API key commands and permissions](user-owned-configuration.md#user-bound-api-keys).
 
 Keys and encrypted OAuth state persist in the state directory. Existing
 installations must [import compatible OAuth state](user-owned-configuration.md#migrate-an-existing-installation)
@@ -733,12 +735,12 @@ When running with `--transport http`, the main routes are:
 | `/view/{name}/mcp` | That owner's named view; explicit view grant |
 | `/search/mcp` | That owner's upstream tools through search helpers; `search` grant |
 | `/view/admin/mcp` | Proxy admin tools and MCP App resource; admin and `admin` view grants |
-| `/views` | Names granted to the authenticated OAuth client |
+| `/views` | Names granted to the authenticated client |
 | `/health` | Public process health check |
 | `/config` | Browser administration; browser login and admin grant |
 | `/config/login`, `/config/login/callback` | Browser OAuth flow |
 | `/config/logout` | POST-only browser logout; same-origin check |
-| `/config/api/identity` | Verified OAuth identity; no provisioning or grant side effect |
+| `/config/api/identity` | Verified owner/client identity; no provisioning or grant side effect |
 | `/config/api/{action}` | Management operations listed below; admin grant |
 | `/view/{view}/cache/{token}` | Signed cache retrieval plus same-owner/view authorization |
 
@@ -845,7 +847,8 @@ and `rollback`. Mutations require a JSON `--input FILE` or `--input -`; read-onl
 actions reject it. `MCP_PROXY_URL` can supply `--url`. OAuth credentials are
 stored encrypted in `~/.local/state/mcp-proxy-client`; override with
 `--credential-dir`. Automation may set `MCP_PROXY_ACCESS_TOKEN` to a current
-OAuth access token. There is no secret/token command-line option.
+OAuth access token or a user-bound API key with an admin grant. There is no
+secret/token command-line option.
 
 ### Local file commands
 
