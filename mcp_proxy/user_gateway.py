@@ -251,6 +251,10 @@ class UserGateway:
 
     async def dispatch(self, scope, receive, send):
         path = scope["path"].rstrip("/")
+        if path == "/.well-known/oauth-protected-resource/mcp":
+            # Keep old discovery links usable after the shared-resource migration.
+            path = "/.well-known/oauth-protected-resource"
+            scope = dict(scope, path=path, raw_path=path.encode())
         if path == "/mcp":
             view = "default"
         elif path == "/search/mcp":
@@ -273,7 +277,7 @@ class UserGateway:
                 headers={
                     "WWW-Authenticate": 'Bearer resource_metadata="'
                     f"{self.runtime.base_url}"
-                    '/.well-known/oauth-protected-resource/mcp"'
+                    '/.well-known/oauth-protected-resource"'
                 },
             )
             await response(scope, receive, send)
@@ -379,13 +383,14 @@ class UserGateway:
             status_code=403 if authenticated else 401,
             headers={
                 "WWW-Authenticate": 'Bearer resource_metadata="'
-                f'{self.runtime.base_url}/.well-known/oauth-protected-resource/mcp"'
+                f'{self.runtime.base_url}/.well-known/oauth-protected-resource"'
             },
         )
 
     async def login(self, request):
         backend = oauth_backend(self.auth)
         callback = self.runtime.base_url + "/config/login/callback"
+        scopes = backend.required_scopes
         await backend.register_client(
             OAuthClientInformationFull(
                 client_id=BROWSER_CLIENT,
@@ -394,6 +399,7 @@ class UserGateway:
                 grant_types=["authorization_code"],
                 response_types=["code"],
                 token_endpoint_auth_method="none",
+                scope=" ".join(scopes) or None,
             )
         )
         state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(48)
@@ -411,8 +417,8 @@ class UserGateway:
                 "state": state,
                 "code_challenge": challenge,
                 "code_challenge_method": "S256",
-                "scope": " ".join(self.auth.required_scopes),
-                "resource": self.runtime.base_url + "/mcp",
+                **({"scope": " ".join(scopes)} if scopes else {}),
+                "resource": str(backend._get_resource_url()),
             }
         )
         response = RedirectResponse(self.runtime.base_url + "/authorize?" + query)
@@ -448,7 +454,7 @@ class UserGateway:
                         "code_verifier": verifier,
                         "redirect_uri": self.runtime.base_url
                         + "/config/login/callback",
-                        "resource": self.runtime.base_url + "/mcp",
+                        "resource": str(oauth_backend(self.auth)._get_resource_url()),
                     },
                 )
                 result.raise_for_status()

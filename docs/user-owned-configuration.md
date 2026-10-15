@@ -182,10 +182,49 @@ name such as `full` for an ordinary view exposing all upstream tools.
 
 Runtime endpoints remain `/mcp`, `/view/NAME/mcp`, and `/search/mcp`. `/views`
 returns only granted views. Root OAuth discovery and registration are preserved,
-and named endpoints challenge using the root `/mcp` resource metadata. Each
+and every endpoint challenges using `/.well-known/oauth-protected-resource`.
+The resource identifier and newly issued token audience are the public origin
+(including its trailing slash), shared by all views. This lets strict clients
+such as `mcp-remote` validate discovery for `/view/NAME/mcp`. The old
+`/.well-known/oauth-protected-resource/mcp` URL remains a discovery alias.
+Previously issued `/mcp` audience tokens remain valid subject to their original
+signature, issuer, expiry, token type, stored session, and owner/client/view grants.
+New authorization requests using the former `/mcp` resource are also accepted.
+Each
 stateless HTTP request resolves its authenticated owner; there is no shared
 transport session that can carry another user's identity. Clients must keep sending
 OAuth credentials. A lost TCP/MCP request is separate from a lost OAuth login.
+
+### Claude Desktop through mcp-remote
+
+Use the existing view URL and let `mcp-remote` perform OAuth. Remove static
+`Authorization` headers and their `AUTH_TOKEN` environment variable:
+
+```json
+{
+  "mcpServers": {
+    "proxy": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://proxy.example.org/view/remote/mcp"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop and complete the browser sign-in. Existing granted OAuth
+registrations retain access; a newly registered client needs an explicit local
+`remote` view grant. Do not change to `/mcp` to work around discovery errors:
+that endpoint selects the default view.
+
+For browser administration, start at `/config`, not `/config/login/callback`.
+The latter requires a fresh OAuth state cookie and authorization code. The
+upstream Auth0 application still uses the proxy's `/auth/callback`; browser
+administration's `/config/login/callback` is registered with the proxy itself.
+An immediate `login_failed` caused by an empty scope was a proxy defect, fixed
+by omitting the scope parameter when no scopes are required. Auth0 settings do
+not need to change for this fix.
+
+### Discovery and cached output
 
 For live schema inspection, use MCP `tools/list` or the advertised search and
 describe helpers on the granted view. The managed browser has no legacy Tools

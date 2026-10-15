@@ -67,7 +67,7 @@ def test_oidc_provider_uses_explicit_state(tmp_path, monkeypatch):
     from mcp_proxy.auth import _create_oidc_provider
 
     monkeypatch.setenv("MCP_PROXY_STATE_DIR", str(tmp_path / "state"))
-    with patch("fastmcp.server.auth.oidc_proxy.OIDCProxy") as factory:
+    with patch("mcp_proxy.managed_auth.ManagedOIDCProxy") as factory:
         _create_oidc_provider()
         assert factory.call_args.kwargs["client_storage"] is not None
         assert factory.call_args.kwargs["jwt_signing_key"]

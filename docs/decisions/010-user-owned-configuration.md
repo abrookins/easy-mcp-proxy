@@ -94,6 +94,12 @@ cannot be supplied in user config.
 
 Preserve root OAuth discovery and client registration; mounted resource metadata
 must be tested against the earlier failures recorded in security plan `1ff53bcd`.
+All managed views share the public origin as their OAuth resource and new token
+audience. The previous `/mcp` audience is an explicit verification compatibility
+alias, with all signature/issuer/expiry/type checks retained. The previous
+protected-resource metadata path remains an alias to the shared metadata.
+View authorization remains a separate check on every request; token issuance
+never mutates the shared resource based on an incoming view path.
 Do not promise that host discovery caches update automatically. Manual tool refresh
 is an explicit fallback. Stateless HTTP can recover transport without losing
 authorization; a lost transport session is distinct from a required OAuth login.

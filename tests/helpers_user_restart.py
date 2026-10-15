@@ -20,6 +20,7 @@ from mcp.shared.auth import OAuthClientInformationFull
 from pydantic import AnyUrl
 
 from mcp_proxy.identity import Identity
+from mcp_proxy.managed_auth import SharedResourceOAuth
 from mcp_proxy.state import encryption_key, oauth_persistence
 from mcp_proxy.user_gateway import UserGateway, verified_identity
 from mcp_proxy.user_runtime import UserRuntime
@@ -38,7 +39,12 @@ async def main(directory: Path, mode: str):
             },
         }
     )
-    provider = OAuthProxy(
+
+    class ManagedProxy(SharedResourceOAuth, OAuthProxy):
+        pass
+
+    provider_class = OAuthProxy if mode == "seed" else ManagedProxy
+    provider = provider_class(
         upstream_authorization_endpoint="https://idp.test/authorize",
         upstream_token_endpoint="https://idp.test/token",
         upstream_client_id="idp-app",
@@ -135,12 +141,12 @@ async def main(directory: Path, mode: str):
         ) as http:
             metadata = await http.get("/.well-known/oauth-protected-resource/mcp")
             assert metadata.status_code == 200
-            assert metadata.json()["resource"] == base + "/mcp"
+            assert metadata.json()["resource"] == base + "/"
             for endpoint in ("/mcp", "/view/work/mcp"):
                 denied = await http.post(endpoint, json={})
                 assert denied.status_code == 401
                 assert (
-                    base + "/.well-known/oauth-protected-resource/mcp"
+                    base + "/.well-known/oauth-protected-resource"
                     in denied.headers["www-authenticate"]
                 )
         # Revocation is distinct from restarting or losing a transport session.
