@@ -275,21 +275,47 @@ async def test_committed_candidate_cleanup_and_drain_timeout(runtime, monkeypatc
     await manager.close()
 
 
-async def test_duplicate_tool_names_fail_without_publishing(runtime):
+@pytest.mark.parametrize("mode", ["direct", "search", "search_per_server"])
+async def test_duplicate_tool_names_fail_without_publishing(runtime, mode):
     manager, service, alice, _, clients = runtime
     value = config()
     value["tool_views"]["default"] = {
+        "exposure_mode": mode,
         "tools": {
             "same": {
                 "echo": {"aliases": [{"name": "collision"}, {"name": "collision"}]}
             }
-        }
+        },
     }
     revision = service.preview(alice, None, value)["revision"]
     with pytest.raises(ValueError, match="Duplicate"):
         await manager.apply(alice, revision)
     assert service.store.active(alice)[0] is None
     assert not clients[0].is_connected()
+
+
+async def test_per_server_namespaces_allow_same_tool_name_across_upstreams(runtime):
+    manager, service, alice, _, clients = runtime
+    value = {
+        "mcp_servers": {"one": {"command": "first"}, "two": {"command": "second"}},
+        "tool_views": {
+            "default": {"include_all": True, "exposure_mode": "search_per_server"}
+        },
+    }
+    revision = service.preview(alice, None, value)["revision"]
+    try:
+        await manager.apply(alice, revision)
+        generation = await manager.get(alice)
+        async with Client(generation.mcps["default"]) as client:
+            for server, expected in (("one", "first"), ("two", "second")):
+                result = await client.call_tool(
+                    f"{server}_call_tool",
+                    {"tool_name": "echo", "arguments": {"value": "hello"}},
+                )
+                assert f"{expected}:hello" in str(result)
+    finally:
+        await manager.close()
+    assert all(not client.is_connected() for client in clients)
 
 
 async def test_worker_shutdown_after_ready_and_before_entering(runtime):

@@ -196,7 +196,11 @@ class UserRuntime:
                     get_client=proxy.get_active_client,
                     cache_context=context,
                 )
-                names = [tool.name for tool in proxy.get_view_tools(name)]
+                per_server = view.config.exposure_mode == "search_per_server"
+                names = [
+                    (tool.server if per_server else "", tool.name)
+                    for tool in proxy.get_view_tools(name)
+                ]
                 if len(names) != len(set(names)):
                     raise ValueError("Duplicate exposed tool name")
                 mcps[name] = proxy.get_view_mcp(name)
