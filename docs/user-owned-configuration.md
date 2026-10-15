@@ -10,8 +10,8 @@ This is an upgrade of the **serve command**, including stdio. The low-level
 `MCPProxy(config)` library and legacy file-editing commands remain available for
 local tooling; they are not the managed HTTP service. Existing unauthenticated
 HTTP is not supported. Remote clients use OAuth or explicitly user-bound API
-keys; unbound legacy environment tokens are rejected. Do not point an old global HTTP deployment at the new
-branch without completing the migration below.
+keys; unbound legacy environment tokens are rejected. Do not point an old global
+HTTP deployment at the new branch without completing the migration below.
 
 ## Bootstrap and grants
 
@@ -220,7 +220,8 @@ uv run mcp-proxy manage --url https://proxy.example.org apply --input apply.json
 `candidate.json` contains `{ "base": "CURRENT_REVISION", "config": {...} }`;
 use `null` for an empty account. `apply.json` contains only
 `{ "revision": "REVIEWED_CANDIDATE" }`. `--input -` reads stdin. OAuth is the
-normal credential source; automation may provide an OAuth bearer or bound API key through
+normal credential source; automation may provide an OAuth bearer or bound API
+key through
 `MCP_PROXY_ACCESS_TOKEN`. No token or secret command-line flags are provided.
 Only HTTPS or loopback HTTP is accepted. Read-only operations reject `--input`.
 
@@ -239,7 +240,8 @@ signature, issuer, expiry, token type, stored session, and owner/client/view gra
 New authorization requests using the former `/mcp` resource are also accepted.
 Each stateless HTTP request resolves its authenticated owner; there is no shared
 transport session that can carry another user's identity. Clients must keep sending
-OAuth credentials or a bound API key. A lost TCP/MCP request is separate from a lost OAuth login.
+OAuth credentials or a bound API key. A lost TCP/MCP request is separate from a
+lost OAuth login.
 
 ### Claude Desktop through mcp-remote
 
@@ -280,7 +282,8 @@ tab and does not expose `/config/api/tools`, `/views/{name}`, or restart/PUT API
 The file-based `schema`/`tools` CLI commands inspect local YAML only.
 
 Cache HTTP URLs use `/view/VIEW/cache/TOKEN` and require both the signature and
-same-owner/view authorization through OAuth, a bound API key, or a browser session. Old unscoped
+same-owner/view authorization through OAuth, a bound API key, or a browser
+session. Old unscoped
 `/cache/TOKEN` links do not migrate. MCP cache tools/resources enforce the same
 owner/view boundary. Passing a signed link alone to another agent is insufficient;
 use an authorized retrieval client. User config cannot set `cache_secret` or

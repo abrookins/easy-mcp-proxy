@@ -2,8 +2,8 @@
   "version": 2,
   "plan_id": "c2f83bf9",
   "created_at": "2026-10-13T14:54:42.199429Z",
-  "updated_at": "2026-10-15T18:31:03.553497Z",
-  "next_sequence": 48,
+  "updated_at": "2026-10-15T18:44:48.060755Z",
+  "next_sequence": 49,
   "tasks": [
     {
       "id": "001-define-delivery-plan-and-acceptance-criteria",
@@ -873,6 +873,20 @@
       "path": "history/047-fix-live-oauth-discovery-and-browser-login-compatibility.done",
       "description_preview": "Fixed and deployed in dac6ff4: shared-origin OAuth metadata/audiences with strict legacy /mcp token compatibility; br...",
       "record_hash": "b6b37087d9171336cba44f68fb227d7db8c9a8a0782a9a34d3b0bf37ca9caa71"
+    },
+    {
+      "id": "048-support-user-bound-api-keys-and-migrate-the-existing-agent-key",
+      "sequence": 48,
+      "name": "Support user-bound API keys and migrate the existing agent key",
+      "status": "complete",
+      "order": 47,
+      "created_at": "2026-10-15T18:35:21.360916Z",
+      "updated_at": "2026-10-15T18:44:48.060755Z",
+      "completed_at": "2026-10-15T18:44:48.060754Z",
+      "archived_at": "2026-10-15T18:44:48.060754Z",
+      "path": "history/048-support-user-bound-api-keys-and-migrate-the-existing-agent-key.done",
+      "description_preview": "Implemented and deployed ceeff50: SHA-256 hashed owner-bound keys with independent grants, create/import/list/revoke ...",
+      "record_hash": "24eafe3bcbdaf42ec068c05dda44c0ff612e86b2e67a6db9a5383443a483c6cc"
     }
   ]
 }

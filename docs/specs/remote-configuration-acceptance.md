@@ -142,6 +142,10 @@ migrate production, verify physical phones, or establish native MCP Apps support
 
 ## Deployment verification: 2026-10-15
 
+The migration and OAuth repair below are chronological evidence. The later
+[API-key deployment](#user-bound-api-key-deployment-2026-10-15) supersedes their
+OAuth-only client instructions for explicitly bound keys.
+
 The user authorized stopping the existing service and starting this branch.
 The launchd service now runs from the feature checkout with managed state; its
 port and public origin are unchanged. The old deployment checkout remains intact
@@ -230,3 +234,34 @@ user-side checks; this repair does not complete the pending real-host/mobile
 acceptance gates. Claude's static `Authorization`/`AUTH_TOKEN` configuration must
 be removed so `mcp-remote` can perform OAuth; newly registered clients still need
 explicit grants. See the [Claude configuration](../user-owned-configuration.md#claude-desktop-through-mcp-remote).
+
+### User-bound API key deployment: 2026-10-15
+
+At the user's request, commit `ceeff50` adds owner-bound API keys as an
+alternative to OAuth for agents. Each key receives a separate client ID and
+explicit grants. Generated keys have 256 random bits, are written to a new
+mode-0600 file, and are stored only as SHA-256 digests. Local operators can
+import an existing strong key, list metadata, set expiry and revoke keys.
+Revocation cannot be undone by re-granting its client ID. Expiry, disabled owners
+and grants are checked on subsequent requests and resolved-principal use.
+
+After a private SQLite backup, the existing agent key was explicitly imported
+for the previously verified owner. Its value and existing agent configuration
+were unchanged. Its grants are `default`, `remote`, `coding-agent` and `search`,
+with no administration permission and no automatic expiry. The old environment
+setting alone still grants no access; the explicit database binding authorizes
+this credential. Other installations must bind their own keys explicitly.
+
+Live verification on loopback and public HTTPS confirmed the owner's identity,
+denied configuration administration and unknown keys, and returned 20 remote
+tools and 29 coding-agent tools. A temporary key worked immediately after
+issuance and failed immediately after revocation without a restart. The existing
+agent key still returned all 20 remote tools after a second process restart.
+Private backup and deployment reports remain with the migration evidence.
+
+`make check` and all **1325 tests** pass with **100% line and branch coverage**.
+Tests cover cross-user/view separation over MCP, explicit administrative grants,
+hashed persistence, expiry, account disabling, permanent revocation, duplicate
+binding refusal, and secret-free CLI output. Documentation checks passed for
+111 relative links and both bootstrap examples. Actual Claude desktop/mobile
+host behavior remains subject to the existing external acceptance gates.
