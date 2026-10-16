@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import secrets
 from contextlib import asynccontextmanager
@@ -40,6 +41,7 @@ from mcp_proxy.user_store import Conflict, NotFound
 COOKIE = "proxy_user_session"
 LOGIN_COOKIE = "proxy_login_state"
 BROWSER_CLIENT = "mcp-proxy-browser"
+logger = logging.getLogger(__name__)
 
 
 def configured_gateway():
@@ -103,7 +105,17 @@ class ScopedTool(Tool):
             try:
                 return await self.inner.run(arguments)
             except Exception as exc:
-                raise ToolError(public_tool_error(exc)) from None
+                safe_error = public_tool_error(exc)
+                error_code = json.loads(safe_error)["error"]
+                exception_type = f"{type(exc).__module__}.{type(exc).__qualname__}"
+                tool_name = str(self.name)[:128]
+                logger.warning(
+                    "Managed tool call failed: tool=%r code=%s exception_type=%s",
+                    tool_name,
+                    error_code,
+                    exception_type,
+                )
+                raise ToolError(safe_error) from None
 
 
 class UserProvider(Provider):

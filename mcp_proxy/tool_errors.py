@@ -6,6 +6,7 @@ import httpx
 from anyio import BrokenResourceError, ClosedResourceError, EndOfStream
 from fastmcp.exceptions import ToolError, ValidationError
 from mcp.shared.exceptions import McpError
+from pydantic import ValidationError as PydanticValidationError
 
 from mcp_proxy.proxy.search_tools import UnknownToolError
 from mcp_proxy.proxy.validation import ToolArgumentValidationError
@@ -32,6 +33,14 @@ def public_tool_error(exc: Exception) -> str:
         payload = {
             "error": "invalid_tool_arguments",
             "message": "Invalid tool arguments; inspect the tool's input schema.",
+        }
+    elif isinstance(exc, PydanticValidationError):
+        payload = {
+            "error": "upstream_response_validation_error",
+            "message": (
+                "The upstream tool returned an invalid MCP response; check its "
+                "result schema. Private error details omitted."
+            ),
         }
     elif isinstance(exc, ToolError):
         payload = {

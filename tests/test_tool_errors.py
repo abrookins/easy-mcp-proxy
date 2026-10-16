@@ -1,6 +1,7 @@
 """Safe, actionable failures survive the managed MCP wire boundary."""
 
 import json
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -9,6 +10,8 @@ import pytest
 from fastmcp.exceptions import ToolError, ValidationError
 from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData
+from pydantic import TypeAdapter
+from pydantic import ValidationError as PydanticValidationError
 
 from mcp_proxy.identity import principal_context
 from mcp_proxy.proxy.search_tools import UnknownToolError
@@ -27,11 +30,20 @@ def status_error(status):
     )
 
 
+def response_validation_error():
+    try:
+        TypeAdapter(dict[str, object]).validate_python(["private-token"])
+    except PydanticValidationError as exc:
+        return exc
+    raise AssertionError("expected response validation to fail")
+
+
 @pytest.mark.parametrize(
     "error,code",
     [
         (ToolError("private-token"), "upstream_tool_error"),
         (ValidationError("private-token"), "invalid_tool_arguments"),
+        (response_validation_error(), "upstream_response_validation_error"),
         (
             McpError(ErrorData(code=-32602, message="private-token")),
             "upstream_protocol_error",
@@ -82,3 +94,18 @@ def test_trusted_validation_metadata_is_bounded(error_type):
     bounded = public_tool_error(error_type(payload))
     assert len(bounded) < MAX_ERROR_LENGTH
     assert json.loads(bounded)["details_omitted"] is True
+
+
+async def test_managed_tool_failure_logs_safe_diagnostics(request, caplog):
+    app, alice, _ = request.getfixturevalue("gateway")
+    error = response_validation_error()
+    with principal_context(alice):
+        tool = (await UserProvider(app.runtime).list_tools())[0]
+        tool.inner = SimpleNamespace(run=AsyncMock(side_effect=error))
+        with caplog.at_level(logging.WARNING, logger="mcp_proxy.user_gateway"):
+            with pytest.raises(ToolError, match="invalid MCP response"):
+                await tool.run({})
+
+    assert "upstream_response_validation_error" in caplog.text
+    assert "pydantic_core._pydantic_core.ValidationError" in caplog.text
+    assert "private-token" not in caplog.text
