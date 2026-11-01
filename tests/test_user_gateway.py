@@ -1,7 +1,7 @@
 """HTTP and MCP discovery use the verified user, independently of admission."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -450,6 +450,22 @@ def test_configured_gateway_requires_managed_state_and_oauth(tmp_path, monkeypat
         oauth_backend(SimpleNamespace(provider=SimpleNamespace(oidc_provider="inner")))
         == "inner"
     )
+
+
+async def test_gateway_configures_managed_oauth_self_service_views(
+    tmp_path, monkeypatch
+):
+    store = UserStore(tmp_path / "state")
+    auth = FakeOAuth()
+    auth.enable_self_service_grants = MagicMock()
+    monkeypatch.setenv("MCP_PROXY_SELF_SERVICE_VIEWS", "remote")
+    gateway = UserGateway(
+        UserRuntime(store, base_url="https://proxy.test"),
+        auth,
+    )
+    auth.enable_self_service_grants.assert_called_once_with(store, ("remote",))
+    await gateway.runtime.close()
+    store.close()
 
 
 async def test_identity_bootstrap_reports_verified_client_without_grant(gateway):

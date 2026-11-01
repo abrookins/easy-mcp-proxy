@@ -39,6 +39,8 @@ Set these environment variables to enable Auth0/OIDC authentication:
 - FASTMCP_SERVER_AUTH_AUTH0_BASE_URL: Public URL where your proxy is accessible
 - MCP_PROXY_AUTH_ENABLE_CIMD: Set to false to require Dynamic Client
   Registration instead of accepting Client ID Metadata Document URLs
+- MCP_PROXY_SELF_SERVICE_VIEWS: Optional comma-separated non-admin views that
+  provisioned owners may grant to downstream clients during verified consent
 
 ### Combined Authentication
 
@@ -78,6 +80,7 @@ AUTH_ALLOWED_EMAILS_VAR = "MCP_PROXY_AUTH_ALLOWED_EMAILS"
 ADMIN_EMAILS_VAR = "MCP_PROXY_ADMIN_EMAILS"
 AUTH_REQUIRE_VERIFIED_EMAIL_VAR = "MCP_PROXY_AUTH_REQUIRE_EMAIL_VERIFIED"
 AUTH_ENABLE_CIMD_VAR = "MCP_PROXY_AUTH_ENABLE_CIMD"
+SELF_SERVICE_VIEWS_VAR = "MCP_PROXY_SELF_SERVICE_VIEWS"
 
 
 def parse_token_config(token_str: str) -> tuple[str, dict]:
@@ -169,6 +172,27 @@ def get_allowed_emails() -> set[str]:
 def get_admin_emails() -> set[str]:
     """Emails whose verified OAuth users administer their own configuration."""
     return _email_set(ADMIN_EMAILS_VAR)
+
+
+def get_self_service_views() -> tuple[str, ...]:
+    """Views a provisioned owner may grant to a client during OAuth consent.
+
+    This is deliberately empty by default. Administrative and wildcard access
+    always require an explicit local operator grant.
+    """
+    values = tuple(
+        dict.fromkeys(
+            view.strip()
+            for view in os.environ.get(SELF_SERVICE_VIEWS_VAR, "").split(",")
+            if view.strip()
+        )
+    )
+    forbidden = {"*", "admin"}.intersection(values)
+    if forbidden:
+        raise ValueError(
+            f"{SELF_SERVICE_VIEWS_VAR} cannot grant wildcard or admin access"
+        )
+    return values
 
 
 def require_verified_email() -> bool:
@@ -471,6 +495,7 @@ def create_auth_provider() -> "AuthProvider | None":
     - FASTMCP_SERVER_AUTH_AUTH0_AUDIENCE: Auth0 API audience
     - FASTMCP_SERVER_AUTH_AUTH0_BASE_URL: Public URL of your proxy
     - FASTMCP_SERVER_AUTH_AUTH0_REQUIRED_SCOPES: Comma-separated scopes (optional)
+    - MCP_PROXY_SELF_SERVICE_VIEWS: Consent-bound non-admin view grants (optional)
     """
     has_static = is_static_auth_configured()
     has_oidc = is_oidc_auth_configured()

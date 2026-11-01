@@ -165,6 +165,14 @@ class UserGateway:
         self.store = runtime.store
         self.service = ConfigService(self.store)
         self.auth = auth
+        backend = oauth_backend(auth)
+        if hasattr(backend, "enable_self_service_grants"):
+            from mcp_proxy.auth import get_self_service_views
+
+            backend.enable_self_service_grants(
+                self.store,
+                get_self_service_views(),
+            )
         self.keys = APIKeys(self.store)
         self.cipher = encryption_key(self.store.directory, "browser")
         from mcp_proxy.user_admin import APP_URI, Administration

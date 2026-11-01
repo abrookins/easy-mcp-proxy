@@ -701,6 +701,9 @@ export FASTMCP_SERVER_AUTH_AUTH0_REQUIRED_SCOPES="read,write"
 
 # Optional: disable Client ID Metadata Documents and require Dynamic Client Registration
 export MCP_PROXY_AUTH_ENABLE_CIMD="false"
+
+# Optional: let provisioned owners consent to fresh client IDs for these views
+export MCP_PROXY_SELF_SERVICE_VIEWS="remote"
 ```
 
 The managed HTTP service requires all five provider variables and
@@ -715,6 +718,10 @@ Client ID Metadata Document support is enabled by default; set
 `MCP_PROXY_AUTH_ENABLE_CIMD=false` to require Dynamic Client Registration.
 Optional admission controls are `MCP_PROXY_AUTH_ALLOWED_EMAILS` (comma-separated)
 and `MCP_PROXY_AUTH_REQUIRE_EMAIL_VERIFIED`; neither replaces ownership/grants.
+`MCP_PROXY_SELF_SERVICE_VIEWS` is a separate, empty-by-default comma-separated
+allowlist for consent-bound grants to newly registered downstream clients. It
+applies only after upstream identity verification for an existing provisioned
+owner, and rejects wildcard and `admin` access.
 User-bound API keys are also supported through explicit local issuance/import;
 unbound environment tokens and unauthenticated HTTP are rejected. See
 [API key commands and permissions](user-owned-configuration.md#user-bound-api-keys).

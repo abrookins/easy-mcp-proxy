@@ -100,6 +100,38 @@ def test_grants_revocation_and_views(owners):
         store.resolve(alice.identity)
 
 
+def test_consent_grants_only_provisioned_non_admin_views(owners):
+    store, alice, _ = owners
+    identity = Identity("https://issuer", "alice", "claude")
+    assert store.grant_consented(identity, ["remote", "remote"]) is True
+    assert store.resolve(identity, "remote").user_id == alice.user_id
+    with pytest.raises(AccessDenied, match="View"):
+        store.resolve(identity, "default")
+
+    store.grant(alice.user_id, "claude", admin=True, views=["default"])
+    assert store.grant_consented(identity, ["remote"]) is True
+    principal = store.resolve(identity, "remote")
+    store.authorize(principal, admin=True)
+    assert store.access(principal)["views"] == ["default", "remote"]
+
+    stranger = Identity("https://issuer", "stranger", "claude")
+    assert store.grant_consented(stranger, ["remote"]) is False
+    store.db.execute("UPDATE users SET enabled=0 WHERE id=?", (alice.user_id,))
+    store.db.commit()
+    assert store.grant_consented(identity, ["remote"]) is False
+
+    for invalid, views in (
+        (Identity("i", "s", ""), ["remote"]),
+        (identity, []),
+        (identity, [1]),
+        (identity, [""]),
+        (identity, ["*"]),
+        (identity, ["admin"]),
+    ):
+        with pytest.raises(ValueError, match="non-admin"):
+            store.grant_consented(invalid, views)
+
+
 def test_input_and_schema_validation(owners, tmp_path):
     store, alice, _ = owners
     for issuer, subject in (("", "user"), ("issuer", " ")):

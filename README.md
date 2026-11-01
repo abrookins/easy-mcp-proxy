@@ -119,6 +119,12 @@ To make people admins by email, set `MCP_PROXY_ADMIN_EMAILS`. This works only
 when your OAuth provider includes a verified email in its tokens; see the
 [admin email list](docs/user-owned-configuration.md#admin-email-list).
 
+For MCP clients that register a fresh client ID at each login, set an explicit
+comma-separated allowlist such as `MCP_PROXY_SELF_SERVICE_VIEWS=remote`.
+After the user approves the FastMCP consent page and Auth0 verifies an already
+provisioned owner, the proxy grants that client only the listed views. The
+setting is empty by default and cannot grant wildcard or admin access.
+
 ## Examples
 
 You can import these as YAML, or paste the equivalent JSON into the browser's

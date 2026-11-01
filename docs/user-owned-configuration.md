@@ -28,7 +28,8 @@ initialization markers. Missing or corrupt initialized keys fail closed; restore
 them, do not delete state until the service starts. Back up keys separately from
 routine database exports, and protect both backups.
 
-Only a local operator can provision users and grants:
+Only a local operator can provision users or grant administration and wildcard
+access. Start with explicit bootstrap grants:
 
 ```sh
 export MCP_PROXY_STATE_DIR="$HOME/.local/state/easy-mcp-proxy"
@@ -54,6 +55,21 @@ uv run mcp-proxy users grant USER_ID --client REGISTERED_CLIENT_ID --view remote
 uv run mcp-proxy users grant USER_ID --client ADMIN_CLIENT_ID --admin --view admin
 uv run mcp-proxy users revoke USER_ID --client REGISTERED_CLIENT_ID
 ```
+
+Clients that use Dynamic Client Registration may receive a new client ID on a
+later sign-in. To let already provisioned owners authorize those clients
+without local operator intervention, configure an explicit view allowlist:
+
+```sh
+export MCP_PROXY_SELF_SERVICE_VIEWS="remote"
+```
+
+This setting is empty by default. When enabled, the proxy waits for both the
+FastMCP application-consent approval and successful upstream OIDC verification,
+then merges only the configured non-admin views into that downstream client's
+grant. It never provisions an owner, grants the `admin` view or admin flag, or
+accepts wildcard access. Local grants remain necessary for administration,
+operator privileges, and any views not in this allowlist.
 
 ### Admin email list
 
@@ -287,9 +303,10 @@ For OAuth instead, remove those settings and use:
 ```
 
 Restart Claude Desktop and complete the browser sign-in. Existing granted OAuth
-registrations retain access; a newly registered client needs an explicit local
-`remote` view grant. Do not change to `/mcp` to work around discovery errors:
-that endpoint selects the default view.
+registrations retain access. A newly registered client needs either an explicit
+local `remote` view grant or `remote` in `MCP_PROXY_SELF_SERVICE_VIEWS`. Do not
+change to `/mcp` to work around discovery errors: that endpoint selects the
+default view.
 
 For browser administration, start at `/config`, not `/config/login/callback`.
 The latter requires a fresh OAuth state cookie and authorization code. The

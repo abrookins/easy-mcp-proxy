@@ -71,6 +71,29 @@ class TestParseTokenConfig:
         assert config["scopes"] == ["mcp:tools", "api:read"]
 
 
+def test_self_service_views_are_explicit_narrow_and_deduplicated():
+    from mcp_proxy.auth import get_self_service_views
+
+    with patch.dict(os.environ, {}, clear=True):
+        assert get_self_service_views() == ()
+    with patch.dict(
+        os.environ,
+        {"MCP_PROXY_SELF_SERVICE_VIEWS": " remote,default,remote, "},
+        clear=True,
+    ):
+        assert get_self_service_views() == ("remote", "default")
+    for value in ("*", "remote,admin"):
+        with (
+            patch.dict(
+                os.environ,
+                {"MCP_PROXY_SELF_SERVICE_VIEWS": value},
+                clear=True,
+            ),
+            pytest.raises(ValueError, match="wildcard or admin"),
+        ):
+            get_self_service_views()
+
+
 class TestGetStaticTokenConfigs:
     """Tests for get_static_token_configs function."""
 

@@ -151,8 +151,8 @@ uv run mcp-proxy serve --transport http --port 8000
 `MCP_PROXY_HOST` defaults to `127.0.0.1`. Put the remote service behind HTTPS at
 its configured public origin. `/health` is public; `/views` and MCP endpoints
 require OAuth or a user-bound API key and explicit client grants. For OAuth,
-register each remote client and grant
-its downstream client ID the views it needs, as described in the
+grant each downstream client ID the views it needs, or configure consent-bound
+self-service views for already provisioned owners, as described in the
 [bootstrap guide](user-owned-configuration.md#bootstrap-and-grants).
 
 Open `/config` to edit configuration. Connect the MCP client to `/mcp` for its

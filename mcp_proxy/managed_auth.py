@@ -1,9 +1,15 @@
-"""One OAuth resource for all managed views, with legacy token compatibility."""
+"""Managed OAuth compatibility and consent-bound client grants."""
+
+import logging
 
 import httpx
 from fastmcp.server.auth.jwt_issuer import JWTIssuer
 from fastmcp.server.auth.oidc_proxy import OIDCProxy
 from joserfc.errors import JoseError
+
+from mcp_proxy.identity import AccessDenied, Identity
+
+logger = logging.getLogger(__name__)
 
 
 class MigratingJWTIssuer(JWTIssuer):
@@ -78,5 +84,55 @@ class UserinfoEmailClaims:
         return claims or None
 
 
-class ManagedOIDCProxy(UserinfoEmailClaims, SharedResourceOAuth, OIDCProxy):
+class ConsentedClientGrants:
+    """Grant configured views only after upstream identity verification."""
+
+    def enable_self_service_grants(self, store, views) -> None:
+        configured = tuple(views)
+        if configured and self._require_authorization_consent not in (
+            True,
+            "remember",
+        ):
+            raise ValueError("Self-service grants require FastMCP consent")
+        self._self_service_store = store
+        self._self_service_views = configured
+
+    async def exchange_authorization_code(self, client, authorization_code):
+        store = getattr(self, "_self_service_store", None)
+        views = getattr(self, "_self_service_views", ())
+        if store is None or not views:
+            return await super().exchange_authorization_code(client, authorization_code)
+
+        code = await self._code_store.get(key=authorization_code.code)
+        verified = None
+        if code is not None:
+            token_name = (
+                "id_token" if self._uses_alternate_verification() else "access_token"
+            )
+            raw = code.idp_tokens.get(token_name)
+            if raw:
+                verified = await self._token_validator.verify_token(raw)
+
+        result = await super().exchange_authorization_code(client, authorization_code)
+        if verified is None:
+            logger.warning(
+                "Skipping OAuth self-service grant: upstream identity was not verified"
+            )
+            return result
+
+        try:
+            access = verified.model_copy(update={"client_id": client.client_id})
+            identity = Identity.from_verified_token(access)
+        except AccessDenied:
+            logger.warning(
+                "Skipping OAuth self-service grant: verified identity was incomplete"
+            )
+            return result
+        store.grant_consented(identity, views)
+        return result
+
+
+class ManagedOIDCProxy(
+    ConsentedClientGrants, UserinfoEmailClaims, SharedResourceOAuth, OIDCProxy
+):
     """OIDC token exchange for the managed gateway's shared OAuth resource."""

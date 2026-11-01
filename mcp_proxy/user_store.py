@@ -129,6 +129,40 @@ class UserStore:
                 (user_id, client, admin, json.dumps(list(views))),
             )
 
+    def grant_consented(self, identity: Identity, views=()) -> bool:
+        """Merge non-admin views after verified OAuth application consent.
+
+        Only an already provisioned, enabled owner is eligible. This never
+        creates an owner, grants administration, or accepts wildcard access.
+        """
+        if not identity.client_id or not views:
+            raise ValueError("Explicit non-admin client views required")
+        requested = tuple(dict.fromkeys(views))
+        if not all(isinstance(view, str) and view for view in requested) or {
+            "*",
+            "admin",
+        }.intersection(requested):
+            raise ValueError("Explicit non-admin client views required")
+        with self.transaction():
+            user = self.db.execute(
+                "SELECT id FROM users WHERE issuer=? AND subject=? AND enabled=1",
+                (identity.issuer, identity.subject),
+            ).fetchone()
+            if user is None:
+                return False
+            grant = self.db.execute(
+                "SELECT admin,views FROM grants WHERE user_id=? AND client=?",
+                (user["id"], identity.client_id),
+            ).fetchone()
+            admin = bool(grant["admin"]) if grant else False
+            existing = json.loads(grant["views"]) if grant else []
+            merged = list(dict.fromkeys([*existing, *requested]))
+            self.db.execute(
+                "INSERT OR REPLACE INTO grants VALUES(?,?,?,?)",
+                (user["id"], identity.client_id, admin, json.dumps(merged)),
+            )
+            return True
+
     def revoke(self, user_id: str, client: str):
         with self.transaction():
             self.db.execute(

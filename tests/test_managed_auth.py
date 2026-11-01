@@ -1,10 +1,13 @@
 """Real OAuth handlers catch resource and browser-login integration failures."""
 
 import time
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
+from fastmcp.server.auth import AccessToken
 from fastmcp.server.auth.jwt_issuer import JWTIssuer
 from fastmcp.server.auth.oauth_proxy import OAuthProxy
 from fastmcp.server.auth.oauth_proxy.models import ClientCode
@@ -12,7 +15,12 @@ from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
 from joserfc.errors import JoseError
 
 from mcp_proxy.auth import CompositeAuthProvider
-from mcp_proxy.managed_auth import MigratingJWTIssuer, SharedResourceOAuth
+from mcp_proxy.identity import AccessDenied, Identity
+from mcp_proxy.managed_auth import (
+    ConsentedClientGrants,
+    MigratingJWTIssuer,
+    SharedResourceOAuth,
+)
 from mcp_proxy.state import oauth_persistence
 from mcp_proxy.user_gateway import BROWSER_CLIENT, COOKIE, UserGateway
 from mcp_proxy.user_runtime import UserRuntime
@@ -21,6 +29,122 @@ from mcp_proxy.user_store import UserStore
 
 class ManagedProxy(SharedResourceOAuth, OAuthProxy):
     pass
+
+
+class ExchangeStub:
+    async def exchange_authorization_code(self, client, authorization_code):
+        self.exchange_calls.append((client, authorization_code))
+        return "issued"
+
+
+class GrantingProxy(ConsentedClientGrants, ExchangeStub):
+    def __init__(self, code, verified, *, consent=True, alternate=False):
+        self._require_authorization_consent = consent
+        self._code_store = SimpleNamespace(get=AsyncMock(return_value=code))
+        self._token_validator = SimpleNamespace(
+            verify_token=AsyncMock(return_value=verified)
+        )
+        self.alternate = alternate
+        self.exchange_calls = []
+
+    def _uses_alternate_verification(self):
+        return self.alternate
+
+
+@pytest.mark.parametrize(
+    ("alternate", "token_name"),
+    [(False, "access_token"), (True, "id_token")],
+)
+async def test_consent_exchange_grants_verified_provisioned_owner(
+    tmp_path, alternate, token_name
+):
+    store = UserStore(tmp_path / "state")
+    owner = store.provision("issuer", "owner")
+    verified = AccessToken(
+        token="upstream",
+        client_id="upstream-app",
+        scopes=[],
+        claims={"iss": "issuer", "sub": "owner"},
+    )
+    code = SimpleNamespace(idp_tokens={token_name: "upstream"})
+    provider = GrantingProxy(code, verified, alternate=alternate)
+    provider.enable_self_service_grants(store, ["remote"])
+    client = SimpleNamespace(client_id="claude")
+    authorization = SimpleNamespace(code="code")
+
+    assert await provider.exchange_authorization_code(client, authorization) == (
+        "issued"
+    )
+    principal = store.resolve(Identity("issuer", "owner", "claude"), "remote")
+    assert principal.user_id == owner
+    provider._token_validator.verify_token.assert_awaited_once_with("upstream")
+    assert provider.exchange_calls == [(client, authorization)]
+    store.close()
+
+
+@pytest.mark.parametrize(
+    ("code", "verified"),
+    [
+        (None, None),
+        (SimpleNamespace(idp_tokens={}), None),
+        (SimpleNamespace(idp_tokens={"access_token": "upstream"}), None),
+    ],
+)
+async def test_consent_exchange_never_grants_unverified_identity(
+    tmp_path, code, verified
+):
+    store = UserStore(tmp_path / "state")
+    store.provision("issuer", "owner")
+    provider = GrantingProxy(code, verified)
+    provider.enable_self_service_grants(store, ["remote"])
+    client = SimpleNamespace(client_id="claude")
+
+    assert (
+        await provider.exchange_authorization_code(client, SimpleNamespace(code="code"))
+        == "issued"
+    )
+    with pytest.raises(AccessDenied):
+        store.resolve(Identity("issuer", "owner", "claude"), "remote")
+    store.close()
+
+
+async def test_consent_exchange_rejects_incomplete_identity_and_defaults_off(tmp_path):
+    store = UserStore(tmp_path / "state")
+    store.provision("issuer", "owner")
+    incomplete = AccessToken(
+        token="upstream",
+        client_id="upstream-app",
+        scopes=[],
+        claims={"iss": "issuer"},
+    )
+    code = SimpleNamespace(idp_tokens={"access_token": "upstream"})
+    provider = GrantingProxy(code, incomplete)
+    client = SimpleNamespace(client_id="claude")
+    authorization = SimpleNamespace(code="code")
+
+    # No configured views preserves the local-operator-only default and does
+    # not perform the extra upstream verification.
+    assert await provider.exchange_authorization_code(client, authorization) == (
+        "issued"
+    )
+    provider._token_validator.verify_token.assert_not_awaited()
+
+    provider.enable_self_service_grants(store, ["remote"])
+    assert await provider.exchange_authorization_code(client, authorization) == (
+        "issued"
+    )
+    with pytest.raises(AccessDenied):
+        store.resolve(Identity("issuer", "owner", "claude"), "remote")
+    store.close()
+
+
+def test_self_service_grants_require_fastmcp_consent(tmp_path):
+    store = UserStore(tmp_path / "state")
+    provider = GrantingProxy(None, None, consent=False)
+    with pytest.raises(ValueError, match="require FastMCP consent"):
+        provider.enable_self_service_grants(store, ["remote"])
+    provider.enable_self_service_grants(store, [])
+    store.close()
 
 
 @pytest.mark.parametrize("scopes", [[], ["read:tools"]])
